@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Perfis: ADMIN, EQUIPE_INTERNA, VENDEDOR, ALUNO
+model Usuario {
+  id            String    @id @default(cuid())
+  nome          String
+  email         String    @unique
+  senhaHash     String
+  perfil        String    @default("ALUNO") // ADMIN, EQUIPE_INTERNA, VENDEDOR, ALUNO
+  cpf           String?   @unique
+  telefone      String?
+  ativo         Boolean   @default(true)
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  // Relações
+  oportunidadesVendedor Oportunidade[]      @relation("VendedorOportunidades")
+  adesoesVendedor       Adesao[]            @relation("VendedorAdesoes")
+  adesoesAluno          Adesao[]            @relation("AlunoAdesoes")
+  lancamentosComissao   LancamentoComissao[]
+  notificacoes          NotificacaoFila[]
+}
+
+model Instituicao {
+  id        String   @id @default(cuid())
+  nome      String
+  sigla     String?
+  campi     Campus[]
+}
+
+model Campus {
+  id            String      @id @default(cuid())
+  nome          String
+  instituicaoId String
+  instituicao   Instituicao @relation(fields: [instituicaoId], references: [id])
+  cursos        Curso[]
+}
+
+model Curso {
+  id        String   @id @default(cuid())
+  nome      String
+  campusId  String
+  campus    Campus   @relation(fields: [campusId], references: [id])
+  
+  oportunidades OportunidadeCurso[]
+}
+
+// CRM - Cada cartão representa uma TURMA em negociação
+// Etapas: PRIMEIRO_CONTATO, REUNIAO_REPRESENTANTE, LIVE_REUNIAO_SALA, ADESAO, PLANTAO_VENDAS, PERDIDOS
+model Oportunidade {
+  id                    String              @id @default(cuid())
+  tituloTurma           String              // ex: Enfermagem e Biomedicina 2026.2
+  semestre              String              // ex: 2026.2
+  tipoProjeto           String              // BAILE ou COLACAO
+  etapa                 String              @default("PRIMEIRO_CONTATO")
+  vendedorId            String
+  vendedor              Usuario             @relation("VendedorOportunidades", fields: [vendedorId], references: [id])
+  quantidadePrevista    Int                 @default(0)
+  valorPrevistoAluno    Float               @default(0.0)
+  codigoAdesao          String              @unique // Exclusivo por turma, criado aqui para vincular
+  dataContratoTurma     DateTime?           // Data de assinatura com a comissão
+  observacoes           String?
+  criadoEm              DateTime            @default(now())
+  atualizadoEm          DateTime            @updatedAt
+
+  cursos                OportunidadeCurso[]
+  historicoEtapas       HistoricoCrm[]
+  projeto               Projeto?
+}
+
+model OportunidadeCurso {
+  id              String       @id @default(cuid())
+  oportunidadeId  String
+  cursoId         String
+  oportunidade    Oportunidade @relation(fields: [oportunidadeId], references: [id], onDelete: Cascade)
+  curso           Curso        @relation(fields: [cursoId], references: [id])
+}
+
+model HistoricoCrm {
+  id              String       @id @default(cuid())
+  oportunidadeId  String
+  etapaAnterior   String?
+  etapaNova       String
+  responsavelNome String
+  motivo          String?
+  data            DateTime     @default(now())
+  oportunidade    Oportunidade @relation(fields: [oportunidadeId], references: [id], onDelete: Cascade)
+}
+
+// Projeto - Criado automaticamente na PRIMEIRA adesão
+model Projeto {
+  id                  String       @id @default(cuid())
+  oportunidadeId      String?      @unique
+  oportunidade        Oportunidade? @relation(fields: [oportunidadeId], references: [id])
+  codigoAdesao        String       @unique
+  nomeProjeto         String?      // Nome identificador do projeto / turma
+  tipo                String       // BAILE ou COLACAO
+  semestre            String       // ex: 2026.1, 2026.2, 2027.1
+  faculdadeNome       String?      // Faculdade / Instituição associada
+  campusNome          String?      // Campus associado
+  cursoNome           String?      // Cursos associados
+  status              String       @default("ATIVO") // ATIVO, CONCLUIDO, SEM_ADESOES_ATIVAS
+  quantidadePrevista  Int          @default(0)
+  valorPrevistoAluno  Float        @default(0.0)
+  dataCriacaoProjeto  DateTime     @default(now())
+  dataContratoTurma   DateTime?    // Data de assinatura com a comissão
+
+  planos              Plano[]
+  adesoes             Adesao[]
+  custos              CustoProjeto[]
+}
+
+model Plano {
+  id              String    @id @default(cuid())
+  projetoId       String
+  projeto         Projeto   @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  nome            String    // ex: Completo Ouro, Convite Individual
+  descricao       String?
+  valorTotal      Float
+  maxParcelas     Int       @default(12)
+  itensInclusos   String?   // JSON com convites, benefícios, etc.
+  ativo           Boolean   @default(true)
+
+  adesoes         Adesao[]
+}
+
+// Aluno adere individualmente
+model Adesao {
+  id                    String    @id @default(cuid())
+  codigoIndividualAluno String    @unique // Código exclusivo do aluno (ex: ALU-98214)
+  alunoId               String
+  aluno                 Usuario   @relation("AlunoAdesoes", fields: [alunoId], references: [id])
+  projetoId             String
+  projeto               Projeto   @relation(fields: [projetoId], references: [id])
+  planoId               String
+  plano                 Plano     @relation(fields: [planoId], references: [id])
+  vendedorId            String
+  vendedor              Usuario   @relation("VendedorAdesoes", fields: [vendedorId], references: [id])
+  
+  // Dados Acadêmicos do Aluno
+  instituicaoNome       String
+  campusNome            String
+  cursoNome             String
+  turno                 String    // MANHA, TARDE, NOITE
+
+  valorTotalContratado  Float
+  status                String    @default("ATIVA") // ATIVA, CANCELADA
+  parcelasPagasCount    Int       @default(0) // Contador de parcelas pagas
+  comissaoGarantida     Boolean   @default(false) // True após 3 parcelas pagas
+  dataAdesao            DateTime  @default(now())
+  dataCancelamento      DateTime?
+  motivoCancelamento    String?
+
+  parcelas              Parcela[]
+  lancamentosComissao   LancamentoComissao[]
+  pedidosExtras         PedidoExtra[]
+}
+
+// Parcelas e integração financeira (Sicredi)
+model Parcela {
+  id                String    @id @default(cuid())
+  adesaoId          String
+  adesao            Adesao    @relation(fields: [adesaoId], references: [id], onDelete: Cascade)
+  numero            Int
+  valor             Float
+  vencimento        DateTime
+  status            String    @default("PENDENTE") // PENDENTE, PAGA, VENCIDA, CANCELADA
+  
+  // Dados de liquidação
+  dataPagamento     DateTime?
+  valorPago         Float?
+  formaPagamento    String?   // BOLETO_SICREDI, PIX_SICREDI, etc.
+  
+  // Dados Bancários Sicredi
+  nossoNumero       String?   @unique
+  linhaDigitavel    String?
+  codigoBarras      String?
+  qrCodePix         String?
+  urlBoletoPdf      String?
+  sicrediId         String?   @unique
+  webhookProcessado Boolean   @default(false)
+
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
+}
+
+// Motor de Comissão (Regra dos 4%) - Livro Razão Imutável
+// Tipos:
+// - PREVISTA (adesão gerada, aguarda 1ª parcela)
+// - LIBERADA (1ª parcela paga, disponível para acerto)
+// - PAGA_VENDEDOR (acerto concluído com vendedor)
+// - ESTORNO_SALDO (cancelou <3 pagas, ainda não tinha sido paga ao vendedor)
+// - DEBITO_COMPENSACAO (cancelou <3 pagas, já tinha sido paga ao vendedor; abate no próximo acerto)
+model LancamentoComissao {
+  id              String    @id @default(cuid())
+  vendedorId      String
+  vendedor        Usuario   @relation(fields: [vendedorId], references: [id])
+  adesaoId        String
+  adesao          Adesao    @relation(fields: [adesaoId], references: [id])
+  
+  tipo            String    // PREVISTA, LIBERADA, PAGA_VENDEDOR, ESTORNO_SALDO, DEBITO_COMPENSACAO
+  valor           Float     // Pode ser positivo (crédito) ou negativo (débito/estorno)
+  baseCalculo     Float     // Valor do contrato (ex: 5000.00)
+  percentual      Float     @default(4.0)
+  descricao       String
+  dataLancamento  DateTime  @default(now())
+  
+  fechamentoId    String?   // Agrupamento do lote de acerto com o vendedor
+}
+
+// Contas a pagar e custos de eventos
+model ContaPagar {
+  id              String    @id @default(cuid())
+  descricao       String
+  favorecido      String
+  categoria       String    // ALUGUEL, SALARIOS, FORNECEDORES, FOTOGRAFIA, BUFFET, ESPACO, etc.
+  tipoDespesa     String    // GERAL_EMPRESA ou CUSTO_PROJETO
+  valor           Float
+  vencimento      DateTime
+  status          String    @default("PENDENTE") // PENDENTE, PAGA, CANCELADA
+  dataPagamento   DateTime?
+  comprovanteUrl  String?
+  
+  // Recorrência
+  isRecorrente    Boolean   @default(false)
+  regraRecorrencia String?  // MENSAL, ANUAL
+
+  custosProjeto   CustoProjeto[]
+}
+
+model CustoProjeto {
+  id            String      @id @default(cuid())
+  projetoId     String
+  projeto       Projeto     @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  contaPagarId  String?
+  contaPagar    ContaPagar? @relation(fields: [contaPagarId], references: [id])
+  descricao     String      // ex: Cervejada pré-formatura, Brindes, Segurança, etc.
+  valor         Float
+  dataCompetencia DateTime  @default(now())
+}
+
+// Produtos Adicionais (Convites extras, mesas extras)
+model ProdutoAdicional {
+  id          String        @id @default(cuid())
+  nome        String        // ex: Convite Extra Pista, Mesa VIP
+  descricao   String?
+  preco       Float
+  ativo       Boolean       @default(true)
+  pedidos     PedidoExtra[]
+}
+
+model PedidoExtra {
+  id                String           @id @default(cuid())
+  adesaoId          String
+  adesao            Adesao           @relation(fields: [adesaoId], references: [id])
+  produtoId         String
+  produto           ProdutoAdicional @relation(fields: [produtoId], references: [id])
+  quantidade        Int              @default(1)
+  valorTotal        Float
+  status            String           @default("PENDENTE") // PENDENTE, PAGO, CANCELADO
+  dataPedido        DateTime         @default(now())
+}
+
+// Fila de Campanhas e Mensagens (Gmail + WhatsApp Oficial)
+model Campanha {
+  id              String            @id @default(cuid())
+  titulo          String
+  canal           String            // EMAIL, WHATSAPP, AMBOS
+  status          String            @default("CRIADA") // CRIADA, EM_ANDAMENTO, PAUSADA, CONCLUIDA, CANCELADA
+  mensagemTexto   String
+  intervaloSegundos Int             @default(60) // Ritmo gradual configurável
+  criadoEm        DateTime          @default(now())
+  atualizadoEm    DateTime          @updatedAt
+
+  notificacoes    NotificacaoFila[]
+}
+
+model NotificacaoFila {
+  id              String    @id @default(cuid())
+  campanhaId      String
+  campanha        Campanha  @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  destinatarioId  String
+  destinatario    Usuario   @relation(fields: [destinatarioId], references: [id])
+  canal           String    // EMAIL ou WHATSAPP
+  status          String    @default("PENDENTE") // PENDENTE, ENVIADO, FALHA, SUPRIMIDO_PAGAMENTO_CONFIRMADO
+  erroLog         String?
+  agendadoPara    DateTime?
+  enviadoEm       DateTime?
+  criadoEm        DateTime  @default(now())
+}

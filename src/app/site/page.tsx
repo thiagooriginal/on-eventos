@@ -82,6 +82,10 @@ export default function SiteInstitucionalPage() {
 
   const fecharVideo = () => {
     setVideoModalUrl(null);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
     if (typeof document !== 'undefined') {
       const modal = document.getElementById('on-video-modal');
       const video = document.getElementById('on-active-video-player') as HTMLVideoElement | null;
@@ -91,6 +95,7 @@ export default function SiteInstitucionalPage() {
       }
       if (video) {
         video.pause();
+        video.currentTime = 0;
       }
     }
   };
@@ -1111,17 +1116,16 @@ export default function SiteInstitucionalPage() {
               ref={videoRef}
               id="on-active-video-player"
               key={videoModalUrl || 'default-player'}
-              src={videoModalUrl || '/videos/depoimento-1.mp4'}
+              src={videoModalUrl || undefined}
               controls
-              autoPlay
               playsInline
               // @ts-ignore
               webkit-playsinline="true"
               x5-playsinline="true"
-              preload="auto"
+              preload="none"
               className="w-full h-full object-cover bg-black"
             >
-              <source src={videoModalUrl || '/videos/depoimento-1.mp4'} type="video/mp4" />
+              {videoModalUrl && <source src={videoModalUrl} type="video/mp4" />}
               Seu navegador não suporta a reprodução deste vídeo.
             </video>
           </div>
@@ -1450,7 +1454,10 @@ export default function SiteInstitucionalPage() {
                       m.classList.remove('opacity-100', 'pointer-events-auto', 'flex');
                       m.classList.add('opacity-0', 'pointer-events-none', 'hidden');
                     }
-                    if (p) { p.pause(); }
+                    if (p) {
+                      p.pause();
+                      p.currentTime = 0;
+                    }
                   }
 
                   // Abertura e fechamento do menu hambúrguer no celular

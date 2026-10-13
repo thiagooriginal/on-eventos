@@ -1,0 +1,19 @@
+# Apache Configuration for Next.js Static Export
+DirectoryIndex index.html
+
+Options -MultiViews
+RewriteEngine On
+RewriteBase /
+
+# Servir arquivos estáticos existentes diretamente
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# Se for diretório com index.html, servir o index.html
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteCond %{REQUEST_FILENAME}/index.html -f
+RewriteRule ^(.*)$ $1/index.html [L]
+
+# Fallback para rotas sem extensão (.html)
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.*)$ $1.html [L]

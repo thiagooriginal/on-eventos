@@ -731,7 +731,7 @@ export default function SiteInstitucionalPage() {
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
             <Link
-              href="/app-aluno"
+              href="/app-aluno/"
               className="px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition flex items-center"
             >
               <Lock className="w-4 h-4 mr-2" />

@@ -232,7 +232,7 @@ export default function SiteInstitucionalPage() {
           <div className="flex items-center space-x-3">
             {/* BOTÃO DE ACESSO AO SISTEMA (DESKTOP) */}
             <Link
-              href="/login"
+              href="/login/"
               className="hidden sm:inline-flex items-center px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-fuchsia-500 text-white shadow-lg shadow-purple-600/30 transition transform hover:-translate-y-0.5"
             >
               <Lock className="w-3.5 h-3.5 mr-1.5" />
@@ -241,7 +241,7 @@ export default function SiteInstitucionalPage() {
 
             {/* ÁREA FORMANDO (DESKTOP) */}
             <Link
-              href="/app-aluno"
+              href="/app-aluno/"
               className="hidden sm:inline-flex items-center px-3.5 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-900 border border-purple-500/50 hover:bg-purple-950/80 text-purple-200 hover:text-white transition shadow-sm"
             >
               <GraduationCap className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
@@ -291,7 +291,7 @@ export default function SiteInstitucionalPage() {
           {/* BOTÕES DE ACESSO RÁPIDO AO SISTEMA E FORMANDO */}
           <div className="grid grid-cols-1 gap-2.5 pb-4 border-b border-purple-900/40">
             <Link
-              href="/login"
+              href="/login/"
               onClick={() => setMenuAberto(false)}
               className="w-full text-center py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center shadow-xl shadow-purple-600/40"
             >
@@ -299,7 +299,7 @@ export default function SiteInstitucionalPage() {
               ACESSAR SISTEMA INTERNO
             </Link>
             <Link
-              href="/app-aluno"
+              href="/app-aluno/"
               onClick={() => setMenuAberto(false)}
               className="w-full text-center py-3 rounded-xl bg-slate-900 border border-purple-700/60 text-purple-200 text-xs font-bold uppercase tracking-wider hover:bg-purple-950 flex items-center justify-center"
             >
@@ -1408,7 +1408,7 @@ export default function SiteInstitucionalPage() {
               <Phone className="w-4 h-4 mr-1" /> (11) 95136-4159
             </a>
             <Link
-              href="/login"
+              href="/login/"
               className="text-purple-300 hover:text-white flex items-center font-semibold transition"
             >
               <Lock className="w-3.5 h-3.5 mr-1 text-purple-400" /> Login Colaborador

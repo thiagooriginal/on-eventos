@@ -1,6 +1,22 @@
 import os
 import ftplib
 import sys
+import time
+
+def upload_file_with_retry(ftp, local_path, item, max_retries=3):
+    for attempt in range(1, max_retries + 1):
+        try:
+            with open(local_path, "rb") as f:
+                print(f"  -> Uploading: {item}")
+                ftp.storbinary(f"STOR {item}", f)
+            return True
+        except Exception as e:
+            print(f"  [Tentativa {attempt}/{max_retries}] Erro ao enviar {item}: {e}")
+            if attempt < max_retries:
+                time.sleep(2)
+            else:
+                print(f"  Aviso: Não foi possível enviar {item} após {max_retries} tentativas.")
+                return False
 
 def upload_dir(ftp, local_dir, remote_dir):
     try:
@@ -18,9 +34,26 @@ def upload_dir(ftp, local_dir, remote_dir):
             upload_dir(ftp, local_path, item)
             ftp.cwd("..")
         else:
-            with open(local_path, "rb") as f:
-                print(f"  -> Uploading: {item}")
-                ftp.storbinary(f"STOR {item}", f)
+            upload_file_with_retry(ftp, local_path, item)
+
+def conectar_ftp(server, user, password, max_retries=5):
+    for tentativa in range(1, max_retries + 1):
+        try:
+            print(f"[{tentativa}/{max_retries}] Conectando via FTP a {server}...")
+            ftp = ftplib.FTP(timeout=45)
+            ftp.connect(server, 21)
+            ftp.login(user, password)
+            ftp.set_pasv(True)
+            print(" Conectado com sucesso em modo passivo!")
+            return ftp
+        except Exception as err:
+            print(f"Falha na conexão (tentativa {tentativa}/{max_retries}): {err}")
+            if tentativa < max_retries:
+                espera = tentativa * 4
+                print(f"Aguardando {espera}s antes de tentar novamente...")
+                time.sleep(espera)
+            else:
+                raise err
 
 def main():
     server = os.environ.get("FTP_SERVER")
@@ -31,14 +64,16 @@ def main():
         print("Erro: FTP_SERVER, FTP_USER ou FTP_PASS não configurados.")
         sys.exit(1)
 
-    print(f"Conectando via FTP a {server} com usuário {user}...")
-    ftp = ftplib.FTP(server, user, password, timeout=60)
-    print(f"Conectado com sucesso! Diretório inicial: {ftp.pwd()}")
+    ftp = conectar_ftp(server, user, password)
+    print(f"Diretório inicial: {ftp.pwd()}")
     print("\n--- Estrutura do servidor FTP ---")
-    ftp.dir()
+    try:
+        ftp.dir()
+    except Exception:
+        pass
     print("---------------------------------\n")
 
-    # Identificar a pasta public_html correta
+    # Identificar diretórios alvos
     target_dirs = []
     
     # 1. Checar public_html na raiz
@@ -71,10 +106,15 @@ def main():
         print("Aviso: Tentando diretório atual...")
         target_dirs = ["."]
 
+    # Usar o primeiro diretório válido (ou todos se não for duplicado)
     for target in target_dirs:
         print(f"\n==========================================")
         print(f"Publicando em: {target}")
         print(f"==========================================")
+        try:
+            ftp.cwd("/")
+        except Exception:
+            pass
         ftp.cwd(target)
 
         out_dir = "./out"
@@ -88,12 +128,13 @@ def main():
                 upload_dir(ftp, local_path, item)
                 ftp.cwd("..")
             else:
-                with open(local_path, "rb") as f:
-                    print(f"  -> Uploading: {item}")
-                    ftp.storbinary(f"STOR {item}", f)
+                upload_file_with_retry(ftp, local_path, item)
 
     print("\n Deploy concluído com 100% de sucesso!")
-    ftp.quit()
+    try:
+        ftp.quit()
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     main()

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import HeroGestaoInteligente from '@/components/HeroGestaoInteligente';
 import {
   Phone,
   Mail,
@@ -717,22 +718,29 @@ export default function SiteInstitucionalPage() {
       {/* =========================================================================
           6. SEÇÃO ON ONLINE (PORTAL DO FORMANDO)
          ========================================================================= */}
-      <section id="on-online" className="py-20 bg-gradient-to-b from-slate-900 to-slate-950 border-y border-purple-900/40">
+      {/* =========================================================================
+          6. SEÇÃO ON ONLINE: GESTÃO INTELIGENTE & PORTAL DO FORMANDO
+         ========================================================================= */}
+      <div id="on-online" className="relative">
+        <HeroGestaoInteligente />
+      </div>
+
+      <section className="py-14 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-purple-900/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <span className="text-xs font-mono uppercase tracking-widest text-fuchsia-400 font-bold block mb-2">
             TECNOLOGIA EXCLUSIVA PARA A SUA TURMA
           </span>
-          <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
+          <h3 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
             #ON<span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-400">formaturas</span>
-          </h2>
-          <p className="mt-3 text-sm text-slate-300 max-w-xl mx-auto">
+          </h3>
+          <p className="mt-2.5 text-xs sm:text-sm text-slate-300 max-w-xl mx-auto">
             Fique por dentro de todas as novidades! Cada formando tem acesso exclusivo ao seu portal para emitir 2ª via de boletos, consultar contrato, convites extras e avisos da turma.
           </p>
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
             <a
               href="/app-aluno/index.html"
-              className="px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition flex items-center"
+              className="px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-500 text-white shadow-[0_3px_0_0_#3824B0,0_8px_16px_rgba(147,51,234,0.3)] hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition flex items-center"
             >
               <Lock className="w-4 h-4 mr-2" />
               ACESSAR PORTAL DO FORMANDO

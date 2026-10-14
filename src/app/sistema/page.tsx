@@ -216,6 +216,65 @@ export default function SistemaPage() {
         </header>
 
         {/* =========================================================================
+            FLOATING CAPSULE ISLAND DOCK (ESTILO REFERÊNCIA IMAGEM 2)
+            ========================================================================= */}
+        <div className="mb-6 flex justify-center">
+          <div className="backdrop-blur-xl bg-white/90 border border-white/90 shadow-[0_12px_32px_rgba(79,70,229,0.08),0_1px_3px_rgba(0,0,0,0.04)] rounded-full px-3 sm:px-5 py-2 flex items-center justify-between sm:justify-center gap-1.5 sm:gap-4 md:gap-5 overflow-x-auto max-w-full">
+            <a
+              href="/crm/index.html"
+              className="bg-white text-slate-900 rounded-full px-4 py-1.5 font-bold text-xs flex items-center gap-2 shadow-[0_2px_6px_rgba(0,0,0,0.06)] border border-slate-100 hover:translate-y-[-1px] transition shrink-0"
+            >
+              <Users className="w-3.5 h-3.5 text-purple-600" />
+              <span>CRM Turmas</span>
+            </a>
+            <a
+              href="/projetos/index.html"
+              className="text-slate-600 hover:text-slate-950 font-semibold text-xs flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/60 transition shrink-0"
+            >
+              <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
+              <span>Projetos</span>
+            </a>
+            <a
+              href="/comissoes/index.html"
+              className="text-slate-600 hover:text-slate-950 font-semibold text-xs flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/60 transition shrink-0"
+            >
+              <BadgePercent className="w-3.5 h-3.5 text-slate-400" />
+              <span>Comissões</span>
+            </a>
+            <a
+              href="/financeiro/index.html"
+              className="text-slate-600 hover:text-slate-950 font-semibold text-xs flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/60 transition shrink-0"
+            >
+              <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
+              <span>Financeiro</span>
+            </a>
+            <div className="h-4 w-[1px] bg-slate-200 hidden sm:block shrink-0" />
+            <a
+              href="/campanhas/index.html"
+              className="text-slate-600 hover:text-slate-950 font-semibold text-xs flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/60 transition shrink-0"
+            >
+              <Megaphone className="w-3.5 h-3.5 text-slate-400" />
+              <span>Campanhas</span>
+            </a>
+            <div className="w-7 h-7 rounded-full bg-white/90 border border-slate-200 flex items-center justify-center text-slate-600 relative shrink-0">
+              <Bell className="w-3.5 h-3.5" />
+              <span className="w-2 h-2 rounded-full bg-amber-400 absolute top-0.5 right-0.5 ring-2 ring-white" />
+            </div>
+            <a
+              href="/sistema/index.html"
+              title="Perfil"
+              className="w-7 h-7 rounded-full ring-1 ring-purple-200 overflow-hidden bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shrink-0"
+            >
+              <img
+                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces"
+                alt="Perfil"
+                className="w-full h-full object-cover"
+              />
+            </a>
+          </div>
+        </div>
+
+        {/* =========================================================================
             CARD HERO VISUAL: GRÁFICO DE RECEITA & ARRECADAÇÃO (ESTILO MODELOS 1 & 2)
             ========================================================================= */}
         <section className="bg-white rounded-[28px] p-6 lg:p-7 shadow-[0_12px_32px_rgba(0,0,0,0.03)] border border-slate-100 mb-6 relative overflow-hidden">

@@ -46,7 +46,19 @@ export default function MetricasPage() {
   const [simulando, setSimulando] = useState(false);
   const [sucessoMsg, setSucessoMsg] = useState<string | null>(null);
 
-  const carregarDados = () => {
+  const carregarDados = async () => {
+    try {
+      const res = await fetch('/telemetria.php?t=' + Date.now(), { cache: 'no-store' });
+      if (res.ok) {
+        const serverData = await res.json();
+        if (serverData && typeof serverData.totalVisitantes === 'number') {
+          setData(serverData);
+          return;
+        }
+      }
+    } catch (e) {
+      // Fallback local se estiver em dev ou PHP offline
+    }
     const telemetria = getTelemetryData();
     setData(telemetria);
   };
@@ -81,8 +93,11 @@ export default function MetricasPage() {
     }, 3500);
   };
 
-  const handleZerarMetricas = () => {
+  const handleZerarMetricas = async () => {
     if (confirm('Tem certeza que deseja ZERAR todas as métricas? O contador recomeçará do zero para computar apenas os acessos e cliques 100% reais dos visitantes.')) {
+      try {
+        await fetch('/telemetria.php?action=reset', { cache: 'no-store' });
+      } catch (e) {}
       const zerado = zerarMetricas();
       setData(zerado);
       setSucessoMsg('Todas as métricas foram zeradas com sucesso! Contador limpo para dados reais.');
@@ -157,7 +172,7 @@ export default function MetricasPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Rastreamento ao vivo: visitantes reais, tempo de permanência, cliques em botões e mapa de calor.
+                Rastreamento exclusivo da vitrine pública (<a href="/" target="_blank" className="text-purple-600 font-bold hover:underline">onagenciadeeventos.com.br</a>). O painel administrativo interno com login é 100% desconsiderado.
               </p>
             </div>
           </div>

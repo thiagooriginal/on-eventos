@@ -12,28 +12,48 @@ export default function SiteTelemetryTracker() {
 
     const pathname = window.location.pathname || '/';
 
-    // 1. Registra a visualização da página atual
-    recordPageView(pathname);
+    // 🛑 REGRA DE OURO DE PRECISÃO:
+    // O rastreador mede EXCLUSIVAMENTE o Site Oficial Público (visitantes reais da vitrine).
+    // NÃO mede páginas internas administrativas (/sistema, /metricas, /usuarios, /crm, /fotos, /login, /financeiro, etc.).
+    const isPaginaPublica = pathname === '/' || pathname === '/site/' || pathname === '/site';
+    if (!isPaginaPublica) {
+      return; // Aborta e não conta cliques nem visitas internas da equipe!
+    }
 
-    // 2. Timer de heartbeat da sessão ativa (a cada 3s)
+    // 1. Registra a visualização exclusivamente no site público
+    recordPageView(pathname);
+    try {
+      const isUnique = typeof sessionStorage !== 'undefined' && !sessionStorage.getItem('on_session_recorded_' + pathname);
+      fetch('/telemetria.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: 'view',
+          pagina: pathname,
+          isUnique,
+          dispositivo: window.innerWidth < 768 ? 'Mobile (Smartphone)' : window.innerWidth < 1024 ? 'Tablet' : 'Desktop (Computador)',
+          tempoNaPagina: 0,
+        }),
+      }).catch(() => {});
+    } catch (err) {}
+
+    // 2. Heartbeat de permanência cronometrada no site público
     const interval = setInterval(() => {
       segundosAtivosRef.current += 3;
       updateSessionDuration(segundosAtivosRef.current);
     }, 3000);
 
-    // 3. Listener global de cliques com identificação inteligente do elemento
+    // 3. Listener de cliques exclusivamente no site público
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
-      // Procura o elemento clicável mais próximo
       const clicavel = target.closest(
         'button, a, input[type="submit"], [data-track], [role="button"], .clicavel-metrica'
       ) as HTMLElement | null;
 
       if (!clicavel) return;
 
-      // Obtém texto ou rótulo descritivo do elemento
       const texto =
         clicavel.getAttribute('data-track') ||
         clicavel.getAttribute('title') ||
@@ -41,42 +61,36 @@ export default function SiteTelemetryTracker() {
         clicavel.innerText?.trim().replace(/\s+/g, ' ').slice(0, 48) ||
         clicavel.tagName.toLowerCase();
 
-      // Identifica a seção onde o clique ocorreu
-      const secaoElemento = target.closest('section, header, footer, [data-secao], aside');
-      let secaoNome = 'Conteúdo Geral';
+      const secaoElemento = target.closest('section, header, footer, [data-secao]');
+      let secaoNome = 'Conteúdo Principal';
       if (secaoElemento) {
         secaoNome =
           secaoElemento.getAttribute('data-secao') ||
           secaoElemento.getAttribute('id') ||
           (secaoElemento.tagName === 'HEADER' ? 'Header Superior' :
-           secaoElemento.tagName === 'FOOTER' ? 'Rodapé do Site' :
-           secaoElemento.tagName === 'ASIDE' ? 'Menu Lateral' : 'Seção Principal');
+           secaoElemento.tagName === 'FOOTER' ? 'Rodapé do Site' : 'Seção Principal');
       }
 
-      // Classifica a categoria do elemento
       const textoLower = texto.toLowerCase();
       let categoria = 'Navegação Geral';
       if (textoLower.includes('orçamento') || textoLower.includes('proposta') || textoLower.includes('quero')) {
         categoria = 'CTA Orçamento';
       } else if (textoLower.includes('whats') || textoLower.includes('zap') || textoLower.includes('conversa')) {
         categoria = 'WhatsApp';
-      } else if (textoLower.includes('álbum') || textoLower.includes('album') || textoLower.includes('foto') || textoLower.includes('kit') || textoLower.includes('brinde')) {
+      } else if (textoLower.includes('álbum') || textoLower.includes('album') || textoLower.includes('foto') || textoLower.includes('kit')) {
         categoria = 'Álbuns & Kits';
-      } else if (textoLower.includes('vídeo') || textoLower.includes('video') || textoLower.includes('play') || textoLower.includes('assistir')) {
+      } else if (textoLower.includes('vídeo') || textoLower.includes('video') || textoLower.includes('play')) {
         categoria = 'Audiovisual';
-      } else if (textoLower.includes('aluno') || textoLower.includes('boleto') || textoLower.includes('portal')) {
+      } else if (textoLower.includes('aluno') || textoLower.includes('portal') || textoLower.includes('boleto')) {
         categoria = 'Portal do Aluno';
-      } else if (textoLower.includes('plano') || textoLower.includes('custo') || textoLower.includes('preço')) {
-        categoria = 'Planos & Preços';
       }
 
-      // Identifica tipo de dispositivo
       const largura = window.innerWidth;
       const isMobile = largura < 768;
       const isTablet = largura >= 768 && largura < 1024;
       const dispositivo = isMobile ? 'Mobile (Smartphone)' : isTablet ? 'Tablet' : 'Desktop (Computador)';
 
-      // Dispara o registro do clique
+      // Dispara gravação
       recordClick({
         elemento: texto,
         categoria,
@@ -84,22 +98,32 @@ export default function SiteTelemetryTracker() {
         pagina: pathname,
         tempoNaPagina: Math.max(1, Math.round((Date.now() - tempoInicioRef.current) / 1000)),
         dispositivo,
-        cidade: 'São Paulo/SP (Ao Vivo)',
+        cidade: 'Visitante do Site',
       });
+
+      // Sincroniza em segundo plano com o servidor PHP se disponível
+      try {
+        fetch('/telemetria.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tipo: 'click',
+            elemento: texto,
+            categoria,
+            secao: secaoNome,
+            pagina: pathname,
+            tempoNaPagina: Math.max(1, Math.round((Date.now() - tempoInicioRef.current) / 1000)),
+            dispositivo,
+          }),
+        }).catch(() => {});
+      } catch (err) {}
     };
 
     document.addEventListener('click', handleClick, { capture: true });
 
-    // Salva na saída da página
-    const handleBeforeUnload = () => {
-      updateSessionDuration(segundosAtivosRef.current);
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
     return () => {
       clearInterval(interval);
       document.removeEventListener('click', handleClick, { capture: true });
-      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
 

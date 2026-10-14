@@ -228,6 +228,12 @@ export function getTelemetryData(): TelemetryData {
 export function recordClick(click: Omit<ClickEvent, 'id' | 'timestamp'>): void {
   if (typeof window === 'undefined') return;
 
+  // Garante que só mede interações do Site Oficial Público
+  const pathname = window.location.pathname || '/';
+  if (pathname !== '/' && pathname !== '/site/' && pathname !== '/site') {
+    return;
+  }
+
   try {
     const data = getTelemetryData();
     const novoClique: ClickEvent = {
@@ -287,6 +293,12 @@ export function recordClick(click: Omit<ClickEvent, 'id' | 'timestamp'>): void {
 
 export function recordPageView(pagina: string): void {
   if (typeof window === 'undefined') return;
+
+  // Garante que só mede acessos do Site Oficial Público
+  const pathname = window.location.pathname || '/';
+  if (pathname !== '/' && pathname !== '/site/' && pathname !== '/site') {
+    return;
+  }
 
   try {
     const data = getTelemetryData();

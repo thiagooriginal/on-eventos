@@ -123,7 +123,7 @@ export default function LoginPage() {
               className="object-contain"
               priority
             />
-          </Link>
+          </a>
 
           <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
             SISTEMA DE GESTÃO <br />

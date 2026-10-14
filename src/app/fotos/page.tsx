@@ -36,6 +36,7 @@ import {
   Award,
   Link2,
   Package,
+  Trash2,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 
@@ -146,217 +147,7 @@ const BRINDES_DISPONIVEIS: { nome: BrindeTipo; descricao: string; valorPadrao: n
   },
 ];
 
-const VENDAS_INICIAIS: VendaAlbum[] = [
-  {
-    id: 'venda-1',
-    codigoPedido: 'ALB-2026-089',
-    dataVenda: '14/10/2026',
-    alunoNome: 'Mariana Silveira Ramos',
-    alunoCpf: '384.920.198-44',
-    alunoTelefone: '11987654321',
-    alunoEmail: 'mariana.ramos@gmail.com',
-    turmaNome: 'Direito Mackenzie 2027.1',
-    modeloAlbum: 'Album premium',
-    valorAlbum: 3800,
-    brindes: [
-      { id: 'b1', nome: 'Quadro 30x60', descricao: 'Moldura caixa alta', selecionado: true, valorAdicional: 0 },
-      { id: 'b2', nome: 'Trio de quadros', descricao: '3 quadros 20x30', selecionado: false, valorAdicional: 0 },
-      { id: 'b3', nome: 'Link de fotos', descricao: 'Galeria digital 4K', selecionado: true, valorAdicional: 0 },
-      { id: 'b4', nome: 'Diploma acrilico', descricao: 'Display acrílico', selecionado: true, valorAdicional: 200 },
-    ],
-    valorTotalBrindes: 200,
-    valorTotalKit: 4000,
-    formaPagamento: 'CARTAO',
-    cartaoQtdParcelas: 10,
-    cartaoBandeira: 'Mastercard',
-    cartaoNsu: 'NSU-894210',
-    cartaoStatus: 'Aprovado / Liquidado',
-    statusProducao: 'EM_GRAFICA',
-    observacoes: 'Kit com Quadro 30x60 + Link de Fotos + Diploma Acrílico.',
-  },
-  {
-    id: 'venda-2',
-    codigoPedido: 'ALB-2026-090',
-    dataVenda: '12/10/2026',
-    alunoNome: 'Lucas Henrique Andrade',
-    alunoCpf: '419.821.402-91',
-    alunoTelefone: '11976543210',
-    alunoEmail: 'lucas.andrade@usp.br',
-    turmaNome: 'Medicina USP 2026.2',
-    modeloAlbum: 'Album Preto',
-    valorAlbum: 3200,
-    brindes: [
-      { id: 'b1', nome: 'Quadro 30x60', descricao: 'Moldura caixa alta', selecionado: false, valorAdicional: 0 },
-      { id: 'b2', nome: 'Trio de quadros', descricao: '3 quadros 20x30', selecionado: true, valorAdicional: 400 },
-      { id: 'b3', nome: 'Link de fotos', descricao: 'Galeria digital 4K', selecionado: true, valorAdicional: 0 },
-      { id: 'b4', nome: 'Diploma acrilico', descricao: 'Display acrílico', selecionado: false, valorAdicional: 0 },
-    ],
-    valorTotalBrindes: 400,
-    valorTotalKit: 3600,
-    formaPagamento: 'BOLETO',
-    boletoQtdParcelas: 6,
-    parcelasBoletos: [
-      {
-        numero: 1,
-        vencimento: '15/10/2026',
-        valor: 600,
-        status: 'PAGO',
-        linhaDigitavel: '74891.12003 40001.234508 12345.678901 1 98760000060000',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865406600.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304E5F2',
-      },
-      {
-        numero: 2,
-        vencimento: '15/11/2026',
-        valor: 600,
-        status: 'PAGO',
-        linhaDigitavel: '74891.12003 40001.234508 12345.678902 2 98760000060000',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865406600.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304B7D1',
-      },
-      {
-        numero: 3,
-        vencimento: '15/12/2026',
-        valor: 600,
-        status: 'PENDENTE',
-        linhaDigitavel: '74891.12003 40001.234508 12345.678903 3 98760000060000',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865406600.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304C8A9',
-      },
-      {
-        numero: 4,
-        vencimento: '15/01/2027',
-        valor: 600,
-        status: 'PENDENTE',
-        linhaDigitavel: '74891.12003 40001.234508 12345.678904 4 98760000060000',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865406600.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304D9F0',
-      },
-      {
-        numero: 5,
-        vencimento: '15/02/2027',
-        valor: 600,
-        status: 'PENDENTE',
-        linhaDigitavel: '74891.12003 40001.234508 12345.678905 5 98760000060000',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865406600.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304AA32',
-      },
-      {
-        numero: 6,
-        vencimento: '15/03/2027',
-        valor: 600,
-        status: 'PENDENTE',
-        linhaDigitavel: '74891.12003 40001.234508 12345.678906 6 98760000060000',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865406600.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304BB44',
-      },
-    ],
-    statusProducao: 'EM_DIAGRAMACAO',
-    observacoes: 'Kit com Trio de Quadros e Link de fotos. Boletos emitidos via Sicredi.',
-  },
-  {
-    id: 'venda-3',
-    codigoPedido: 'ALB-2026-091',
-    dataVenda: '09/10/2026',
-    alunoNome: 'Beatriz Faria Camargo',
-    alunoCpf: '312.450.890-12',
-    alunoTelefone: '11965432109',
-    alunoEmail: 'beatriz.camargo@fgv.br',
-    turmaNome: 'Administração FGV 2026.2',
-    modeloAlbum: 'Album Slim',
-    valorAlbum: 2400,
-    brindes: [
-      { id: 'b1', nome: 'Quadro 30x60', descricao: 'Moldura caixa alta', selecionado: true, valorAdicional: 0 },
-      { id: 'b2', nome: 'Trio de quadros', descricao: '3 quadros 20x30', selecionado: false, valorAdicional: 0 },
-      { id: 'b3', nome: 'Link de fotos', descricao: 'Galeria digital 4K', selecionado: false, valorAdicional: 0 },
-      { id: 'b4', nome: 'Diploma acrilico', descricao: 'Display acrílico', selecionado: true, valorAdicional: 300 },
-    ],
-    valorTotalBrindes: 300,
-    valorTotalKit: 2700,
-    formaPagamento: 'CARTAO',
-    cartaoQtdParcelas: 6,
-    cartaoBandeira: 'Visa',
-    cartaoNsu: 'NSU-412093',
-    cartaoStatus: 'Aprovado / Liquidado',
-    statusProducao: 'ENTREGUE',
-    observacoes: 'Kit com Quadro 30x60 e Diploma Acrílico.',
-  },
-  {
-    id: 'venda-4',
-    codigoPedido: 'ALB-2026-092',
-    dataVenda: '06/10/2026',
-    alunoNome: 'Gabriel Mendes Souza',
-    alunoCpf: '501.230.981-67',
-    alunoTelefone: '11954321098',
-    alunoEmail: 'gabriel.souza@usp.br',
-    turmaNome: 'Engenharia Civil Poli-USP 2027.1',
-    modeloAlbum: 'Album Colégio',
-    valorAlbum: 1900,
-    brindes: [
-      { id: 'b1', nome: 'Quadro 30x60', descricao: 'Moldura caixa alta', selecionado: false, valorAdicional: 0 },
-      { id: 'b2', nome: 'Trio de quadros', descricao: '3 quadros 20x30', selecionado: false, valorAdicional: 0 },
-      { id: 'b3', nome: 'Link de fotos', descricao: 'Galeria digital 4K', selecionado: true, valorAdicional: 0 },
-      { id: 'b4', nome: 'Diploma acrilico', descricao: 'Display acrílico', selecionado: true, valorAdicional: 200 },
-    ],
-    valorTotalBrindes: 200,
-    valorTotalKit: 2100,
-    formaPagamento: 'BOLETO',
-    boletoQtdParcelas: 4,
-    parcelasBoletos: [
-      {
-        numero: 1,
-        vencimento: '10/10/2026',
-        valor: 525,
-        status: 'PAGO',
-        linhaDigitavel: '74891.12003 40002.345609 23456.789012 1 98760000052500',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865405525.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304F1A2',
-      },
-      {
-        numero: 2,
-        vencimento: '10/11/2026',
-        valor: 525,
-        status: 'PENDENTE',
-        linhaDigitavel: '74891.12003 40002.345609 23456.789013 2 98760000052500',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865405525.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304F2B3',
-      },
-      {
-        numero: 3,
-        vencimento: '10/12/2026',
-        valor: 525,
-        status: 'PENDENTE',
-        linhaDigitavel: '74891.12003 40002.345609 23456.789014 3 98760000052500',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865405525.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304F3C4',
-      },
-      {
-        numero: 4,
-        vencimento: '10/01/2027',
-        valor: 525,
-        status: 'PENDENTE',
-        linhaDigitavel: '74891.12003 40002.345609 23456.789015 4 98760000052500',
-        codigoPix: '00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef123456785204000053039865405525.005802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304F4D5',
-      },
-    ],
-    statusProducao: 'EM_DIAGRAMACAO',
-    observacoes: 'Kit com Álbum Colégio, Link de fotos e Diploma Acrílico.',
-  },
-  {
-    id: 'venda-5',
-    codigoPedido: 'ALB-2026-093',
-    dataVenda: '03/10/2026',
-    alunoNome: 'Camila Toledo Vasconcelos',
-    alunoCpf: '289.145.720-33',
-    alunoTelefone: '11943210987',
-    alunoEmail: 'camila.toledo@einstein.br',
-    turmaNome: 'Enfermagem Albert Einstein 2026.2',
-    modeloAlbum: 'Album premium',
-    valorAlbum: 3800,
-    brindes: [
-      { id: 'b1', nome: 'Quadro 30x60', descricao: 'Moldura caixa alta', selecionado: false, valorAdicional: 0 },
-      { id: 'b2', nome: 'Trio de quadros', descricao: '3 quadros 20x30', selecionado: true, valorAdicional: 400 },
-      { id: 'b3', nome: 'Link de fotos', descricao: 'Galeria digital 4K', selecionado: true, valorAdicional: 0 },
-      { id: 'b4', nome: 'Diploma acrilico', descricao: 'Display acrílico', selecionado: false, valorAdicional: 0 },
-    ],
-    valorTotalBrindes: 400,
-    valorTotalKit: 4200,
-    formaPagamento: 'PIX',
-    statusProducao: 'PRONTO_ENTREGA',
-    observacoes: 'Kit pago à vista via PIX Direto com Trio de Quadros.',
-  },
-];
+const VENDAS_INICIAIS: VendaAlbum[] = [];
 
 export default function VendasAlbunsPage() {
   const [vendas, setVendas] = useState<VendaAlbum[]>(VENDAS_INICIAIS);
@@ -412,14 +203,29 @@ export default function VendasAlbunsPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
+        // Limpa dados de teste anteriores caso ainda estejam no localStorage
+        const jaLimpo = localStorage.getItem('on_vendas_albuns_zeradas_limpas_v1');
+        if (!jaLimpo) {
+          localStorage.removeItem('on_vendas_albuns_estado');
+          localStorage.setItem('on_vendas_albuns_zeradas_limpas_v1', 'true');
+          setVendas([]);
+          return;
+        }
+
         const salvo = localStorage.getItem('on_vendas_albuns_estado');
         if (salvo) {
           const parsed = JSON.parse(salvo);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             setVendas(parsed);
+          } else {
+            setVendas([]);
           }
+        } else {
+          setVendas([]);
         }
-      } catch (e) {}
+      } catch (e) {
+        setVendas([]);
+      }
     }
   }, []);
 
@@ -429,6 +235,13 @@ export default function VendasAlbunsPage() {
       try {
         localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(novas));
       } catch (e) {}
+    }
+  };
+
+  const handleZerarVendas = () => {
+    if (confirm('Tem certeza que deseja ZERAR todas as vendas de álbuns? Esta ação limpará todo o histórico para que você cadastre do zero.')) {
+      salvarVendasLocal([]);
+      showToast('Todas as vendas foram limpas com sucesso!');
     }
   };
 
@@ -656,7 +469,18 @@ export default function VendasAlbunsPage() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2.5">
+            {vendas.length > 0 && (
+              <button
+                onClick={handleZerarVendas}
+                className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px]"
+                title="Limpar todos os dados e começar do zero"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Limpar Vendas</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 setFormAbaAtiva('ALBUM');
@@ -845,8 +669,26 @@ export default function VendasAlbunsPage() {
               <tbody className="divide-y divide-slate-100">
                 {vendasFiltradas.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400">
-                      Nenhuma venda de álbum encontrada com os filtros selecionados.
+                    <td colSpan={8} className="py-16 text-center">
+                      <div className="max-w-md mx-auto space-y-3">
+                        <div className="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto shadow-sm">
+                          <Camera className="w-7 h-7" />
+                        </div>
+                        <h4 className="text-base font-black text-slate-800">Pronto para cadastrar suas vendas reais</h4>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Todos os dados de teste foram limpos. Clique no botão abaixo para registrar a primeira venda de álbum, configurar o kit de brindes e emitir boletos ou cartão.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setFormAbaAtiva('ALBUM');
+                            setModalNovaVendaAberto(true);
+                          }}
+                          className="mt-2 inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md hover:translate-y-[-1px] active:translate-y-[1px] transition"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Cadastrar Primeira Venda</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ) : (

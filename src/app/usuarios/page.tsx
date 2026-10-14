@@ -69,6 +69,19 @@ export default function UsuariosPage() {
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const salvo = localStorage.getItem('on_usuario_logado');
+        if (salvo) {
+          const parsed = JSON.parse(salvo);
+          if (parsed.perfil !== 'ADMIN') {
+            alert('Acesso restrito: Apenas administradores têm permissão para acessar a gestão de equipe e usuários.');
+            window.location.replace('/sistema/index.html');
+            return;
+          }
+        }
+      } catch (e) {}
+    }
     carregar();
   }, []);
 

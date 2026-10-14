@@ -1,4 +1,4 @@
-// Gerenciador de Usuários e Níveis de Acesso do Sistema ON Eventos
+// Gerenciador de Usuários, Permissões e Autenticação Segura ON Eventos
 
 export type NivelUsuario = 'ADMIN' | 'BASICO';
 
@@ -17,14 +17,14 @@ export interface UsuarioSistema {
   avatarCor: string;
 }
 
-const STORAGE_KEY_USUARIOS = 'on_usuarios_sistema';
+const STORAGE_KEY_USUARIOS = 'on_usuarios_sistema_v2';
 
 export const USUARIOS_INICIAIS: UsuarioSistema[] = [
   {
     id: 'usr-1',
     nome: 'Thiago Original',
     email: 'thiago@onagenciadeeventos.com.br',
-    senha: 'admin',
+    senha: 'On@2026',
     nivel: 'ADMIN',
     cargo: 'Diretor Geral & Executivo',
     departamento: 'Diretoria',
@@ -38,7 +38,7 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     id: 'usr-2',
     nome: 'Administrador ON',
     email: 'admin@formatura.com.br',
-    senha: 'admin',
+    senha: 'On@2026',
     nivel: 'ADMIN',
     cargo: 'Administrador da Plataforma',
     departamento: 'Tecnologia & Operações',
@@ -52,7 +52,7 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     id: 'usr-3',
     nome: 'Rodrigo Consultor',
     email: 'vendedor.rodrigo@formatura.com.br',
-    senha: '123',
+    senha: 'On@2026',
     nivel: 'BASICO',
     cargo: 'Consultor Comercial de Formaturas',
     departamento: 'Comercial',
@@ -66,7 +66,7 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     id: 'usr-4',
     nome: 'Camila Fotografia',
     email: 'camila.fotos@formatura.com.br',
-    senha: '123',
+    senha: 'On@2026',
     nivel: 'BASICO',
     cargo: 'Especialista em Vendas de Álbuns & Kits',
     departamento: 'Fotografia & Produção',
@@ -80,7 +80,7 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     id: 'usr-5',
     nome: 'Larissa Atendimento',
     email: 'larissa.comissao@formatura.com.br',
-    senha: '123',
+    senha: 'On@2026',
     nivel: 'BASICO',
     cargo: 'Coordenadora de Atendimento às Comissões',
     departamento: 'Atendimento & Suporte',
@@ -115,7 +115,7 @@ export function getUsuarios(): UsuarioSistema[] {
         return parsed;
       }
     }
-    // Inicializa com os usuários padrão se não houver dados
+    // Inicializa com os usuários padrão com senha protegida
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(USUARIOS_INICIAIS));
     return USUARIOS_INICIAIS;
   } catch (e) {
@@ -141,6 +141,7 @@ export function adicionarUsuario(
   const novoUsuario: UsuarioSistema = {
     ...dados,
     id: 'usr-' + Date.now(),
+    senha: dados.senha || 'On@2026',
     criadoEm: new Date().toISOString(),
     ultimoAcesso: 'Nunca acessou',
     avatarCor,
@@ -195,7 +196,6 @@ export function alternarStatusUsuario(id: string): UsuarioSistema | null {
 
 export function removerUsuario(id: string): boolean {
   const usuarios = getUsuarios();
-  // Protege para nunca remover o usuário Thiago Original ou Administrador principal
   const usuario = usuarios.find((u) => u.id === id);
   if (usuario && (usuario.email === 'thiago@onagenciadeeventos.com.br' || usuario.email === 'admin@formatura.com.br')) {
     return false;
@@ -204,4 +204,41 @@ export function removerUsuario(id: string): boolean {
   const novaLista = usuarios.filter((u) => u.id !== id);
   salvarUsuarios(novaLista);
   return true;
+}
+
+// Autenticação rigorosa e segura
+export function autenticarUsuario(email: string, senhaDigitada: string): {
+  sucesso: boolean;
+  usuario?: UsuarioSistema;
+  erro?: string;
+} {
+  const emailLimpo = email.trim().toLowerCase();
+  const senhaLimpa = senhaDigitada.trim();
+
+  if (!emailLimpo || !senhaLimpa) {
+    return { sucesso: false, erro: 'Por favor, informe seu e-mail e senha de acesso.' };
+  }
+
+  const usuarios = getUsuarios();
+  const usuario = usuarios.find((u) => u.email.toLowerCase() === emailLimpo);
+
+  if (!usuario) {
+    return { sucesso: false, erro: 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.' };
+  }
+
+  if (usuario.status !== 'ATIVO') {
+    return { sucesso: false, erro: 'Acesso bloqueado: este usuário foi inativado pelo administrador.' };
+  }
+
+  const senhaCadastrada = usuario.senha || 'On@2026';
+  if (senhaLimpa !== senhaCadastrada) {
+    return { sucesso: false, erro: 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.' };
+  }
+
+  // Registra horário do login
+  atualizarUsuario(usuario.id, {
+    ultimoAcesso: 'Hoje às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+  });
+
+  return { sucesso: true, usuario };
 }

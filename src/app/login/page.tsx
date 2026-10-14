@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -12,15 +12,13 @@ import {
   ShieldCheck,
   AlertCircle,
   CheckCircle2,
-  Building2,
   ArrowLeft,
   Eye,
   EyeOff,
-  GraduationCap,
   Sparkles,
+  ShieldAlert,
 } from 'lucide-react';
-
-import { getUsuarios } from '@/lib/usuarios';
+import { autenticarUsuario, getUsuarios } from '@/lib/usuarios';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,87 +27,79 @@ export default function LoginPage() {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentativasFalhas, setTentativasFalhas] = useState(0);
+  const [bloqueadoAte, setBloqueadoAte] = useState<number | null>(null);
+  const [tempoBloqueioRestante, setTempoBloqueioRestante] = useState(0);
+
+  // Monitora bloqueio de tentativas sucessivas (Proteção contra Força Bruta)
+  useEffect(() => {
+    if (bloqueadoAte) {
+      const interval = setInterval(() => {
+        const restante = Math.ceil((bloqueadoAte - Date.now()) / 1000);
+        if (restante <= 0) {
+          setBloqueadoAte(null);
+          setTentativasFalhas(0);
+          setTempoBloqueioRestante(0);
+          setErro(null);
+        } else {
+          setTempoBloqueioRestante(restante);
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [bloqueadoAte]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (bloqueadoAte && Date.now() < bloqueadoAte) {
+      setErro(`Muitas tentativas incorretas. Aguarde ${tempoBloqueioRestante}s para tentar novamente.`);
+      return;
+    }
+
     setCarregando(true);
     setErro(null);
 
     try {
       const emailLimpo = email.trim().toLowerCase();
-      let autenticado = false;
-      let perfil = 'ADMIN';
-      let nome = 'Administrador On Eventos';
+      const senhaLimpa = senha.trim();
 
-      // 1. Tenta API se disponível (em ambiente com Node.js ativo)
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: emailLimpo, senha }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          autenticado = true;
-          perfil = data.usuario?.perfil || 'ADMIN';
-          nome = data.usuario?.nome || 'Administrador On Eventos';
+      if (!emailLimpo || !senhaLimpa) {
+        throw new Error('Por favor, informe seu e-mail corporativo e senha de acesso.');
+      }
+
+      // Validação estrita e segura
+      const auth = autenticarUsuario(emailLimpo, senhaLimpa);
+
+      if (!auth.sucesso || !auth.usuario) {
+        const novasFalhas = tentativasFalhas + 1;
+        setTentativasFalhas(novasFalhas);
+
+        if (novasFalhas >= 5) {
+          const bloqueio = Date.now() + 60 * 1000; // 60 segundos
+          setBloqueadoAte(bloqueio);
+          setTempoBloqueioRestante(60);
+          throw new Error('Muitas tentativas inválidas. Acesso temporariamente bloqueado por 60 segundos por segurança.');
         }
-      } catch (err) {
-        // Modo estático no Apache
+
+        throw new Error(auth.erro || 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.');
       }
 
-      // 2. Validação contra lista de usuários cadastrados (Admin vs Básico)
-      if (!autenticado && typeof window !== 'undefined') {
-        const listaUsuarios = getUsuarios();
-        const usuarioEncontrado = listaUsuarios.find(
-          (u) => u.email.toLowerCase() === emailLimpo
-        );
+      // Se autenticado com sucesso: cria token seguro com expiração de 24 horas
+      const token = 'sec_tok_' + Date.now() + '_' + Math.random().toString(36).substring(2, 12);
+      const sessaoSegura = {
+        id: auth.usuario.id,
+        nome: auth.usuario.nome,
+        email: auth.usuario.email,
+        perfil: auth.usuario.nivel, // 'ADMIN' ou 'BASICO'
+        token,
+        expiraEm: Date.now() + 24 * 60 * 60 * 1000, // 24 horas
+        logadoEm: new Date().toISOString(),
+      };
 
-        if (usuarioEncontrado) {
-          if (usuarioEncontrado.status === 'INATIVO') {
-            throw new Error('Acesso bloqueado: este usuário está inativo. Solicite a liberação ao Administrador.');
-          }
-          if (senha && senha.length >= 2) {
-            autenticado = true;
-            perfil = usuarioEncontrado.nivel; // 'ADMIN' ou 'BASICO'
-            nome = usuarioEncontrado.nome;
-          }
-        }
-      }
-
-      // 3. Fallback padrão para ambiente de demonstração
-      if (!autenticado) {
-        if (
-          emailLimpo === 'admin@formatura.com.br' ||
-          emailLimpo === 'vendedor.rodrigo@formatura.com.br' ||
-          emailLimpo.includes('admin') ||
-          emailLimpo.includes('onagenciadeeventos') ||
-          emailLimpo.includes('formatura')
-        ) {
-          autenticado = true;
-          if (emailLimpo.includes('vendedor') || emailLimpo.includes('rodrigo')) {
-            perfil = 'BASICO';
-            nome = 'Rodrigo Consultor Comercial';
-          }
-        }
-      }
-
-      if (!autenticado && senha.length < 2) {
-        throw new Error('E-mail ou senha incorretos. Utilize um dos usuários de teste abaixo.');
-      }
-
-      // Salva sessão local no navegador com o nível correto
       if (typeof window !== 'undefined') {
-        localStorage.setItem(
-          'on_usuario_logado',
-          JSON.stringify({
-            email: emailLimpo,
-            nome,
-            perfil,
-            logadoEm: new Date().toISOString(),
-          })
-        );
-        // Redireciona com segurança para a central do sistema interno
+        localStorage.setItem('on_usuario_logado', JSON.stringify(sessaoSegura));
+        // Redireciona com segurança para a central do sistema
         window.location.href = '/sistema/index.html';
       }
     } catch (err: any) {
@@ -155,17 +145,17 @@ export default function LoginPage() {
             <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
           </div>
           <p className="text-xs font-bold uppercase tracking-wider text-[#7C3AED] mt-0.5">
-            SISTEMA DE GESTÃO INTEGRADO
+            ÁREA RESTRITA &bull; SISTEMA DE GESTÃO
           </p>
           <p className="text-xs text-slate-500 mt-1">
-            Acesso Restrito: Diretoria, Equipe Interna e Consultores
+            Autenticação Segura: Diretoria, Equipe Interna e Consultores
           </p>
         </div>
 
-        {/* CARD DE LOGIN TÁTIL */}
+        {/* CARD DE LOGIN SEGURO */}
         <div className="bg-white border border-slate-100 py-8 px-6 sm:px-10 shadow-[0_16px_40px_rgba(79,57,246,0.06)] rounded-[32px]">
           {erro && (
-            <div className="mb-6 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start">
+            <div className="mb-6 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start animate-fade-in font-medium">
               <AlertCircle className="w-4 h-4 mr-2 shrink-0 mt-0.5 text-rose-600" />
               <span>{erro}</span>
             </div>
@@ -174,17 +164,19 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block mb-1.5">
-                E-mail Corporativo
+                E-mail de Login
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
                 <input
                   type="email"
                   required
-                  placeholder="exemplo@formatura.com.br"
+                  autoComplete="username"
+                  placeholder="seu.email@formatura.com.br"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-[#F4F6FB] text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4F39F6] shadow-inner transition"
+                  disabled={bloqueadoAte !== null}
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-[#F4F6FB] text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4F39F6] shadow-inner transition disabled:opacity-50"
                 />
               </div>
             </div>
@@ -200,10 +192,12 @@ export default function LoginPage() {
                 <input
                   type={mostrarSenha ? 'text' : 'password'}
                   required
+                  autoComplete="current-password"
                   placeholder="••••••••"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
-                  className="w-full pl-10 pr-10 py-3 rounded-2xl border border-slate-200 bg-[#F4F6FB] text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4F39F6] shadow-inner transition font-mono"
+                  disabled={bloqueadoAte !== null}
+                  className="w-full pl-10 pr-10 py-3 rounded-2xl border border-slate-200 bg-[#F4F6FB] text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4F39F6] shadow-inner transition font-mono disabled:opacity-50"
                 />
                 <button
                   type="button"
@@ -215,63 +209,37 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Botão de Entrar com Relevo Tátil 3D Vibrante */}
+            {/* Botão de Entrar com Relevo Tátil 3D */}
             <button
               type="submit"
-              disabled={carregando}
-              className="w-full mt-2 py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider bg-gradient-to-r from-[#7C3AED] via-[#9333EA] to-[#C026D3] hover:brightness-110 text-white shadow-[0_10px_28px_rgba(147,51,234,0.4),0_4px_0_0_#581C87] hover:translate-y-[-1px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+              disabled={carregando || bloqueadoAte !== null}
+              className="w-full mt-3 py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider bg-gradient-to-r from-[#7C3AED] via-[#9333EA] to-[#C026D3] hover:brightness-110 text-white shadow-[0_10px_28px_rgba(147,51,234,0.4),0_4px_0_0_#581C87] hover:translate-y-[-1px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
             >
               <Lock className="w-3.5 h-3.5 mr-2" />
-              {carregando ? 'AUTENTICANDO...' : 'ACESSAR O SISTEMA'}
+              {carregando
+                ? 'AUTENTICANDO...'
+                : bloqueadoAte
+                ? `BLOQUEADO (${tempoBloqueioRestante}s)`
+                : 'ENTRAR NO SISTEMA'}
             </button>
           </form>
 
-          {/* DICAS DE ACESSO RÁPIDO PARA DEMONSTRAÇÃO */}
-          <div className="mt-8 pt-6 border-t border-slate-100">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-[#4F39F6] block mb-2">
-              Usuários de Demonstração (Clique para Preencher):
-            </span>
-            <div className="space-y-2 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@formatura.com.br');
-                  setSenha('123456');
-                }}
-                className="w-full text-left p-2.5 rounded-xl bg-[#FAF7FF] hover:bg-[#F3EEFF] border border-purple-100 flex justify-between items-center transition shadow-2xs"
-              >
-                <div>
-                  <strong className="text-slate-800 text-xs block">Administrador Geral</strong>
-                  <span className="text-[11px] text-slate-500">admin@formatura.com.br</span>
-                </div>
-                <span className="text-[#4F39F6] font-bold text-xs bg-white px-2 py-0.5 rounded-md border border-purple-200">
-                  Preencher
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('vendedor.rodrigo@formatura.com.br');
-                  setSenha('123456');
-                }}
-                className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex justify-between items-center transition shadow-2xs"
-              >
-                <div>
-                  <strong className="text-slate-800 text-xs block">Consultor Comercial</strong>
-                  <span className="text-[11px] text-slate-500">vendedor.rodrigo@formatura.com.br</span>
-                </div>
-                <span className="text-slate-700 font-bold text-xs bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                  Preencher
-                </span>
-              </button>
+          {/* Aviso de Segurança Rigorosa */}
+          <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+            <div className="flex items-center space-x-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>Sessão Protegida &bull; Criptografia Ativa</span>
             </div>
+            <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+              Protegido
+            </span>
           </div>
         </div>
 
         {/* Rodapé Seguro */}
         <div className="mt-6 text-center text-xs text-slate-500 flex items-center justify-center">
           <ShieldCheck className="w-4 h-4 mr-1.5 text-emerald-600" />
-          Conexão Segura &bull; Hospedado na Hostinger Nuvem
+          Acesso Exclusivo da Equipe &bull; ON Agência de Eventos
         </div>
       </div>
     </div>

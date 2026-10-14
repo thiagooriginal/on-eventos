@@ -157,16 +157,34 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
     if (typeof window !== 'undefined') {
       try {
         const salvo = localStorage.getItem('on_usuario_logado');
-        if (salvo) {
-          const parsed = JSON.parse(salvo);
-          setUsuario({
-            nome: parsed.nome || 'Administrador ON',
-            email: parsed.email || 'admin@formatura.com.br',
-            perfil: parsed.perfil || 'ADMIN',
-          });
+        if (!salvo) {
+          // Bloqueia acesso: se não estiver autenticado, redireciona imediatamente para o login
+          window.location.replace('/login/index.html');
+          return;
         }
+
+        const parsed = JSON.parse(salvo);
+        if (!parsed.email || !parsed.perfil) {
+          localStorage.removeItem('on_usuario_logado');
+          window.location.replace('/login/index.html');
+          return;
+        }
+
+        // Verifica se a sessão expirou
+        if (parsed.expiraEm && Date.now() > parsed.expiraEm) {
+          localStorage.removeItem('on_usuario_logado');
+          window.location.replace('/login/index.html');
+          return;
+        }
+
+        setUsuario({
+          nome: parsed.nome || 'Administrador ON',
+          email: parsed.email || 'admin@formatura.com.br',
+          perfil: parsed.perfil || 'ADMIN',
+        });
       } catch (e) {
-        // Fallback padrão
+        localStorage.removeItem('on_usuario_logado');
+        window.location.replace('/login/index.html');
       }
     }
   }, []);

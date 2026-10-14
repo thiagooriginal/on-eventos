@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   Clock,
   Layers,
+  Camera,
   ArrowRight,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
@@ -53,6 +54,18 @@ const modulosCompletos = [
     corTexto: 'text-emerald-600',
     corBg: 'bg-emerald-50',
     badge: '8 projetos',
+  },
+  {
+    titulo: 'Vendas de Álbuns & Fotografia',
+    descricao: 'Gestão comercial de álbuns, compras no cartão de crédito/débito e emissão de boletos Sicredi com QR Code PIX.',
+    href: '/fotos/index.html',
+    icone: Camera,
+    tag: 'Fotografia & Vendas',
+    corFundo: 'from-fuchsia-500 to-purple-600',
+    corBorda: 'border-fuchsia-200',
+    corTexto: 'text-fuchsia-600',
+    corBg: 'bg-fuchsia-50',
+    badge: 'Álbuns & Boletos',
   },
   {
     titulo: 'Comissões de Vendedores (Regra 4%)',
@@ -242,6 +255,13 @@ export default function SistemaPage() {
             >
               <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
               <span>Projetos</span>
+            </a>
+            <a
+              href="/fotos/index.html"
+              className="text-slate-600 hover:text-slate-950 font-semibold text-xs flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/60 transition shrink-0"
+            >
+              <Camera className="w-3.5 h-3.5 text-fuchsia-600" />
+              <span>Vendas de Álbuns</span>
             </a>
             <a
               href="/comissoes/index.html"

@@ -14,6 +14,7 @@ import {
   Megaphone,
   Smartphone,
   Globe,
+  Camera,
   LogOut,
   Sparkles,
   ShieldCheck,
@@ -59,6 +60,14 @@ export const menuItens: MenuItem[] = [
     icone: GraduationCap,
     badge: '8',
     badgeCor: 'bg-teal-400/30 text-teal-200 border border-teal-300/40',
+  },
+  {
+    id: 'fotos',
+    titulo: 'Vendas de Álbuns',
+    href: '/fotos/index.html',
+    icone: Camera,
+    badge: 'Novo',
+    badgeCor: 'bg-fuchsia-400/30 text-fuchsia-200 border border-fuchsia-300/40',
   },
   {
     id: 'comissoes',

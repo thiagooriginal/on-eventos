@@ -8,6 +8,7 @@ import {
   FolderKanban,
   Coins,
   CreditCard,
+  Camera,
   Bell,
   ArrowRight,
   Sparkles,
@@ -179,6 +180,15 @@ export default function HeroGestaoInteligente() {
               >
                 <FolderKanban className="w-4 h-4 text-slate-400" />
                 <span>Projetos</span>
+              </a>
+
+              {/* ITEM: Vendas de Álbuns */}
+              <a
+                href="/fotos/index.html"
+                className="text-slate-700 hover:text-slate-950 font-semibold text-xs sm:text-sm flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/60 transition shrink-0"
+              >
+                <Camera className="w-4 h-4 text-fuchsia-600" />
+                <span>Vendas de Álbuns</span>
               </a>
 
               {/* ITEM 3: Comissões */}

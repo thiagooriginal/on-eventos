@@ -32,12 +32,12 @@ export default async function AppAlunoPage() {
         {/* Header Mobile do Aluno */}
         <header className="bg-slate-900 text-white p-5 sticky top-0 z-10">
           <div className="flex items-center justify-between">
-            <Link
+            <a
               href="/"
               className="text-xs text-slate-400 hover:text-white flex items-center"
             >
-              <ArrowLeft className="w-4 h-4 mr-1" /> Voltar ao Painel
-            </Link>
+              <ArrowLeft className="w-4 h-4 mr-1" /> Voltar ao Site
+            </a>
             <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">
               PWA Instalável
             </span>

@@ -61,19 +61,19 @@ export default function LoginPage() {
 
       {/* Botão de Retorno para o Site */}
       <div className="absolute top-6 left-6 z-20">
-        <Link
-          href="/site"
+        <a
+          href="/"
           className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white transition px-3 py-2 rounded-lg bg-slate-900/60 border border-purple-900/40 backdrop-blur-xs"
         >
           <ArrowLeft className="w-4 h-4 mr-1.5" />
           Voltar para o Site Oficial
-        </Link>
+        </a>
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 px-4">
         {/* LOGO E IDENTIDADE */}
         <div className="text-center">
-          <Link href="/site" className="inline-block relative w-20 h-20 mb-3 hover:scale-105 transition-transform">
+          <a href="/" className="inline-block relative w-20 h-20 mb-3 hover:scale-105 transition-transform">
             <Image
               src="/images/logo-on-agencia.png"
               alt="Logo On Agência de Eventos"

@@ -231,22 +231,22 @@ export default function SiteInstitucionalPage() {
           {/* BOTÕES NO TOPO: DESKTOP COM BOTÕES COMPLETOS, MOBILE APENAS HAMBÚRGUER LIMPO */}
           <div className="flex items-center space-x-3">
             {/* BOTÃO DE ACESSO AO SISTEMA (DESKTOP) */}
-            <Link
-              href="/login/"
+            <a
+              href="/login/index.html"
               className="hidden sm:inline-flex items-center px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-fuchsia-500 text-white shadow-lg shadow-purple-600/30 transition transform hover:-translate-y-0.5"
             >
               <Lock className="w-3.5 h-3.5 mr-1.5" />
               <span>Acesso Sistema</span>
-            </Link>
+            </a>
 
             {/* ÁREA FORMANDO (DESKTOP) */}
-            <Link
-              href="/app-aluno/"
+            <a
+              href="/app-aluno/index.html"
               className="hidden sm:inline-flex items-center px-3.5 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-900 border border-purple-500/50 hover:bg-purple-950/80 text-purple-200 hover:text-white transition shadow-sm"
             >
               <GraduationCap className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
               Área Formando
-            </Link>
+            </a>
 
             {/* INSTAGRAM OFICIAL DESKTOP */}
             <a
@@ -290,22 +290,22 @@ export default function SiteInstitucionalPage() {
         >
           {/* BOTÕES DE ACESSO RÁPIDO AO SISTEMA E FORMANDO */}
           <div className="grid grid-cols-1 gap-2.5 pb-4 border-b border-purple-900/40">
-            <Link
-              href="/login/"
+            <a
+              href="/login/index.html"
               onClick={() => setMenuAberto(false)}
               className="w-full text-center py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center shadow-xl shadow-purple-600/40"
             >
               <Lock className="w-4 h-4 mr-2" />
               ACESSAR SISTEMA INTERNO
-            </Link>
-            <Link
-              href="/app-aluno/"
+            </a>
+            <a
+              href="/app-aluno/index.html"
               onClick={() => setMenuAberto(false)}
               className="w-full text-center py-3 rounded-xl bg-slate-900 border border-purple-700/60 text-purple-200 text-xs font-bold uppercase tracking-wider hover:bg-purple-950 flex items-center justify-center"
             >
               <GraduationCap className="w-4 h-4 mr-2 text-purple-400" />
               PORTAL DO FORMANDO (ALUNO)
-            </Link>
+            </a>
           </div>
 
           {/* LINKS DE NAVEGAÇÃO DA PÁGINA */}
@@ -730,13 +730,13 @@ export default function SiteInstitucionalPage() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <Link
-              href="/app-aluno/"
+            <a
+              href="/app-aluno/index.html"
               className="px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition flex items-center"
             >
               <Lock className="w-4 h-4 mr-2" />
               ACESSAR PORTAL DO FORMANDO
-            </Link>
+            </a>
             <a
               href="https://www.instagram.com/onagenciadeeventos"
               target="_blank"
@@ -1407,12 +1407,12 @@ export default function SiteInstitucionalPage() {
             >
               <Phone className="w-4 h-4 mr-1" /> (11) 95136-4159
             </a>
-            <Link
-              href="/login/"
+            <a
+              href="/login/index.html"
               className="text-purple-300 hover:text-white flex items-center font-semibold transition"
             >
               <Lock className="w-3.5 h-3.5 mr-1 text-purple-400" /> Login Colaborador
-            </Link>
+            </a>
           </div>
         </div>
       </footer>

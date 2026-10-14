@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Menu,
   X,
+  Building2,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -62,6 +63,14 @@ export const menuItens: MenuItem[] = [
     icone: GraduationCap,
     badge: '8',
     badgeCor: 'bg-teal-400/30 text-teal-200 border border-teal-300/40',
+  },
+  {
+    id: 'instituicoes',
+    titulo: 'Instituição / Cursos',
+    href: '/instituicoes/index.html',
+    icone: Building2,
+    badge: 'Novo',
+    badgeCor: 'bg-indigo-400/30 text-indigo-200 border border-indigo-300/40',
   },
   {
     id: 'fotos',

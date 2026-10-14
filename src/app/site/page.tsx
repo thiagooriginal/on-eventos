@@ -1394,9 +1394,19 @@ export default function SiteInstitucionalPage() {
          ========================================================================= */}
       <footer className="py-8 bg-slate-950 border-t border-purple-950 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold text-slate-300">© ON AGÊNCIA DE EVENTOS – Todos os direitos reservados</p>
-            <p className="text-2xs text-slate-400 mt-0.5">Rua Rodovalho Junior, 281 - Penha de França, São Paulo - SP</p>
+          <div className="flex items-center space-x-3.5">
+            <div className="relative w-10 h-10 shrink-0 bg-slate-900 rounded-xl p-1 border border-purple-800/40">
+              <Image
+                src="/images/logo-on-agencia.png"
+                alt="ON Agência Oficial"
+                fill
+                className="object-contain"
+              />
+            </div>
+            <div>
+              <p className="font-bold text-slate-200">ON AGÊNCIA DE EVENTOS</p>
+              <p className="text-2xs text-slate-400 mt-0.5">Rua Rodovalho Junior, 281 - Penha de França, São Paulo - SP &bull; Todos os direitos reservados</p>
+            </div>
           </div>
           <div className="flex items-center space-x-6">
             <a

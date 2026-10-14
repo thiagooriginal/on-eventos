@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowLeft, Smartphone, FileText, Barcode, Bell, ShieldCheck, Download, Sparkles, GraduationCap } from 'lucide-react';
 
 export default async function AppAlunoPage() {
@@ -32,15 +33,24 @@ export default async function AppAlunoPage() {
         {/* Header Mobile do Aluno em Degradê Violeta Tátil */}
         <header className="bg-gradient-to-b from-[#5842BD] via-[#4833A8] to-[#36218A] text-white p-5 sticky top-0 z-10 shadow-md">
           <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 rounded-xl bg-white p-1 shadow-sm flex items-center justify-center shrink-0">
+                <Image
+                  src="/images/logo-on-agencia.png"
+                  alt="ON Agência Oficial"
+                  width={24}
+                  height={24}
+                  className="object-contain"
+                />
+              </div>
+              <span className="font-black text-xs tracking-wider text-white">ON AGÊNCIA</span>
+            </div>
             <Link
               href="/sistema/index.html"
-              className="text-xs font-bold text-purple-200 hover:text-white flex items-center bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 shadow-2xs hover:translate-y-[-1px] transition-all"
+              className="text-[10px] font-bold text-purple-200 hover:text-white flex items-center bg-white/10 px-2.5 py-1 rounded-xl border border-white/10 shadow-2xs hover:translate-y-[-1px] transition-all"
             >
-              <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Painel Geral
+              <ArrowLeft className="w-3 h-3 mr-1" /> Painel Geral
             </Link>
-            <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-bold">
-              Portal do Formando
-            </span>
           </div>
 
           <div className="mt-4">

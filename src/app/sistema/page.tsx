@@ -176,19 +176,28 @@ export default function SistemaPage() {
       <div className="flex-1 flex flex-col min-w-0 p-4 lg:p-6 lg:pl-2">
         {/* Barra Superior / Header do Dashboard */}
         <header className="bg-white/80 backdrop-blur-md rounded-[24px] p-4 lg:px-6 lg:py-4 mb-6 shadow-[0_8px_24px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
-                Olá, {usuarioNome} 👋
-              </h1>
-              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-                Ambiente Ativo
-              </span>
+          <div className="flex items-center space-x-3">
+            <div className="w-11 h-11 rounded-2xl bg-white p-1.5 shadow-[0_4px_12px_rgba(124,58,237,0.12),0_2px_0_0_#EDE9FE] border border-purple-100 flex items-center justify-center shrink-0">
+              <img
+                src="/images/logo-on-agencia.png"
+                alt="ON Agência Oficial"
+                className="w-full h-full object-contain"
+              />
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Painel Geral de Gestão • ON Agência de Eventos & Formaturas
-            </p>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h1 className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
+                  Olá, {usuarioNome} 👋
+                </h1>
+                <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                  Ambiente Ativo
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Painel Geral de Gestão • ON Agência de Eventos & Formaturas
+              </p>
+            </div>
           </div>
 
           {/* Campo de Busca Tátil e Ações Rápidas */}
@@ -204,10 +213,10 @@ export default function SistemaPage() {
               />
             </div>
 
-            {/* Botão de Atalho Rápido Tátil */}
+            {/* Botão de Atalho Rápido Tátil 3D Vibrante */}
             <a
               href="/crm/index.html"
-              className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-2xl bg-[#4F39F6] text-white text-xs font-bold shadow-[0_4px_0_0_#3824B0,0_8px_16px_rgba(79,57,246,0.25)] hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-[0_1px_0_0_#3824B0] transition-all shrink-0"
+              className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#7C3AED] via-[#9333EA] to-[#C026D3] text-white text-xs font-extrabold shadow-[0_4px_0_0_#581C87,0_8px_16px_rgba(147,51,234,0.3)] hover:brightness-110 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition-all shrink-0 cursor-pointer"
             >
               <Kanban className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Nova Turma</span>
@@ -262,13 +271,13 @@ export default function SistemaPage() {
             </div>
             <a
               href="/sistema/index.html"
-              title="Perfil"
-              className="w-7 h-7 rounded-full ring-1 ring-purple-200 overflow-hidden bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shrink-0"
+              title="ON Agência Oficial"
+              className="w-7 h-7 rounded-full ring-2 ring-purple-200 overflow-hidden bg-white p-0.5 flex items-center justify-center shrink-0 shadow-xs hover:scale-110 transition"
             >
               <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces"
-                alt="Perfil"
-                className="w-full h-full object-cover"
+                src="/images/logo-on-agencia.png"
+                alt="ON Agência Oficial"
+                className="w-full h-full object-contain"
               />
             </a>
           </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   LayoutDashboard,
@@ -154,22 +155,29 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
     <div className="flex flex-col h-full justify-between">
       {/* Topo / Marca ON EVENTOS */}
       <div>
-        <div className="flex items-center space-x-3 px-3 py-4 mb-4 border-b border-white/10">
-          <div className="relative">
-            <div className="w-12 h-12 rounded-2xl bg-white shadow-[0_6px_0_0_#D1D5DB,0_10px_20px_rgba(0,0,0,0.2)] flex items-center justify-center transform hover:scale-105 transition-transform duration-200">
-              <GraduationCap className="w-7 h-7 text-[#4F39F6]" />
+        <div className="flex items-center space-x-3 px-3 py-3.5 mb-4 border-b border-white/10">
+          <div className="relative shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-white shadow-[0_5px_0_0_#C7D2FE,0_10px_20px_rgba(0,0,0,0.2)] flex items-center justify-center p-1.5 transform hover:scale-105 transition-transform duration-200 border border-white/40">
+              <Image
+                src="/images/logo-on-agencia.png"
+                alt="ON Agência Oficial"
+                width={38}
+                height={38}
+                className="object-contain"
+                priority
+              />
             </div>
             <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-[#432CB8]" />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center space-x-1.5">
-              <span className="text-xl font-extrabold tracking-tight text-white drop-shadow-sm font-sans">
-                ON EVENTOS
+              <span className="text-lg font-black tracking-tight text-white drop-shadow-sm font-sans truncate">
+                ON AGÊNCIA
               </span>
-              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0" />
             </div>
-            <p className="text-[11px] font-medium tracking-wider text-purple-200 uppercase">
-              Sistema de Gestão
+            <p className="text-[10px] font-bold tracking-wider text-purple-200 uppercase truncate">
+              Eventos & Formaturas
             </p>
           </div>
         </div>

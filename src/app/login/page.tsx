@@ -116,17 +116,24 @@ export default function LoginPage() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 px-4">
         {/* LOGO E IDENTIDADE */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-[22px] bg-gradient-to-b from-[#5842BD] to-[#36218A] text-white shadow-[0_8px_20px_rgba(79,57,246,0.28)] mb-3 transform hover:scale-105 transition-transform duration-200">
-            <GraduationCap className="w-9 h-9" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-[28px] bg-white p-2.5 shadow-[0_12px_28px_rgba(124,58,237,0.18),0_4px_0_0_#C7D2FE] mb-4 transform hover:scale-105 transition-transform duration-200 border border-purple-100">
+            <Image
+              src="/images/logo-on-agencia.png"
+              alt="ON Agência Oficial"
+              width={64}
+              height={64}
+              className="object-contain"
+              priority
+            />
           </div>
 
           <div className="flex items-center justify-center space-x-1.5">
             <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">
-              ON EVENTOS
+              ON AGÊNCIA
             </h2>
             <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
           </div>
-          <p className="text-xs font-bold uppercase tracking-wider text-[#4F39F6] mt-0.5">
+          <p className="text-xs font-bold uppercase tracking-wider text-[#7C3AED] mt-0.5">
             SISTEMA DE GESTÃO INTEGRADO
           </p>
           <p className="text-xs text-slate-500 mt-1">
@@ -187,11 +194,11 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Botão de Entrar com Relevo Tátil 3D */}
+            {/* Botão de Entrar com Relevo Tátil 3D Vibrante */}
             <button
               type="submit"
               disabled={carregando}
-              className="w-full mt-2 py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider bg-[#4F39F6] hover:bg-[#432CB8] text-white shadow-[0_4px_0_0_#3824B0,0_10px_20px_rgba(79,57,246,0.25)] hover:translate-y-[-1px] active:translate-y-[2px] active:shadow-[0_1px_0_0_#3824B0] transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+              className="w-full mt-2 py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider bg-gradient-to-r from-[#7C3AED] via-[#9333EA] to-[#C026D3] hover:brightness-110 text-white shadow-[0_10px_28px_rgba(147,51,234,0.4),0_4px_0_0_#581C87] hover:translate-y-[-1px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
             >
               <Lock className="w-3.5 h-3.5 mr-2" />
               {carregando ? 'AUTENTICANDO...' : 'ACESSAR O SISTEMA'}

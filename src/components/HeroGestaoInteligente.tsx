@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Users,
   FolderKanban,
@@ -18,18 +19,41 @@ export default function HeroGestaoInteligente() {
   const [notificacoesAbertas, setNotificacoesAbertas] = useState(false);
 
   return (
-    <section className="relative w-full bg-gradient-to-b from-white via-[#FAF9FF] to-[#F1EAFF] pt-20 sm:pt-28 pb-16 overflow-hidden border-t border-b border-purple-100 text-slate-900">
-      {/* Luz ambiente e brilho radial de fundo */}
+    <section className="relative w-full bg-gradient-to-b from-white via-[#FAF9FF] to-[#F1EAFF] pt-16 sm:pt-24 pb-16 overflow-hidden border-t border-b border-purple-100 text-slate-900">
+      {/* Luz ambiente e brilho radial de fundo suave */}
       <div
-        className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] sm:w-[1000px] h-[400px] pointer-events-none rounded-full"
+        className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] sm:w-[1050px] h-[450px] pointer-events-none rounded-full"
         style={{
           background:
-            'radial-gradient(ellipse at center, rgba(168, 85, 247, 0.16) 0%, rgba(217, 70, 239, 0.08) 40%, rgba(255, 255, 255, 0) 70%)',
-          filter: 'blur(40px)',
+            'radial-gradient(ellipse at center, rgba(168, 85, 247, 0.18) 0%, rgba(217, 70, 239, 0.09) 40%, rgba(255, 255, 255, 0) 70%)',
+          filter: 'blur(45px)',
         }}
       />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+        {/* LOGO OFICIAL ON AGÊNCIA EM EVIDÊNCIA */}
+        <div className="flex items-center justify-center mb-5">
+          <div className="inline-flex items-center space-x-3 bg-white/95 backdrop-blur-md px-5 py-2.5 rounded-full border border-purple-200/80 shadow-[0_6px_20px_rgba(124,58,237,0.1),0_2px_0_0_#EDE9FE] hover:scale-105 transition-transform">
+            <div className="relative w-8 h-8 shrink-0">
+              <Image
+                src="/images/logo-on-agencia.png"
+                alt="ON Agência Oficial"
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+            <div className="text-left pr-1">
+              <span className="font-black text-sm tracking-tight text-slate-900 block leading-none">
+                ON AGÊNCIA
+              </span>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-purple-600">
+                EVENTOS & FORMATURAS
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* BADGE PÍLULA NOVIDADE */}
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100/90 hover:bg-slate-200/70 border border-slate-200/80 shadow-[0_2px_4px_rgba(0,0,0,0.02)] mb-6 text-xs text-slate-700 transition cursor-pointer">
           <span className="bg-white text-slate-900 font-bold px-2.5 py-0.5 rounded-full shadow-2xs border border-slate-200/50 text-[11px]">
@@ -50,128 +74,86 @@ export default function HeroGestaoInteligente() {
           Ganhe clareza e controle absoluto sobre suas turmas e comissões com a ON Eventos. Nosso dashboard oferece visibilidade total.
         </p>
 
-        {/* BOTÕES TÁTEIS COM RELEVO 3D */}
-        <div className="mt-7 sm:mt-8 flex flex-wrap items-center justify-center gap-3.5 sm:gap-4">
+        {/* BOTÕES TÁTEIS COM RELEVO 3D IDÊNTICOS À REFERÊNCIA DO USUÁRIO */}
+        <div className="mt-7 sm:mt-8 flex flex-wrap items-center justify-center gap-4">
           <a
             href="#servicos"
-            className="px-6 py-3 rounded-full bg-white text-slate-800 font-bold text-xs sm:text-sm border border-slate-200/80 shadow-[0_4px_14px_rgba(0,0,0,0.05),0_2px_0_0_#E2E8F0] hover:bg-slate-50 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition flex items-center gap-1.5"
+            className="px-8 py-3.5 rounded-full bg-white text-slate-900 font-extrabold text-xs sm:text-sm border border-slate-200/90 shadow-[0_6px_20px_rgba(0,0,0,0.06),0_2px_0_0_#E2E8F0] hover:bg-slate-50 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition flex items-center gap-2 group cursor-pointer"
           >
             <span>Saiba Mais</span>
-            <ArrowRight className="w-4 h-4 text-slate-500" />
+            <ArrowRight className="w-4 h-4 text-slate-500 group-hover:translate-x-0.5 transition-transform" />
           </a>
 
           <a
             href="/login/index.html"
-            className="px-7 py-3 rounded-full bg-gradient-to-r from-[#8B5CF6] via-[#7C3AED] to-[#6D28D9] text-white font-bold text-xs sm:text-sm shadow-[0_10px_25px_-4px_rgba(124,58,237,0.45),0_3px_0_0_#4C1D95] hover:brightness-110 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition flex items-center gap-1.5"
+            className="px-8 py-3.5 rounded-full bg-gradient-to-r from-[#7C3AED] via-[#9333EA] to-[#C026D3] text-white font-extrabold text-xs sm:text-sm shadow-[0_12px_28px_rgba(147,51,234,0.45),0_4px_0_0_#581C87] hover:brightness-110 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition flex items-center gap-2 group cursor-pointer"
           >
             <span>Começar Agora</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" />
           </a>
         </div>
 
         {/* =========================================================================
-            ANEL METÁLICO IRIDESCENTE 3D (FIEL À REFERÊNCIA VISUAL 2)
+            ELEMENTO METÁLICO 3D IRIDESCENTE (FIEL À IMAGEM DE REFERÊNCIA DO USUÁRIO)
            ========================================================================= */}
         <div className="relative mt-8 sm:mt-12 flex flex-col items-center justify-center">
-          <div className="w-full max-w-[840px] h-[190px] sm:h-[260px] md:h-[300px] overflow-hidden relative flex items-end justify-center">
-            {/* SVG Anel Metálico Toroidal em Degradê Iridescente Violeta/Cromo */}
+          <div className="w-full max-w-[880px] h-[200px] sm:h-[270px] md:h-[310px] overflow-hidden relative flex items-end justify-center">
+            {/* Imagem Texturizada 3D Metálica Fotorealista do Anel */}
+            <div className="absolute inset-x-0 bottom-0 top-0 flex items-end justify-center pointer-events-none select-none z-10 opacity-95">
+              <img
+                src="/images/ring-3d-reference.png"
+                alt="Anel Metálico 3D Iridescente"
+                className="w-[680px] sm:w-[860px] md:w-[980px] max-w-none h-auto object-cover object-bottom filter drop-shadow-[0_20px_45px_rgba(147,51,234,0.45)]"
+              />
+            </div>
+
+            {/* SVG Vetorial de Alta Precisão em Camadas para Telas Retina */}
             <svg
-              className="w-[720px] sm:w-[900px] md:w-[1040px] max-w-none h-auto -mb-1 select-none pointer-events-none drop-shadow-[0_15px_35px_rgba(139,92,246,0.35)]"
+              className="w-[720px] sm:w-[900px] md:w-[1040px] max-w-none h-auto -mb-1 select-none pointer-events-none z-0"
               viewBox="0 0 1000 500"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
               <defs>
-                {/* Degradê Cromado e Iridescente do Corpo Principal do Anel */}
-                <linearGradient id="ringIridescent" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#432874" />
-                  <stop offset="12%" stopColor="#8B5CF6" />
-                  <stop offset="25%" stopColor="#D8B4FE" />
-                  <stop offset="38%" stopColor="#FFFFFF" />
-                  <stop offset="50%" stopColor="#C084FC" />
-                  <stop offset="62%" stopColor="#F472B6" />
-                  <stop offset="75%" stopColor="#E0E7FF" />
+                <linearGradient id="ringIridescentFull" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#3B185F" />
+                  <stop offset="10%" stopColor="#6D28D9" />
+                  <stop offset="22%" stopColor="#A855F7" />
+                  <stop offset="35%" stopColor="#FFFFFF" />
+                  <stop offset="48%" stopColor="#C084FC" />
+                  <stop offset="60%" stopColor="#F472B6" />
+                  <stop offset="74%" stopColor="#E0E7FF" />
                   <stop offset="88%" stopColor="#7C3AED" />
-                  <stop offset="100%" stopColor="#311956" />
+                  <stop offset="100%" stopColor="#2E1065" />
                 </linearGradient>
 
-                {/* Degradê da Borda Externa Metálica com Brilho Cromado */}
-                <linearGradient id="ringHighlight" x1="0%" y1="100%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#A855F7" stopOpacity="0.4" />
-                  <stop offset="30%" stopColor="#FFFFFF" stopOpacity="0.9" />
-                  <stop offset="50%" stopColor="#E9D5FF" stopOpacity="0.8" />
-                  <stop offset="70%" stopColor="#FFFFFF" stopOpacity="0.9" />
-                  <stop offset="100%" stopColor="#6366F1" stopOpacity="0.4" />
+                <linearGradient id="ringHighlightSpecular" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#C084FC" stopOpacity="0.3" />
+                  <stop offset="30%" stopColor="#FFFFFF" stopOpacity="0.95" />
+                  <stop offset="50%" stopColor="#E9D5FF" stopOpacity="0.85" />
+                  <stop offset="70%" stopColor="#FFFFFF" stopOpacity="0.95" />
+                  <stop offset="100%" stopColor="#818CF8" stopOpacity="0.3" />
                 </linearGradient>
-
-                {/* Sombra Interna Profunda para Volume 3D */}
-                <radialGradient id="ringCoreShadow" cx="50%" cy="30%" r="50%">
-                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.6" />
-                  <stop offset="65%" stopColor="#9333EA" stopOpacity="0.4" />
-                  <stop offset="100%" stopColor="#2E1065" stopOpacity="0.8" />
-                </radialGradient>
-
-                {/* Brilho Especular Refletivo Fino */}
-                <filter id="ringGlow" x="-10%" y="-10%" width="120%" height="120%">
-                  <feGaussianBlur stdDeviation="6" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
               </defs>
 
-              {/* Arco Sombra de Apoio */}
               <ellipse
                 cx="500"
                 cy="440"
-                rx="420"
-                ry="240"
-                stroke="#6B21A8"
-                strokeWidth="48"
-                strokeOpacity="0.15"
-                filter="url(#ringGlow)"
-              />
-
-              {/* Corpo Principal do Arco Metálico */}
-              <ellipse
-                cx="500"
-                cy="440"
-                rx="410"
-                ry="230"
-                stroke="url(#ringIridescent)"
+                rx="412"
+                ry="232"
+                stroke="url(#ringIridescentFull)"
                 strokeWidth="38"
                 strokeLinecap="round"
               />
 
-              {/* Filete Cromado Superior (Specular Reflection Line) */}
               <ellipse
                 cx="500"
                 cy="436"
                 rx="404"
                 ry="226"
-                stroke="url(#ringHighlight)"
+                stroke="url(#ringHighlightSpecular)"
                 strokeWidth="7"
                 strokeLinecap="round"
-              />
-
-              {/* Segundo Filete Interno Metálico */}
-              <ellipse
-                cx="500"
-                cy="444"
-                rx="416"
-                ry="234"
-                stroke="#FFFFFF"
-                strokeWidth="2.5"
-                strokeOpacity="0.75"
-              />
-
-              {/* Reflexos Cromados Finais na Crista */}
-              <ellipse
-                cx="500"
-                cy="434"
-                rx="398"
-                ry="220"
-                stroke="url(#ringHighlight)"
-                strokeWidth="2"
-                strokeOpacity="0.6"
               />
             </svg>
           </div>

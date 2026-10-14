@@ -9,7 +9,7 @@ export default async function CampanhasPage() {
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link
-            href="/"
+            href="/sistema/index.html"
             className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
           >
             <ArrowLeft className="w-5 h-5" />

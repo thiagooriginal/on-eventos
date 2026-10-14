@@ -20,6 +20,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import { getUsuarios } from '@/lib/usuarios';
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -56,7 +58,26 @@ export default function LoginPage() {
         // Modo estático no Apache
       }
 
-      // 2. Validação local (Hospedagem Estática Hostinger)
+      // 2. Validação contra lista de usuários cadastrados (Admin vs Básico)
+      if (!autenticado && typeof window !== 'undefined') {
+        const listaUsuarios = getUsuarios();
+        const usuarioEncontrado = listaUsuarios.find(
+          (u) => u.email.toLowerCase() === emailLimpo
+        );
+
+        if (usuarioEncontrado) {
+          if (usuarioEncontrado.status === 'INATIVO') {
+            throw new Error('Acesso bloqueado: este usuário está inativo. Solicite a liberação ao Administrador.');
+          }
+          if (senha && senha.length >= 2) {
+            autenticado = true;
+            perfil = usuarioEncontrado.nivel; // 'ADMIN' ou 'BASICO'
+            nome = usuarioEncontrado.nome;
+          }
+        }
+      }
+
+      // 3. Fallback padrão para ambiente de demonstração
       if (!autenticado) {
         if (
           emailLimpo === 'admin@formatura.com.br' ||
@@ -67,17 +88,17 @@ export default function LoginPage() {
         ) {
           autenticado = true;
           if (emailLimpo.includes('vendedor') || emailLimpo.includes('rodrigo')) {
-            perfil = 'VENDEDOR';
+            perfil = 'BASICO';
             nome = 'Rodrigo Consultor Comercial';
           }
         }
       }
 
-      if (!autenticado && senha.length < 3) {
+      if (!autenticado && senha.length < 2) {
         throw new Error('E-mail ou senha incorretos. Utilize um dos usuários de teste abaixo.');
       }
 
-      // Salva sessão local no navegador
+      // Salva sessão local no navegador com o nível correto
       if (typeof window !== 'undefined') {
         localStorage.setItem(
           'on_usuario_logado',

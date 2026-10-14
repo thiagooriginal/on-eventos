@@ -27,10 +27,36 @@ import {
   Layers,
   Camera,
   ArrowRight,
+  Activity,
+  UserCheck,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 
 const modulosCompletos = [
+  {
+    titulo: 'Métricas & Telemetria do Site',
+    descricao: 'Acompanhamento ao vivo de acessos: visitantes únicos, tempo de navegação, volume de cliques e mapa de onde clicaram.',
+    href: '/metricas/index.html',
+    icone: Activity,
+    tag: 'Telemetria & Tráfego',
+    corFundo: 'from-emerald-500 to-teal-600',
+    corBorda: 'border-emerald-200',
+    corTexto: 'text-emerald-600',
+    corBg: 'bg-emerald-50',
+    badge: 'Ao Vivo',
+  },
+  {
+    titulo: 'Gestão de Usuários & Níveis',
+    descricao: 'Cadastro de equipe com níveis de permissão estritos: Administrador (Acesso Total) ou Básico (Operacional & Vendas).',
+    href: '/usuarios/index.html',
+    icone: UserCheck,
+    tag: 'Segurança & Equipe',
+    corFundo: 'from-purple-600 to-indigo-600',
+    corBorda: 'border-purple-200',
+    corTexto: 'text-purple-600',
+    corBg: 'bg-purple-50',
+    badge: 'Admin/Básico',
+  },
   {
     titulo: 'CRM de Turmas & Oportunidades',
     descricao: 'Funil comercial por turma em negociação. Converte automaticamente a oportunidade em projeto na 1ª adesão.',

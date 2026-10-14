@@ -15,6 +15,8 @@ import {
   Smartphone,
   Globe,
   Camera,
+  Activity,
+  UserCheck,
   LogOut,
   Sparkles,
   ShieldCheck,
@@ -68,6 +70,22 @@ export const menuItens: MenuItem[] = [
     icone: Camera,
     badge: 'Novo',
     badgeCor: 'bg-fuchsia-400/30 text-fuchsia-200 border border-fuchsia-300/40',
+  },
+  {
+    id: 'metricas',
+    titulo: 'Métricas do Site',
+    href: '/metricas/index.html',
+    icone: Activity,
+    badge: 'Ao Vivo',
+    badgeCor: 'bg-emerald-400/30 text-emerald-200 border border-emerald-300/40',
+  },
+  {
+    id: 'usuarios',
+    titulo: 'Usuários & Níveis',
+    href: '/usuarios/index.html',
+    icone: UserCheck,
+    badge: 'Admin/Básico',
+    badgeCor: 'bg-indigo-400/30 text-indigo-200 border border-indigo-300/40',
   },
   {
     id: 'comissoes',
@@ -263,10 +281,14 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-white truncate">{usuario.nome}</p>
               <p className="text-[10px] text-purple-200 truncate">{usuario.email}</p>
-              <div className="flex items-center space-x-1 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span className="text-[9px] font-semibold text-emerald-200 uppercase">
-                  {usuario.perfil}
+              <div className="flex items-center space-x-1.5 mt-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${usuario.perfil.toUpperCase().includes('ADMIN') ? 'bg-amber-400 animate-pulse' : 'bg-cyan-400'}`}></span>
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                  usuario.perfil.toUpperCase().includes('ADMIN')
+                    ? 'bg-amber-400/20 text-amber-200 border-amber-300/40'
+                    : 'bg-cyan-400/20 text-cyan-200 border-cyan-300/40'
+                }`}>
+                  {usuario.perfil.toUpperCase().includes('ADMIN') ? '👑 ADMIN (TOTAL)' : '👤 BÁSICO (OPERACIONAL)'}
                 </span>
               </div>
             </div>

@@ -233,7 +233,7 @@ export default function SiteInstitucionalPage() {
             {/* BOTÃO DE ACESSO AO SISTEMA (DESKTOP) */}
             <a
               href="/login/index.html"
-              className="hidden sm:inline-flex items-center px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-fuchsia-500 text-white shadow-lg shadow-purple-600/30 transition transform hover:-translate-y-0.5"
+              className="hidden sm:inline-flex items-center px-4 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-fuchsia-500 text-white shadow-[0_3px_0_0_#3824B0,0_8px_16px_rgba(147,51,234,0.3)] hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition-all"
             >
               <Lock className="w-3.5 h-3.5 mr-1.5" />
               <span>Acesso Sistema</span>
@@ -242,7 +242,7 @@ export default function SiteInstitucionalPage() {
             {/* ÁREA FORMANDO (DESKTOP) */}
             <a
               href="/app-aluno/index.html"
-              className="hidden sm:inline-flex items-center px-3.5 py-2 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-900 border border-purple-500/50 hover:bg-purple-950/80 text-purple-200 hover:text-white transition shadow-sm"
+              className="hidden sm:inline-flex items-center px-4 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-wider bg-slate-900 border border-purple-500/50 hover:bg-purple-950/80 text-purple-200 hover:text-white shadow-[0_3px_0_0_rgba(147,51,234,0.3)] hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition-all"
             >
               <GraduationCap className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
               Área Formando

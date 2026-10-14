@@ -118,18 +118,18 @@ export function CrmKanbanBoard({ initialTurmas }: { initialTurmas: TurmaOportuni
             onDragOver={(e) => handleDragOver(e, etapa.key)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, etapa.key)}
-            className={`w-80 flex flex-col rounded-xl border transition-all ${
+            className={`w-80 flex flex-col rounded-[24px] border transition-all ${
               isDragOver
-                ? 'border-emerald-500 bg-emerald-50/30 ring-2 ring-emerald-400'
-                : 'border-slate-200 bg-slate-50/70 shadow-xs'
+                ? 'border-[#4F39F6] bg-indigo-50/40 ring-2 ring-[#4F39F6]'
+                : 'border-slate-200/80 bg-slate-50/80 shadow-[0_4px_16px_rgba(0,0,0,0.02)]'
             }`}
           >
             {/* Cabeçalho da Etapa */}
             <div
-              className={`p-3.5 border-b font-semibold text-xs text-slate-800 flex items-center justify-between rounded-t-xl ${etapa.color}`}
+              className={`p-4 border-b font-semibold text-xs text-slate-800 flex items-center justify-between rounded-t-[24px] ${etapa.color}`}
             >
-              <span className="font-bold">{etapa.label}</span>
-              <span className="text-xs bg-white/90 font-mono font-bold px-2 py-0.5 rounded-full text-slate-700 border border-slate-200 shadow-2xs">
+              <span className="font-bold text-slate-900">{etapa.label}</span>
+              <span className="text-xs bg-white font-mono font-extrabold px-2.5 py-0.5 rounded-full text-slate-800 border border-slate-200 shadow-2xs">
                 {turmasNaEtapa.length}
               </span>
             </div>
@@ -153,15 +153,15 @@ export function CrmKanbanBoard({ initialTurmas }: { initialTurmas: TurmaOportuni
                       key={turma.id}
                       draggable
                       onDragStart={(e) => handleDragStart(e, turma.id)}
-                      className={`bg-white rounded-lg border border-slate-200 p-4 shadow-xs hover:shadow-md transition cursor-grab active:cursor-grabbing relative group ${
+                      className={`bg-white rounded-2xl border border-slate-100 p-4 shadow-[0_4px_12px_rgba(0,0,0,0.03)] hover:shadow-md hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing relative group ${
                         isCarregando ? 'opacity-60 pointer-events-none' : ''
-                      } ${draggedId === turma.id ? 'opacity-40 ring-2 ring-emerald-500' : ''}`}
+                      } ${draggedId === turma.id ? 'opacity-40 ring-2 ring-[#4F39F6]' : ''}`}
                     >
                       {/* Ícone Indicador de Arrastar */}
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center space-x-1.5">
                           <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition" />
-                          <span className="text-2xs uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                          <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                             {turma.tipoProjeto === 'BAILE' ? 'Baile de Gala' : 'Colação de Grau'}
                           </span>
                         </div>
@@ -175,8 +175,8 @@ export function CrmKanbanBoard({ initialTurmas }: { initialTurmas: TurmaOportuni
                       </h3>
 
                       {/* Código Exclusivo de Adesão */}
-                      <div className="mt-3 p-2 bg-emerald-50/80 rounded border border-emerald-200 text-xs">
-                        <span className="text-emerald-800 text-2xs font-semibold block">
+                      <div className="mt-3 p-2 bg-emerald-50 rounded-xl border border-emerald-200/80 text-xs">
+                        <span className="text-emerald-800 text-[10px] font-semibold block">
                           Código de Adesão da Turma:
                         </span>
                         <code className="text-emerald-950 font-mono font-bold text-xs select-all">
@@ -198,34 +198,34 @@ export function CrmKanbanBoard({ initialTurmas }: { initialTurmas: TurmaOportuni
 
                       {/* Responsável e Status do Projeto */}
                       <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                        <span className="text-slate-500 text-2xs">
+                        <span className="text-slate-500 text-[11px]">
                           Vendedor:{' '}
                           <strong className="text-slate-700">{turma.vendedor.nome.split(' ')[0]}</strong>
                         </span>
                         {jaCriouProjeto ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-emerald-100 text-emerald-800">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                             <CheckCircle2 className="w-3 h-3 mr-1" />
                             Projeto Ativo ({totalAdesoes})
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-2xs font-bold bg-amber-100 text-amber-800">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
                             <Clock className="w-3 h-3 mr-1" />
                             Oportunidade
                           </span>
                         )}
                       </div>
 
-                      {/* BOTÕES DE AVANÇAR E RECUAR RÁPIDOS */}
+                      {/* BOTÕES DE AVANÇAR E RECUAR RÁPIDOS COM RELEVO TÁTIL */}
                       <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                         <button
                           type="button"
                           disabled={!podeVoltar}
                           onClick={() => moverEtapa(turma.id, ETAPAS[index - 1].key)}
                           title={podeVoltar ? `Voltar para: ${ETAPAS[index - 1].label}` : 'Primeira etapa'}
-                          className={`flex-1 py-1.5 px-2 rounded text-xs font-semibold flex items-center justify-center transition border ${
+                          className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold flex items-center justify-center transition border shadow-[0_2px_0_0_#D1D5DB] ${
                             podeVoltar
-                              ? 'border-slate-200 text-slate-600 hover:bg-slate-100 active:scale-95'
-                              : 'opacity-30 border-transparent text-slate-300 cursor-not-allowed'
+                              ? 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none'
+                              : 'opacity-30 border-transparent text-slate-300 cursor-not-allowed shadow-none'
                           }`}
                         >
                           <ChevronLeft className="w-3.5 h-3.5 mr-0.5" /> Voltar
@@ -236,10 +236,10 @@ export function CrmKanbanBoard({ initialTurmas }: { initialTurmas: TurmaOportuni
                           disabled={!podeAvancar}
                           onClick={() => moverEtapa(turma.id, ETAPAS[index + 1].key)}
                           title={podeAvancar ? `Avançar para: ${ETAPAS[index + 1].label}` : 'Última etapa'}
-                          className={`flex-1 py-1.5 px-2 rounded text-xs font-semibold flex items-center justify-center transition border ${
+                          className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold flex items-center justify-center transition border shadow-[0_2px_0_0_#047857] ${
                             podeAvancar
-                              ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 active:scale-95 shadow-2xs'
-                              : 'opacity-30 border-transparent text-slate-300 cursor-not-allowed'
+                              ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none'
+                              : 'opacity-30 border-transparent text-slate-300 cursor-not-allowed shadow-none'
                           }`}
                         >
                           Avançar <ChevronRight className="w-3.5 h-3.5 ml-0.5" />

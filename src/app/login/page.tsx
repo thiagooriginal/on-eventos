@@ -16,6 +16,8 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
+  GraduationCap,
+  Sparkles,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -96,127 +98,127 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden font-sans selection:bg-purple-600 selection:text-white">
-      {/* Glows de Fundo inspirados na On Agência */}
-      <div className="absolute top-0 -left-40 w-96 h-96 bg-purple-700/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 -right-40 w-96 h-96 bg-fuchsia-700/20 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-[#F4F6FB] flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden font-sans antialiased selection:bg-[#4F39F6] selection:text-white">
+      {/* Glows de Fundo Sutis em Tons Violeta */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-tr from-purple-200/40 via-indigo-100/50 to-blue-200/30 rounded-full blur-3xl pointer-events-none" />
 
       {/* Botão de Retorno para o Site */}
       <div className="absolute top-6 left-6 z-20">
         <a
           href="/"
-          className="inline-flex items-center text-xs font-semibold text-slate-400 hover:text-white transition px-3 py-2 rounded-lg bg-slate-900/60 border border-purple-900/40 backdrop-blur-xs"
+          className="inline-flex items-center text-xs font-bold text-slate-600 hover:text-slate-900 transition px-4 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-[0_2px_0_0_#D1D5DB] hover:translate-y-[-1px] active:translate-y-[1px]"
         >
-          <ArrowLeft className="w-4 h-4 mr-1.5" />
-          Voltar para o Site Oficial
+          <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+          Voltar ao Site Institucional
         </a>
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 px-4">
         {/* LOGO E IDENTIDADE */}
-        <div className="text-center">
-          <a href="/" className="inline-block relative w-20 h-20 mb-3 hover:scale-105 transition-transform">
-            <Image
-              src="/images/logo-on-agencia.png"
-              alt="Logo On Agência de Eventos"
-              fill
-              className="object-contain"
-              priority
-            />
-          </a>
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-[22px] bg-gradient-to-b from-[#5842BD] to-[#36218A] text-white shadow-[0_8px_20px_rgba(79,57,246,0.28)] mb-3 transform hover:scale-105 transition-transform duration-200">
+            <GraduationCap className="w-9 h-9" />
+          </div>
 
-          <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
-            SISTEMA DE GESTÃO <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-indigo-300">
+          <div className="flex items-center justify-center space-x-1.5">
+            <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900">
               ON EVENTOS
-            </span>
-          </h2>
-          <p className="mt-2 text-xs text-slate-400">
-            Acesso Restrito: Diretoria, Equipe Interna e Vendedores
+            </h2>
+            <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+          </div>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#4F39F6] mt-0.5">
+            SISTEMA DE GESTÃO INTEGRADO
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            Acesso Restrito: Diretoria, Equipe Interna e Consultores
           </p>
         </div>
 
-        {/* CARD DE LOGIN */}
-        <div className="mt-8 bg-slate-900/90 border border-purple-900/50 py-8 px-6 sm:px-10 shadow-2xl rounded-2xl backdrop-blur-md">
+        {/* CARD DE LOGIN TÁTIL */}
+        <div className="bg-white border border-slate-100 py-8 px-6 sm:px-10 shadow-[0_16px_40px_rgba(79,57,246,0.06)] rounded-[32px]">
           {erro && (
-            <div className="mb-6 p-3.5 rounded-xl bg-rose-950/70 border border-rose-500/80 text-rose-300 text-xs flex items-start">
-              <AlertCircle className="w-4 h-4 mr-2 shrink-0 mt-0.5 text-rose-400" />
+            <div className="mb-6 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start">
+              <AlertCircle className="w-4 h-4 mr-2 shrink-0 mt-0.5 text-rose-600" />
               <span>{erro}</span>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block mb-1.5">
                 E-mail Corporativo
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-500" />
+                <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
                 <input
                   type="email"
                   required
                   placeholder="exemplo@formatura.com.br"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-purple-900/60 bg-slate-950 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-[#F4F6FB] text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4F39F6] shadow-inner transition"
                 />
               </div>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
                   Senha de Acesso
                 </label>
               </div>
               <div className="relative">
-                <KeyRound className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-500" />
+                <KeyRound className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
                 <input
                   type={mostrarSenha ? 'text' : 'password'}
                   required
                   placeholder="••••••••"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
-                  className="w-full pl-10 pr-10 py-3 rounded-xl border border-purple-900/60 bg-slate-950 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition font-mono"
+                  className="w-full pl-10 pr-10 py-3 rounded-2xl border border-slate-200 bg-[#F4F6FB] text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4F39F6] shadow-inner transition font-mono"
                 />
                 <button
                   type="button"
                   onClick={() => setMostrarSenha(!mostrarSenha)}
-                  className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-700"
                 >
                   {mostrarSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
+            {/* Botão de Entrar com Relevo Tátil 3D */}
             <button
               type="submit"
               disabled={carregando}
-              className="w-full mt-2 py-3.5 px-4 rounded-xl text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-fuchsia-500 text-white shadow-xl shadow-purple-600/30 transition transform hover:-translate-y-0.5 disabled:opacity-50 flex items-center justify-center"
+              className="w-full mt-2 py-3.5 px-4 rounded-2xl text-xs font-black uppercase tracking-wider bg-[#4F39F6] hover:bg-[#432CB8] text-white shadow-[0_4px_0_0_#3824B0,0_10px_20px_rgba(79,57,246,0.25)] hover:translate-y-[-1px] active:translate-y-[2px] active:shadow-[0_1px_0_0_#3824B0] transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
             >
               <Lock className="w-3.5 h-3.5 mr-2" />
-              {carregando ? 'AUTENTICANDO...' : 'ENTRAR NA PLATAFORMA'}
+              {carregando ? 'AUTENTICANDO...' : 'ACESSAR O SISTEMA'}
             </button>
           </form>
 
           {/* DICAS DE ACESSO RÁPIDO PARA DEMONSTRAÇÃO */}
-          <div className="mt-8 pt-6 border-t border-purple-900/30">
-            <span className="text-2xs font-mono uppercase tracking-widest text-purple-400 font-bold block mb-2">
-              Usuários Demonstrativos de Teste:
+          <div className="mt-8 pt-6 border-t border-slate-100">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-[#4F39F6] block mb-2">
+              Usuários de Demonstração (Clique para Preencher):
             </span>
-            <div className="space-y-1.5 text-2xs text-slate-400">
+            <div className="space-y-2 text-xs">
               <button
                 type="button"
                 onClick={() => {
                   setEmail('admin@formatura.com.br');
                   setSenha('123456');
                 }}
-                className="w-full text-left p-2 rounded-lg bg-slate-950/60 hover:bg-slate-950 border border-purple-900/30 flex justify-between items-center transition"
+                className="w-full text-left p-2.5 rounded-xl bg-[#FAF7FF] hover:bg-[#F3EEFF] border border-purple-100 flex justify-between items-center transition shadow-2xs"
               >
-                <span>
-                  <strong className="text-slate-300">Admin:</strong> admin@formatura.com.br
+                <div>
+                  <strong className="text-slate-800 text-xs block">Administrador Geral</strong>
+                  <span className="text-[11px] text-slate-500">admin@formatura.com.br</span>
+                </div>
+                <span className="text-[#4F39F6] font-bold text-xs bg-white px-2 py-0.5 rounded-md border border-purple-200">
+                  Preencher
                 </span>
-                <span className="text-fuchsia-400 font-bold">Preencher</span>
               </button>
               <button
                 type="button"
@@ -224,21 +226,24 @@ export default function LoginPage() {
                   setEmail('vendedor.rodrigo@formatura.com.br');
                   setSenha('123456');
                 }}
-                className="w-full text-left p-2 rounded-lg bg-slate-950/60 hover:bg-slate-950 border border-purple-900/30 flex justify-between items-center transition"
+                className="w-full text-left p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex justify-between items-center transition shadow-2xs"
               >
-                <span>
-                  <strong className="text-slate-300">Vendedor:</strong> vendedor.rodrigo@formatura.com.br
+                <div>
+                  <strong className="text-slate-800 text-xs block">Consultor Comercial</strong>
+                  <span className="text-[11px] text-slate-500">vendedor.rodrigo@formatura.com.br</span>
+                </div>
+                <span className="text-slate-700 font-bold text-xs bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                  Preencher
                 </span>
-                <span className="text-fuchsia-400 font-bold">Preencher</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Rodapé Seguro */}
-        <div className="mt-6 text-center text-2xs text-slate-400 flex items-center justify-center">
-          <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-400" />
-          Conexão Segura & Criptografia Ponta a Ponta
+        <div className="mt-6 text-center text-xs text-slate-500 flex items-center justify-center">
+          <ShieldCheck className="w-4 h-4 mr-1.5 text-emerald-600" />
+          Conexão Segura &bull; Hospedado na Hostinger Nuvem
         </div>
       </div>
     </div>

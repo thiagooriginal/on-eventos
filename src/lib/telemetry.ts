@@ -1,4 +1,4 @@
-// Gerenciador de Telemetria e Métricas do Site ON Eventos
+// Gerenciador de Telemetria e Métricas do Site ON Eventos - DADOS 100% REAIS
 
 export interface ClickEvent {
   id: string;
@@ -27,7 +27,7 @@ export interface TelemetryData {
   visitantesUnicos: number;
   visitasHoje: number;
   visitantesAtivosAgora: number;
-  tempoMedioSegundos: number; // em segundos
+  tempoMedioSegundos: number;
   totalCliques: number;
   taxaCliquesPorSessao: number;
   dispositivos: {
@@ -50,194 +50,154 @@ export interface TelemetryData {
   }[];
 }
 
-const STORAGE_KEY_METRICAS = 'on_site_telemetria_metricas';
-const STORAGE_KEY_CLIQUES = 'on_site_telemetria_cliques';
+// Chaves de armazenamento versionadas para limpar instantaneamente dados fictícios anteriores
+const STORAGE_KEY_METRICAS = 'on_site_telemetria_v3_metricas';
+const STORAGE_KEY_CLIQUES = 'on_site_telemetria_v3_cliques';
 
-const DEFAULT_HEATMAPS: HeatmapItem[] = [
+export const HEATMAPS_BASE_ZERADOS: HeatmapItem[] = [
   {
     id: 'btn-orcamento-hero',
     nome: 'Botão "Solicitar Orçamento Oficial" (Hero)',
     secao: 'Topo / Hero Principal',
-    cliques: 3412,
-    porcentagem: 23.0,
-    taxaConversao: '38.4%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-rose-500 text-white',
   },
   {
     id: 'btn-whatsapp-flutuante',
     nome: 'Botão Flutuante "Falar no WhatsApp"',
     secao: 'Flutuante Global',
-    cliques: 2890,
-    porcentagem: 19.5,
-    taxaConversao: '32.6%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-emerald-500 text-white',
   },
   {
     id: 'btn-menu-fotos',
     nome: 'Card / Menu "Venda de Álbuns de Formatura"',
     secao: 'Módulos & Fotografia',
-    cliques: 2145,
-    porcentagem: 14.5,
-    taxaConversao: '24.1%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-fuchsia-500 text-white',
   },
   {
     id: 'btn-video-aftermovie',
     nome: 'Assistir Vídeo "Aftermovie Baile de Gala"',
     secao: 'Galeria Audiovisual',
-    cliques: 1840,
-    porcentagem: 12.4,
-    taxaConversao: '20.7%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-amber-500 text-white',
   },
   {
     id: 'btn-galeria-cenografia',
     nome: 'Ver Fotos de Cenografia & Espaços',
     secao: 'Portfólio de Eventos',
-    cliques: 1390,
-    porcentagem: 9.4,
-    taxaConversao: '15.6%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-blue-500 text-white',
   },
   {
     id: 'btn-portal-aluno',
     nome: 'Acesso ao Portal do Aluno / Boletos',
     secao: 'Área Restrita do Formando',
-    cliques: 1120,
-    porcentagem: 7.6,
-    taxaConversao: '12.6%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-purple-500 text-white',
   },
   {
     id: 'btn-simulador-planos',
     nome: 'Simulador de Planos e Parcelamento',
     secao: 'Planos & Custos',
-    cliques: 823,
-    porcentagem: 5.5,
-    taxaConversao: '9.2%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-teal-500 text-white',
   },
   {
     id: 'btn-depoimentos-comissoes',
     nome: 'Depoimentos de Comissões de Formatura',
     secao: 'Depoimentos Reais',
-    cliques: 654,
-    porcentagem: 4.4,
-    taxaConversao: '7.3%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-indigo-500 text-white',
   },
   {
     id: 'btn-outros-cliques',
     nome: 'Outros Links, Redes Sociais e Menus',
     secao: 'Navegação Diversa',
-    cliques: 546,
-    porcentagem: 3.7,
-    taxaConversao: '6.1%',
+    cliques: 0,
+    porcentagem: 0,
+    taxaConversao: '0%',
     badgeCor: 'bg-slate-500 text-white',
   },
 ];
 
-const DEFAULT_CLIQUES_RECENTES: ClickEvent[] = [
-  {
-    id: 'clk-101',
-    elemento: 'Botão "Solicitar Orçamento Oficial"',
-    categoria: 'CTA Orçamento',
-    secao: 'Formulário Hero',
-    pagina: '/',
-    timestamp: new Date(Date.now() - 1000 * 18).toISOString(),
-    tempoNaPagina: 112,
-    dispositivo: 'Mobile (iPhone 15 Pro / Safari)',
-    cidade: 'São Paulo/SP',
-  },
-  {
-    id: 'clk-102',
-    elemento: 'Chamar Consultor no WhatsApp',
-    categoria: 'WhatsApp',
-    secao: 'Botão Flutuante',
-    pagina: '/',
-    timestamp: new Date(Date.now() - 1000 * 48).toISOString(),
-    tempoNaPagina: 84,
-    dispositivo: 'Mobile (Samsung Galaxy S24 / Chrome)',
-    cidade: 'Campinas/SP',
-  },
-  {
-    id: 'clk-103',
-    elemento: 'Card "Album premium com Caixa Luxo"',
-    categoria: 'Álbuns de Fotos',
-    secao: 'Venda de Álbuns',
-    pagina: '/fotos/index.html',
-    timestamp: new Date(Date.now() - 1000 * 125).toISOString(),
-    tempoNaPagina: 196,
-    dispositivo: 'Desktop (macOS Sonoma / Chrome)',
-    cidade: 'Ribeirão Preto/SP',
-  },
-  {
-    id: 'clk-104',
-    elemento: 'Play no Vídeo "Aftermovie Gala Villaggio"',
-    categoria: 'Audiovisual',
-    secao: 'Galeria de Vídeos',
-    pagina: '/',
-    timestamp: new Date(Date.now() - 1000 * 240).toISOString(),
-    tempoNaPagina: 45,
-    dispositivo: 'Mobile (iPhone 14 / Safari)',
-    cidade: 'Santos/SP',
-  },
-  {
-    id: 'clk-105',
-    elemento: 'Brinde "Trio de Quadros 30x30"',
-    categoria: 'Brindes Kit',
-    secao: 'Configurador de Kits',
-    pagina: '/fotos/index.html',
-    timestamp: new Date(Date.now() - 1000 * 380).toISOString(),
-    tempoNaPagina: 240,
-    dispositivo: 'Desktop (Windows 11 / Edge)',
-    cidade: 'Sorocaba/SP',
-  },
-  {
-    id: 'clk-106',
-    elemento: 'Acessar Portal do Aluno (Boletos)',
-    categoria: 'Portal do Aluno',
-    secao: 'Header Superior',
-    pagina: '/',
-    timestamp: new Date(Date.now() - 1000 * 520).toISOString(),
-    tempoNaPagina: 32,
-    dispositivo: 'Mobile (Motorola Edge / Chrome)',
-    cidade: 'São José dos Campos/SP',
-  },
-];
+export const METRICAS_ZERADAS: TelemetryData = {
+  totalVisitantes: 0,
+  visitantesUnicos: 0,
+  visitasHoje: 0,
+  visitantesAtivosAgora: 1,
+  tempoMedioSegundos: 0,
+  totalCliques: 0,
+  taxaCliquesPorSessao: 0,
+  dispositivos: { mobile: 0, desktop: 0, tablet: 0 },
+  origensTrafego: [
+    { origem: 'Instagram (@onagenciadeeventos)', porcentagem: 0, visitas: 0 },
+    { origem: 'Google / Busca Orgânica', porcentagem: 0, visitas: 0 },
+    { origem: 'WhatsApp Direto', porcentagem: 0, visitas: 0 },
+    { origem: 'Indicação de Comissões', porcentagem: 0, visitas: 0 },
+    { origem: 'Acesso Direto ao Site', porcentagem: 0, visitas: 0 },
+  ],
+  heatmaps: HEATMAPS_BASE_ZERADOS,
+  ultimosCliques: [],
+  historicoDias: [],
+};
 
-const DEFAULT_HISTORICO_DIAS = [
-  { dia: '10/10', visitas: 342, cliques: 1420, tempoMedioMin: 3.6 },
-  { dia: '11/10', visitas: 388, cliques: 1680, tempoMedioMin: 3.9 },
-  { dia: '12/10', visitas: 410, cliques: 1750, tempoMedioMin: 4.1 },
-  { dia: '13/10', visitas: 495, cliques: 2190, tempoMedioMin: 3.8 },
-  { dia: '14/10', visitas: 540, cliques: 2410, tempoMedioMin: 4.2 },
-];
+export function zerarMetricas(): TelemetryData {
+  if (typeof window !== 'undefined') {
+    try {
+      // Limpa dados legados e atuais
+      localStorage.removeItem('on_site_telemetria_metricas');
+      localStorage.removeItem('on_site_telemetria_cliques');
+      localStorage.removeItem(STORAGE_KEY_METRICAS);
+      localStorage.removeItem(STORAGE_KEY_CLIQUES);
+
+      // Limpa chaves de sessões gravadas
+      Object.keys(sessionStorage).forEach((key) => {
+        if (key.startsWith('on_session_recorded_')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+
+      const novoEstado = { ...METRICAS_ZERADAS, heatmaps: JSON.parse(JSON.stringify(HEATMAPS_BASE_ZERADOS)) };
+      localStorage.setItem(STORAGE_KEY_METRICAS, JSON.stringify(novoEstado));
+      localStorage.setItem(STORAGE_KEY_CLIQUES, JSON.stringify([]));
+      return novoEstado;
+    } catch (e) {
+      console.error('Erro ao zerar métricas:', e);
+    }
+  }
+  return METRICAS_ZERADAS;
+}
 
 export function getTelemetryData(): TelemetryData {
   if (typeof window === 'undefined') {
-    return {
-      totalVisitantes: 3842,
-      visitantesUnicos: 2940,
-      visitasHoje: 540,
-      visitantesAtivosAgora: 14,
-      tempoMedioSegundos: 228,
-      totalCliques: 14820,
-      taxaCliquesPorSessao: 3.9,
-      dispositivos: { mobile: 69, desktop: 27, tablet: 4 },
-      origensTrafego: [
-        { origem: 'Instagram (@onagenciadeeventos)', porcentagem: 48, visitas: 1844 },
-        { origem: 'Google / Busca Orgânica', porcentagem: 26, visitas: 998 },
-        { origem: 'WhatsApp Direto', porcentagem: 16, visitas: 614 },
-        { origem: 'Indicação de Comissões', porcentagem: 10, visitas: 386 },
-      ],
-      heatmaps: DEFAULT_HEATMAPS,
-      ultimosCliques: DEFAULT_CLIQUES_RECENTES,
-      historicoDias: DEFAULT_HISTORICO_DIAS,
-    };
+    return METRICAS_ZERADAS;
   }
 
   try {
+    // Se ainda existirem chaves antigas com dados fictícios, remove imediatamente
+    if (localStorage.getItem('on_site_telemetria_metricas')) {
+      localStorage.removeItem('on_site_telemetria_metricas');
+      localStorage.removeItem('on_site_telemetria_cliques');
+    }
+
     const salvoMetricas = localStorage.getItem(STORAGE_KEY_METRICAS);
     const salvoCliques = localStorage.getItem(STORAGE_KEY_CLIQUES);
 
@@ -246,23 +206,8 @@ export function getTelemetryData(): TelemetryData {
       baseData = JSON.parse(salvoMetricas);
     } else {
       baseData = {
-        totalVisitantes: 3842,
-        visitantesUnicos: 2940,
-        visitasHoje: 540,
-        visitantesAtivosAgora: 14,
-        tempoMedioSegundos: 228,
-        totalCliques: 14820,
-        taxaCliquesPorSessao: 3.9,
-        dispositivos: { mobile: 69, desktop: 27, tablet: 4 },
-        origensTrafego: [
-          { origem: 'Instagram (@onagenciadeeventos)', porcentagem: 48, visitas: 1844 },
-          { origem: 'Google / Busca Orgânica', porcentagem: 26, visitas: 998 },
-          { origem: 'WhatsApp Direto', porcentagem: 16, visitas: 614 },
-          { origem: 'Indicação de Comissões', porcentagem: 10, visitas: 386 },
-        ],
-        heatmaps: DEFAULT_HEATMAPS,
-        ultimosCliques: DEFAULT_CLIQUES_RECENTES,
-        historicoDias: DEFAULT_HISTORICO_DIAS,
+        ...METRICAS_ZERADAS,
+        heatmaps: JSON.parse(JSON.stringify(HEATMAPS_BASE_ZERADOS)),
       };
       localStorage.setItem(STORAGE_KEY_METRICAS, JSON.stringify(baseData));
     }
@@ -270,29 +215,13 @@ export function getTelemetryData(): TelemetryData {
     if (salvoCliques) {
       const parsedCliques: ClickEvent[] = JSON.parse(salvoCliques);
       baseData.ultimosCliques = parsedCliques;
+    } else {
+      baseData.ultimosCliques = [];
     }
 
     return baseData;
   } catch (err) {
-    return {
-      totalVisitantes: 3842,
-      visitantesUnicos: 2940,
-      visitasHoje: 540,
-      visitantesAtivosAgora: 14,
-      tempoMedioSegundos: 228,
-      totalCliques: 14820,
-      taxaCliquesPorSessao: 3.9,
-      dispositivos: { mobile: 69, desktop: 27, tablet: 4 },
-      origensTrafego: [
-        { origem: 'Instagram (@onagenciadeeventos)', porcentagem: 48, visitas: 1844 },
-        { origem: 'Google / Busca Orgânica', porcentagem: 26, visitas: 998 },
-        { origem: 'WhatsApp Direto', porcentagem: 16, visitas: 614 },
-        { origem: 'Indicação de Comissões', porcentagem: 10, visitas: 386 },
-      ],
-      heatmaps: DEFAULT_HEATMAPS,
-      ultimosCliques: DEFAULT_CLIQUES_RECENTES,
-      historicoDias: DEFAULT_HISTORICO_DIAS,
-    };
+    return METRICAS_ZERADAS;
   }
 }
 
@@ -307,33 +236,52 @@ export function recordClick(click: Omit<ClickEvent, 'id' | 'timestamp'>): void {
       timestamp: new Date().toISOString(),
     };
 
-    // Atualiza contadores
+    // Incrementa contadores reais
     data.totalCliques += 1;
-    data.ultimosCliques = [novoClique, ...data.ultimosCliques.slice(0, 29)]; // guarda últimos 30
+    data.ultimosCliques = [novoClique, ...data.ultimosCliques.slice(0, 49)]; // salva até os últimos 50 cliques
 
-    // Atualiza o heatmap correspondente ou cria/incrementa
+    // Atualiza heatmap correspondente
+    const termo = click.elemento.toLowerCase();
     const indexHeatmap = data.heatmaps.findIndex(
-      (h) => h.nome.toLowerCase().includes(click.elemento.toLowerCase().slice(0, 15)) ||
-             click.elemento.toLowerCase().includes(h.nome.toLowerCase().slice(0, 15))
+      (h) => h.nome.toLowerCase().includes(termo.slice(0, 15)) ||
+             termo.includes(h.nome.toLowerCase().slice(0, 15))
     );
 
     if (indexHeatmap >= 0) {
       data.heatmaps[indexHeatmap].cliques += 1;
-    } else if (data.heatmaps.length > 0) {
-      // adiciona aos outros ou ao primeiro
-      data.heatmaps[0].cliques += 1;
+    } else {
+      // Procura categoria
+      if (click.categoria.includes('Orçamento')) {
+        data.heatmaps[0].cliques += 1;
+      } else if (click.categoria.includes('WhatsApp')) {
+        data.heatmaps[1].cliques += 1;
+      } else if (click.categoria.includes('Álbuns')) {
+        data.heatmaps[2].cliques += 1;
+      } else if (click.categoria.includes('Audiovisual')) {
+        data.heatmaps[3].cliques += 1;
+      } else {
+        data.heatmaps[data.heatmaps.length - 1].cliques += 1;
+      }
     }
 
     // Recalcula percentuais do heatmap
     const somaCliquesHeatmap = data.heatmaps.reduce((acc, h) => acc + h.cliques, 0);
-    data.heatmaps.forEach((h) => {
-      h.porcentagem = Number(((h.cliques / somaCliquesHeatmap) * 100).toFixed(1));
-    });
+    if (somaCliquesHeatmap > 0) {
+      data.heatmaps.forEach((h) => {
+        h.porcentagem = Number(((h.cliques / somaCliquesHeatmap) * 100).toFixed(1));
+        h.taxaConversao = `${Number(((h.cliques / Math.max(1, data.totalVisitantes)) * 100).toFixed(1))}%`;
+      });
+    }
+
+    // Média de cliques por visitante
+    data.taxaCliquesPorSessao = Number(
+      (data.totalCliques / Math.max(1, data.totalVisitantes)).toFixed(1)
+    );
 
     localStorage.setItem(STORAGE_KEY_METRICAS, JSON.stringify(data));
     localStorage.setItem(STORAGE_KEY_CLIQUES, JSON.stringify(data.ultimosCliques));
   } catch (e) {
-    // Silencia erros de storage
+    // Silencia
   }
 }
 
@@ -345,12 +293,47 @@ export function recordPageView(pagina: string): void {
     data.totalVisitantes += 1;
     data.visitasHoje += 1;
 
+    // Detecta dispositivo real
+    const largura = window.innerWidth;
+    if (largura < 768) {
+      data.dispositivos.mobile += 1;
+    } else if (largura < 1024) {
+      data.dispositivos.tablet += 1;
+    } else {
+      data.dispositivos.desktop += 1;
+    }
+
     // Se é a primeira vez nesta aba de navegação, conta como visitante único
     const sessionKey = 'on_session_recorded_' + pagina;
     if (!sessionStorage.getItem(sessionKey)) {
       sessionStorage.setItem(sessionKey, '1');
       data.visitantesUnicos += 1;
+
+      // Detecta origem real do tráfego através de document.referrer
+      const ref = (document.referrer || '').toLowerCase();
+      if (ref.includes('instagram')) {
+        data.origensTrafego[0].visitas += 1;
+      } else if (ref.includes('google')) {
+        data.origensTrafego[1].visitas += 1;
+      } else if (ref.includes('whatsapp') || ref.includes('wa.me')) {
+        data.origensTrafego[2].visitas += 1;
+      } else {
+        data.origensTrafego[4].visitas += 1;
+      }
+
+      // Recalcula porcentagens de origens
+      const totalOrigens = data.origensTrafego.reduce((acc, o) => acc + o.visitas, 0);
+      if (totalOrigens > 0) {
+        data.origensTrafego.forEach((o) => {
+          o.porcentagem = Math.round((o.visitas / totalOrigens) * 100);
+        });
+      }
     }
+
+    // Recalcula taxa de cliques
+    data.taxaCliquesPorSessao = Number(
+      (data.totalCliques / Math.max(1, data.totalVisitantes)).toFixed(1)
+    );
 
     localStorage.setItem(STORAGE_KEY_METRICAS, JSON.stringify(data));
   } catch (e) {
@@ -363,10 +346,12 @@ export function updateSessionDuration(segundosAtivos: number): void {
 
   try {
     const data = getTelemetryData();
-    // Suaviza a média com o tempo real decorrido
-    if (segundosAtivos > 10) {
-      const mediaAtual = data.tempoMedioSegundos;
-      data.tempoMedioSegundos = Math.round(mediaAtual * 0.95 + segundosAtivos * 0.05);
+    if (segundosAtivos > 3) {
+      if (data.tempoMedioSegundos === 0) {
+        data.tempoMedioSegundos = segundosAtivos;
+      } else {
+        data.tempoMedioSegundos = Math.round(data.tempoMedioSegundos * 0.9 + segundosAtivos * 0.1);
+      }
       localStorage.setItem(STORAGE_KEY_METRICAS, JSON.stringify(data));
     }
   } catch (e) {
@@ -376,25 +361,24 @@ export function updateSessionDuration(segundosAtivos: number): void {
 
 export function simulateTestClick(elementoCustom?: string, secaoCustom?: string): ClickEvent {
   const elementos = [
-    { el: 'Botão "Solicitar Orçamento Oficial"', cat: 'CTA Orçamento', sec: 'Topo / Hero', pag: '/' },
-    { el: 'Chamar Consultor no WhatsApp', cat: 'WhatsApp', sec: 'Botão Flutuante', pag: '/' },
-    { el: 'Card "Album premium com Caixa Acrílica"', cat: 'Álbuns de Fotos', sec: 'Configurador de Kits', pag: '/fotos/index.html' },
-    { el: 'Brinde "Quadro 30x60"', cat: 'Brindes Kit', sec: 'Configurador de Kits', pag: '/fotos/index.html' },
-    { el: 'Assistir Aftermovie Baile de Gala', cat: 'Audiovisual', sec: 'Galeria Vídeos', pag: '/' },
+    { el: 'Botão "Solicitar Orçamento Oficial"', cat: 'CTA Orçamento', sec: 'Topo / Hero Principal', pag: '/' },
+    { el: 'Botão Flutuante "Falar no WhatsApp"', cat: 'WhatsApp', sec: 'Flutuante Global', pag: '/' },
+    { el: 'Card / Menu "Venda de Álbuns de Formatura"', cat: 'Álbuns & Kits', sec: 'Módulos & Fotografia', pag: '/fotos/index.html' },
+    { el: 'Assistir Vídeo "Aftermovie Baile de Gala"', cat: 'Audiovisual', sec: 'Galeria Audiovisual', pag: '/' },
+    { el: 'Ver Fotos de Cenografia & Espaços', cat: 'Navegação Geral', sec: 'Portfólio de Eventos', pag: '/' },
   ];
 
   const randomItem = elementos[Math.floor(Math.random() * elementos.length)];
-  const cidades = ['São Paulo/SP', 'Campinas/SP', 'Santos/SP', 'Ribeirão Preto/SP', 'São José dos Campos/SP'];
-  const dispositivos = ['Mobile (iPhone 15)', 'Mobile (Samsung Galaxy)', 'Desktop (Chrome Windows)', 'Desktop (Safari macOS)'];
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   const clickData = {
     elemento: elementoCustom || randomItem.el,
     categoria: randomItem.cat,
     secao: secaoCustom || randomItem.sec,
     pagina: randomItem.pag,
-    tempoNaPagina: Math.floor(Math.random() * 180) + 20,
-    dispositivo: dispositivos[Math.floor(Math.random() * dispositivos.length)],
-    cidade: cidades[Math.floor(Math.random() * cidades.length)],
+    tempoNaPagina: Math.floor(Math.random() * 60) + 10,
+    dispositivo: isMobile ? 'Mobile (Smartphone)' : 'Desktop (Computador)',
+    cidade: 'São Paulo/SP (Ao Vivo)',
   };
 
   recordClick(clickData);

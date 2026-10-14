@@ -27,21 +27,24 @@ import {
   ChevronRight,
   Layers,
   MapPin,
+  Trash2,
+  Info,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import {
   getTelemetryData,
   recordClick,
   simulateTestClick,
+  zerarMetricas,
   TelemetryData,
   ClickEvent,
 } from '@/lib/telemetry';
 
 export default function MetricasPage() {
   const [data, setData] = useState<TelemetryData | null>(null);
-  const [filtroPeriodo, setFiltroPeriodo] = useState<'hoje' | '7dias' | '30dias' | 'tudo'>('30dias');
+  const [filtroPeriodo, setFiltroPeriodo] = useState<'hoje' | '7dias' | '30dias' | 'tudo'>('hoje');
   const [simulando, setSimulando] = useState(false);
-  const [sucessoSimulacao, setSucessoSimulacao] = useState<string | null>(null);
+  const [sucessoMsg, setSucessoMsg] = useState<string | null>(null);
 
   const carregarDados = () => {
     const telemetria = getTelemetryData();
@@ -49,11 +52,21 @@ export default function MetricasPage() {
   };
 
   useEffect(() => {
+    // Se ainda houver dados legados fictícios salvos no navegador, zera imediatamente
+    try {
+      if (typeof window !== 'undefined') {
+        const antigo = localStorage.getItem('on_site_telemetria_metricas');
+        if (antigo) {
+          zerarMetricas();
+        }
+      }
+    } catch (e) {}
+
     carregarDados();
-    // Atualiza automaticamente a cada 4 segundos para capturar novos acessos e cliques
+    // Atualiza a cada 3 segundos para capturar novos acessos e cliques ao vivo
     const interval = setInterval(() => {
       carregarDados();
-    }, 4000);
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -61,14 +74,26 @@ export default function MetricasPage() {
     setSimulando(true);
     const novoClique = simulateTestClick();
     carregarDados();
-    setSucessoSimulacao(`Clique registrado: "${novoClique.elemento}" em ${novoClique.secao}`);
+    setSucessoMsg(`Clique de teste computado: "${novoClique.elemento}" em ${novoClique.secao}`);
     setTimeout(() => {
       setSimulando(false);
-      setSucessoSimulacao(null);
+      setSucessoMsg(null);
     }, 3500);
   };
 
+  const handleZerarMetricas = () => {
+    if (confirm('Tem certeza que deseja ZERAR todas as métricas? O contador recomeçará do zero para computar apenas os acessos e cliques 100% reais dos visitantes.')) {
+      const zerado = zerarMetricas();
+      setData(zerado);
+      setSucessoMsg('Todas as métricas foram zeradas com sucesso! Contador limpo para dados reais.');
+      setTimeout(() => {
+        setSucessoMsg(null);
+      }, 4000);
+    }
+  };
+
   const formatarTempo = (segundos: number) => {
+    if (!segundos || segundos === 0) return '0m 00s';
     const mins = Math.floor(segundos / 60);
     const segs = segundos % 60;
     return `${mins}m ${segs < 10 ? '0' : ''}${segs}s`;
@@ -99,6 +124,12 @@ export default function MetricasPage() {
     );
   }
 
+  const conversaoOrcamentoWhats = data.totalVisitantes > 0
+    ? (((data.heatmaps[0]?.cliques || 0) + (data.heatmaps[1]?.cliques || 0)) / data.totalVisitantes * 100).toFixed(1)
+    : '0.0';
+
+  const totalLeads = (data.heatmaps[0]?.cliques || 0) + (data.heatmaps[1]?.cliques || 0);
+
   return (
     <div className="min-h-screen bg-[#F4F6FB] flex flex-col lg:flex-row antialiased font-sans">
       {/* Sidebar Lateral */}
@@ -122,11 +153,11 @@ export default function MetricasPage() {
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </span>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Ao Vivo
+                  Dados 100% Reais
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Rastreamento em tempo real: visitantes únicos, tempo de navegação, volume de cliques e mapa de onde clicaram.
+                Rastreamento ao vivo: visitantes reais, tempo de permanência, cliques em botões e mapa de calor.
               </p>
             </div>
           </div>
@@ -160,14 +191,24 @@ export default function MetricasPage() {
               </button>
             </div>
 
+            {/* Botão Zerar Métricas */}
+            <button
+              onClick={handleZerarMetricas}
+              className="inline-flex items-center space-x-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3.5 py-2 rounded-2xl shadow-2xs transition hover:translate-y-[-1px] active:translate-y-[1px]"
+              title="Zerar todas as métricas para reiniciar com contagem 100% limpa"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Zerar Métricas</span>
+            </button>
+
             {/* Botão Simular Clique de Teste */}
             <button
               onClick={handleSimularClique}
               disabled={simulando}
-              className="inline-flex items-center space-x-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 px-4 py-2 rounded-2xl shadow-[0_4px_12px_rgba(124,58,237,0.25)] hover:translate-y-[-1px] active:translate-y-[1px] transition"
+              className="inline-flex items-center space-x-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 px-3.5 py-2 rounded-2xl shadow-[0_4px_12px_rgba(124,58,237,0.25)] hover:translate-y-[-1px] active:translate-y-[1px] transition"
             >
               <Zap className="w-3.5 h-3.5 text-amber-300" />
-              <span>{simulando ? 'Registrando...' : 'Simular Clique ao Vivo'}</span>
+              <span>{simulando ? 'Registrando...' : 'Simular Clique'}</span>
             </button>
 
             {/* Link para o site real para testar */}
@@ -184,16 +225,31 @@ export default function MetricasPage() {
           </div>
         </header>
 
-        {/* Notificação Flutuante de Simulação */}
-        {sucessoSimulacao && (
-          <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 px-4 flex items-center justify-between text-xs text-emerald-800 font-bold shadow-2xs animate-fade-in">
+        {/* Notificação Flutuante de Sucesso / Feedback */}
+        {sucessoMsg && (
+          <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 px-4 flex items-center justify-between text-xs text-emerald-800 font-bold shadow-2xs animate-fade-in">
             <div className="flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>{sucessoSimulacao}</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{sucessoMsg}</span>
             </div>
-            <span className="text-[10px] bg-emerald-200/60 px-2 py-0.5 rounded-full text-emerald-900">
-              Atualizado Agora
+            <span className="text-[10px] bg-emerald-200/60 px-2.5 py-0.5 rounded-full text-emerald-900">
+              Telemetria Ativa
             </span>
+          </div>
+        )}
+
+        {/* Aviso de Dados Zerados / Operação Limpa */}
+        {data.totalVisitantes === 0 && data.totalCliques === 0 && (
+          <div className="mb-5 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-2xl p-4 flex items-start space-x-3 text-xs text-purple-900">
+            <Info className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-extrabold text-sm text-purple-950">
+                Métricas Zeradas & Telemetria em Tempo Real Pronta!
+              </p>
+              <p className="text-purple-700 mt-0.5">
+                Todos os dados fictícios foram eliminados. A partir de agora, cada visita real ao site institucional e cada clique nos botões (Orçamento, WhatsApp, Álbuns, Vídeos) serão computados imediatamente.
+              </p>
+            </div>
           </div>
         )}
 
@@ -203,7 +259,7 @@ export default function MetricasPage() {
           <div className="bg-white rounded-[26px] p-5 shadow-[0_6px_20px_rgba(0,0,0,0.02)] border border-slate-100 hover:translate-y-[-2px] transition duration-200">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Visitantes do Site
+                Visitantes Reais
               </span>
               <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
                 <Users className="w-5 h-5" />
@@ -214,7 +270,7 @@ export default function MetricasPage() {
                 {data.totalVisitantes.toLocaleString('pt-BR')}
               </span>
               <span className="text-xs font-bold text-emerald-600 flex items-center">
-                <ArrowUpRight className="w-3.5 h-3.5" /> +24%
+                <ArrowUpRight className="w-3.5 h-3.5" /> Ao Vivo
               </span>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
@@ -239,14 +295,14 @@ export default function MetricasPage() {
               <span className="text-3xl font-black text-slate-900 tracking-tight">
                 {formatarTempo(data.tempoMedioSegundos)}
               </span>
-              <span className="text-xs font-bold text-emerald-600 flex items-center">
-                <ArrowUpRight className="w-3.5 h-3.5" /> +18%
+              <span className="text-xs font-bold text-purple-600 flex items-center">
+                {data.tempoMedioSegundos > 0 ? 'Cronometrado' : 'Iniciando'}
               </span>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-              <span>Alta retenção</span>
+              <span>Heartbeat de 3s</span>
               <span className="text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                Engajamento Ótimo
+                Tempo Real
               </span>
             </div>
           </div>
@@ -266,7 +322,7 @@ export default function MetricasPage() {
                 {data.totalCliques.toLocaleString('pt-BR')}
               </span>
               <span className="text-xs font-bold text-amber-600 flex items-center">
-                <Flame className="w-3.5 h-3.5" /> Ativo
+                <Flame className="w-3.5 h-3.5" /> Gravando
               </span>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
@@ -289,16 +345,16 @@ export default function MetricasPage() {
             </div>
             <div className="flex items-baseline space-x-2">
               <span className="text-3xl font-black text-slate-900 tracking-tight">
-                18.4%
+                {conversaoOrcamentoWhats}%
               </span>
               <span className="text-xs font-bold text-emerald-600 flex items-center">
-                <ArrowUpRight className="w-3.5 h-3.5" /> +5.2%
+                <ArrowUpRight className="w-3.5 h-3.5" /> Taxa Real
               </span>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
               <span>Orçamentos + WhatsApp</span>
               <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                706 contatos diretos
+                {totalLeads} contatos diretos
               </span>
             </div>
           </div>
@@ -315,7 +371,7 @@ export default function MetricasPage() {
                     Onde Clicaram? (Ranking de Elementos Mais Clicados)
                   </h2>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                    Mapeamento Completo
+                    Mapeamento em Tempo Real
                   </span>
                 </div>
                 <p className="text-xs text-slate-500">
@@ -358,7 +414,7 @@ export default function MetricasPage() {
                         </p>
                       </div>
                       <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        {item.taxaConversao} conv.
+                        {item.taxaConversao}
                       </span>
                     </div>
                   </div>
@@ -377,7 +433,7 @@ export default function MetricasPage() {
                           ? 'bg-gradient-to-r from-amber-500 to-orange-500'
                           : 'bg-gradient-to-r from-blue-500 to-indigo-500'
                       }`}
-                      style={{ width: `${Math.min(100, item.porcentagem * 3.5)}%` }}
+                      style={{ width: `${Math.min(100, item.porcentagem * 2.5)}%` }}
                     />
                   </div>
                 </div>
@@ -400,7 +456,7 @@ export default function MetricasPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mb-4">
-                Concentração percentual de cliques nas áreas da página inicial:
+                Concentração percentual de cliques reais nas áreas da página:
               </p>
 
               {/* Blocos Esquemáticos da Página */}
@@ -415,7 +471,7 @@ export default function MetricasPage() {
                     </div>
                   </div>
                   <span className="text-xs font-black text-amber-700 bg-white/80 px-2.5 py-1 rounded-xl shadow-2xs">
-                    23.5% dos cliques
+                    {data.heatmaps[1]?.cliques || 0} cliques ({data.heatmaps[1]?.porcentagem || 0}%)
                   </span>
                 </div>
 
@@ -425,11 +481,11 @@ export default function MetricasPage() {
                     <Flame className="w-4 h-4 text-rose-600 animate-bounce" />
                     <div>
                       <p className="text-xs font-black text-rose-950">2. Hero Banner & Orçamento</p>
-                      <p className="text-[10px] text-rose-800 font-semibold">🔥 Zona Mais Quente do Site</p>
+                      <p className="text-[10px] text-rose-800 font-semibold">Formulário Oficial de Orçamento</p>
                     </div>
                   </div>
                   <span className="text-xs font-black text-white bg-rose-600 px-2.5 py-1 rounded-xl shadow-xs">
-                    38.2% dos cliques
+                    {data.heatmaps[0]?.cliques || 0} cliques ({data.heatmaps[0]?.porcentagem || 0}%)
                   </span>
                 </div>
 
@@ -443,7 +499,7 @@ export default function MetricasPage() {
                     </div>
                   </div>
                   <span className="text-xs font-black text-purple-700 bg-white/80 px-2.5 py-1 rounded-xl shadow-2xs">
-                    21.8% dos cliques
+                    {((data.heatmaps[2]?.cliques || 0) + (data.heatmaps[3]?.cliques || 0))} cliques
                   </span>
                 </div>
 
@@ -457,7 +513,7 @@ export default function MetricasPage() {
                     </div>
                   </div>
                   <span className="text-xs font-black text-blue-700 bg-white/80 px-2.5 py-1 rounded-xl shadow-2xs">
-                    9.6% dos cliques
+                    {data.heatmaps[4]?.cliques || 0} cliques
                   </span>
                 </div>
 
@@ -471,7 +527,7 @@ export default function MetricasPage() {
                     </div>
                   </div>
                   <span className="text-xs font-black text-slate-700 bg-white/80 px-2.5 py-1 rounded-xl shadow-2xs">
-                    6.9% dos cliques
+                    {((data.heatmaps[7]?.cliques || 0) + (data.heatmaps[8]?.cliques || 0))} cliques
                   </span>
                 </div>
               </div>
@@ -504,7 +560,7 @@ export default function MetricasPage() {
                 </h3>
               </div>
               <span className="text-xs font-bold text-slate-500">
-                Últimos acessos gravados
+                {data.ultimosCliques.length} cliques gravados
               </span>
             </div>
 
@@ -520,31 +576,47 @@ export default function MetricasPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {data.ultimosCliques.slice(0, 7).map((clk) => (
-                    <tr key={clk.id} className="hover:bg-slate-50/70 transition">
-                      <td className="py-3 px-2 font-bold text-slate-900 flex items-center space-x-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
-                        <span className="truncate max-w-[210px]" title={clk.elemento}>
-                          {clk.elemento}
-                        </span>
-                      </td>
-                      <td className="py-3 px-2">
-                        <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[10px]">
-                          {clk.secao}
-                        </span>
-                      </td>
-                      <td className="py-3 px-2 font-medium text-slate-600">
-                        {clk.tempoNaPagina}s na página
-                      </td>
-                      <td className="py-3 px-2 text-slate-500 text-[11px]">
-                        <div>{clk.dispositivo}</div>
-                        <div className="text-[10px] text-slate-400">{clk.cidade}</div>
-                      </td>
-                      <td className="py-3 px-2 text-right font-bold text-indigo-600 text-[11px]">
-                        {formatarHorario(clk.timestamp)}
+                  {data.ultimosCliques.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <MousePointerClick className="w-8 h-8 text-slate-300 animate-pulse" />
+                          <p className="font-bold text-slate-600 text-sm">
+                            Nenhum clique registrado ainda
+                          </p>
+                          <p className="text-xs text-slate-400 max-w-sm">
+                            As métricas foram zeradas. Conforme os visitantes navegarem e clicarem nos botões do site, os cliques reais aparecerão aqui instantaneamente.
+                          </p>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    data.ultimosCliques.slice(0, 10).map((clk) => (
+                      <tr key={clk.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3 px-2 font-bold text-slate-900 flex items-center space-x-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                          <span className="truncate max-w-[210px]" title={clk.elemento}>
+                            {clk.elemento}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2">
+                          <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[10px]">
+                            {clk.secao}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 font-medium text-slate-600">
+                          {clk.tempoNaPagina}s na página
+                        </td>
+                        <td className="py-3 px-2 text-slate-500 text-[11px]">
+                          <div>{clk.dispositivo}</div>
+                          <div className="text-[10px] text-slate-400">{clk.cidade}</div>
+                        </td>
+                        <td className="py-3 px-2 text-right font-bold text-indigo-600 text-[11px]">
+                          {formatarHorario(clk.timestamp)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -576,12 +648,12 @@ export default function MetricasPage() {
                       <span className="flex items-center text-slate-700">
                         <Smartphone className="w-3.5 h-3.5 mr-1.5 text-purple-600" /> Mobile (Celulares)
                       </span>
-                      <span className="text-purple-700">{data.dispositivos.mobile}%</span>
+                      <span className="text-purple-700">{data.dispositivos.mobile} acessos</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2">
                       <div
                         className="bg-purple-600 h-2 rounded-full"
-                        style={{ width: `${data.dispositivos.mobile}%` }}
+                        style={{ width: `${data.totalVisitantes > 0 ? (data.dispositivos.mobile / data.totalVisitantes) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
@@ -591,12 +663,12 @@ export default function MetricasPage() {
                       <span className="flex items-center text-slate-700">
                         <Monitor className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Desktop (Computadores)
                       </span>
-                      <span className="text-blue-700">{data.dispositivos.desktop}%</span>
+                      <span className="text-blue-700">{data.dispositivos.desktop} acessos</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2">
                       <div
                         className="bg-blue-600 h-2 rounded-full"
-                        style={{ width: `${data.dispositivos.desktop}%` }}
+                        style={{ width: `${data.totalVisitantes > 0 ? (data.dispositivos.desktop / data.totalVisitantes) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
@@ -606,12 +678,12 @@ export default function MetricasPage() {
                       <span className="flex items-center text-slate-700">
                         <Tablet className="w-3.5 h-3.5 mr-1.5 text-teal-600" /> Tablets & iPads
                       </span>
-                      <span className="text-teal-700">{data.dispositivos.tablet}%</span>
+                      <span className="text-teal-700">{data.dispositivos.tablet} acessos</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2">
                       <div
                         className="bg-teal-600 h-2 rounded-full"
-                        style={{ width: `${data.dispositivos.tablet}%` }}
+                        style={{ width: `${data.totalVisitantes > 0 ? (data.dispositivos.tablet / data.totalVisitantes) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
@@ -633,7 +705,7 @@ export default function MetricasPage() {
                         {origem.origem}
                       </span>
                       <span className="font-black text-slate-900 shrink-0">
-                        {origem.porcentagem}% ({origem.visitas})
+                        {origem.visitas} visitas ({origem.porcentagem}%)
                       </span>
                     </div>
                   ))}

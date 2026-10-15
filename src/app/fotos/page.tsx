@@ -39,6 +39,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import {
+  getOpcoesTurmasFaculdades,
+  sincronizarInstituicoesServidor,
+  OpcaoTurmaFaculdade,
+} from '@/lib/instituicoes';
 
 export type ModeloAlbumTipo = 'Album premium' | 'Album Preto' | 'Album Slim' | 'Album Colégio';
 
@@ -168,8 +173,10 @@ export default function VendasAlbunsPage() {
   const [formNome, setFormNome] = useState('');
   const [formCpf, setFormCpf] = useState('');
   const [formTelefone, setFormTelefone] = useState('');
-  const [formEmail, setFormEmail] = useState('');
   const [formTurma, setFormTurma] = useState('Direito Mackenzie 2027.1');
+  const [opcoesTurmas, setOpcoesTurmas] = useState<OpcaoTurmaFaculdade[]>([]);
+  const [isOutraTurma, setIsOutraTurma] = useState(false);
+  const [turmaManual, setTurmaManual] = useState('');
 
   // Seleção de Modelo de Álbum
   const [formModeloAlbum, setFormModeloAlbum] = useState<ModeloAlbumTipo>('Album premium');
@@ -248,6 +255,34 @@ export default function VendasAlbunsPage() {
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  // Carregar turmas e instituições cadastradas
+  useEffect(() => {
+    const listaInicial = getOpcoesTurmasFaculdades();
+    setOpcoesTurmas(listaInicial);
+    if (listaInicial.length > 0 && !formTurma) {
+      setFormTurma(listaInicial[0].valor);
+    }
+    sincronizarInstituicoesServidor()
+      .then(() => {
+        const atualizadas = getOpcoesTurmasFaculdades();
+        setOpcoesTurmas(atualizadas);
+        if (atualizadas.length > 0 && !formTurma) {
+          setFormTurma(atualizadas[0].valor);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const abrirModalNovaVenda = () => {
+    const atualizadas = getOpcoesTurmasFaculdades();
+    setOpcoesTurmas(atualizadas);
+    if (atualizadas.length > 0 && !formTurma) {
+      setFormTurma(atualizadas[0].valor);
+    }
+    setFormAbaAtiva('ALBUM');
+    setModalNovaVendaAberto(true);
   };
 
   const copiarTexto = (texto: string, idRef: string) => {
@@ -482,10 +517,7 @@ export default function VendasAlbunsPage() {
             )}
 
             <button
-              onClick={() => {
-                setFormAbaAtiva('ALBUM');
-                setModalNovaVendaAberto(true);
-              }}
+              onClick={abrirModalNovaVenda}
               className="inline-flex items-center space-x-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-[#7C3AED] via-[#9333EA] to-[#C026D3] text-white text-xs font-extrabold shadow-[0_4px_0_0_#581C87,0_8px_16px_rgba(147,51,234,0.3)] hover:brightness-110 hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -679,10 +711,7 @@ export default function VendasAlbunsPage() {
                           Todos os dados de teste foram limpos. Clique no botão abaixo para registrar a primeira venda de álbum, configurar o kit de brindes e emitir boletos ou cartão.
                         </p>
                         <button
-                          onClick={() => {
-                            setFormAbaAtiva('ALBUM');
-                            setModalNovaVendaAberto(true);
-                          }}
+                          onClick={abrirModalNovaVenda}
                           className="mt-2 inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md hover:translate-y-[-1px] active:translate-y-[1px] transition"
                         >
                           <Plus className="w-4 h-4" />
@@ -991,19 +1020,86 @@ export default function VendasAlbunsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Turma / Faculdade *</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700">Turma / Faculdade *</label>
+                        <Link
+                          href="/instituicoes"
+                          className="text-[11px] font-bold text-[#7C3AED] hover:underline inline-flex items-center"
+                          title="Cadastrar novas instituições ou cursos"
+                        >
+                          + Nova Faculdade / Curso
+                        </Link>
+                      </div>
                       <select
-                        value={formTurma}
-                        onChange={(e) => setFormTurma(e.target.value)}
+                        value={isOutraTurma ? '__OUTRA__' : formTurma}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__OUTRA__') {
+                            setIsOutraTurma(true);
+                            setFormTurma(turmaManual || '');
+                          } else {
+                            setIsOutraTurma(false);
+                            setFormTurma(val);
+                          }
+                        }}
                         className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-3 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
                       >
-                        <option value="Direito Mackenzie 2027.1">Direito Mackenzie 2027.1</option>
-                        <option value="Medicina USP 2026.2">Medicina USP 2026.2</option>
-                        <option value="Administração FGV 2026.2">Administração FGV 2026.2</option>
-                        <option value="Engenharia Civil Poli-USP 2027.1">Engenharia Civil Poli-USP 2027.1</option>
-                        <option value="Enfermagem Albert Einstein 2026.2">Enfermagem Albert Einstein 2026.2</option>
-                        <option value="Odontologia UNIP 2027.1">Odontologia UNIP 2027.1</option>
+                        {opcoesTurmas.some((o) => o.categoria === 'CURSO_TURMA') && (
+                          <optgroup label="🎓 Cursos & Turmas Cadastradas">
+                            {opcoesTurmas
+                              .filter((o) => o.categoria === 'CURSO_TURMA')
+                              .map((o) => (
+                                <option key={o.valor} value={o.valor}>
+                                  {o.label}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+
+                        {opcoesTurmas.some((o) => o.categoria === 'INSTITUICAO') && (
+                          <optgroup label="🏛️ Instituições de Ensino Cadastradas">
+                            {opcoesTurmas
+                              .filter((o) => o.categoria === 'INSTITUICAO')
+                              .map((o) => (
+                                <option key={o.valor} value={o.valor}>
+                                  {o.label}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+
+                        {opcoesTurmas.some((o) => o.categoria === 'LEGADO') && (
+                          <optgroup label="📌 Turmas de Referência">
+                            {opcoesTurmas
+                              .filter((o) => o.categoria === 'LEGADO')
+                              .map((o) => (
+                                <option key={o.valor} value={o.valor}>
+                                  {o.label}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+
+                        <optgroup label="✍️ Digitar Manualmente">
+                          <option value="__OUTRA__">+ Digitar outra faculdade / turma...</option>
+                        </optgroup>
                       </select>
+
+                      {isOutraTurma && (
+                        <div className="mt-2">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Digite o nome da Faculdade / Turma (Ex: Medicina USP 2027.2)..."
+                            value={turmaManual}
+                            onChange={(e) => {
+                              setTurmaManual(e.target.value);
+                              setFormTurma(e.target.value);
+                            }}
+                            className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border-2 border-[#7C3AED] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/30 font-medium"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
 

@@ -378,45 +378,68 @@ export function getInstituicoes(): Instituicao[] {
       return INSTITUICOES_INICIAIS;
     }
     const parsed = JSON.parse(salvo);
-    return Array.isArray(parsed) ? parsed : INSTITUICOES_INICIAIS;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INSTITUICOES_INICIAIS;
   } catch (e) {
     return INSTITUICOES_INICIAIS;
   }
 }
 
-export function salvarInstituicoes(lista: Instituicao[]): void {
-  if (typeof window === 'undefined') return;
+export async function salvarInstituicoes(lista: Instituicao[]): Promise<boolean> {
+  if (typeof window === 'undefined') return true;
   try {
     localStorage.setItem(STORAGE_KEY_INSTITUICOES, JSON.stringify(lista));
+    const res = await fetch('/instituicoes.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        instituicoes: lista,
+        cursos: getCursos(),
+      }),
+    });
+    return res.ok;
   } catch (e) {
-    console.error('Erro ao salvar instituições:', e);
+    console.error('Erro ao salvar instituições no servidor:', e);
   }
+  return false;
 }
 
-export function adicionarInstituicao(
+export async function adicionarInstituicao(
   dados: Omit<Instituicao, 'id' | 'criadoEm'>
-): Instituicao {
+): Promise<Instituicao> {
   const lista = getInstituicoes();
   const nova: Instituicao = {
     ...dados,
     id: 'inst-' + Date.now(),
     criadoEm: new Date().toISOString(),
   };
-  lista.unshift(nova);
-  salvarInstituicoes(lista);
+  const novaLista = [nova, ...lista];
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_INSTITUICOES, JSON.stringify(novaLista));
+    try {
+      await fetch('/instituicoes.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_instituicao',
+          instituicao: nova,
+        }),
+      });
+    } catch (e) {}
+  }
   return nova;
 }
 
-export function atualizarInstituicao(
+export async function atualizarInstituicao(
   id: string,
   updates: Partial<Instituicao>
-): Instituicao | null {
+): Promise<Instituicao | null> {
   const lista = getInstituicoes();
   const index = lista.findIndex((i) => i.id === id);
   if (index === -1) return null;
 
   lista[index] = { ...lista[index], ...updates };
-  salvarInstituicoes(lista);
+  await salvarInstituicoes(lista);
 
   // Atualiza também o nome/sigla nos cursos vinculados
   if (updates.nome || updates.sigla) {
@@ -430,23 +453,34 @@ export function atualizarInstituicao(
       }
     });
     if (modificado) {
-      salvarCursos(cursos);
+      await salvarCursos(cursos);
     }
   }
 
   return lista[index];
 }
 
-export function removerInstituicao(id: string): boolean {
+export async function removerInstituicao(id: string): Promise<boolean> {
   const lista = getInstituicoes();
   const filtrada = lista.filter((i) => i.id !== id);
   if (filtrada.length === lista.length) return false;
 
-  salvarInstituicoes(filtrada);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_INSTITUICOES, JSON.stringify(filtrada));
+    const cursos = getCursos().filter((c) => c.instituicaoId !== id);
+    localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(cursos));
 
-  // Remove também cursos vinculados a essa instituição
-  const cursos = getCursos().filter((c) => c.instituicaoId !== id);
-  salvarCursos(cursos);
+    try {
+      await fetch('/instituicoes.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_instituicao',
+          id,
+        }),
+      });
+    } catch (e) {}
+  }
 
   return true;
 }
@@ -462,57 +496,202 @@ export function getCursos(): Curso[] {
       return CURSOS_INICIAIS;
     }
     const parsed = JSON.parse(salvo);
-    return Array.isArray(parsed) ? parsed : CURSOS_INICIAIS;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : CURSOS_INICIAIS;
   } catch (e) {
     return CURSOS_INICIAIS;
   }
 }
 
-export function salvarCursos(lista: Curso[]): void {
-  if (typeof window === 'undefined') return;
+export async function salvarCursos(lista: Curso[]): Promise<boolean> {
+  if (typeof window === 'undefined') return true;
   try {
     localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(lista));
+    const res = await fetch('/instituicoes.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        instituicoes: getInstituicoes(),
+        cursos: lista,
+      }),
+    });
+    return res.ok;
   } catch (e) {
     console.error('Erro ao salvar cursos:', e);
   }
+  return false;
 }
 
-export function adicionarCurso(
+export async function adicionarCurso(
   dados: Omit<Curso, 'id' | 'criadoEm'>
-): Curso {
+): Promise<Curso> {
   const lista = getCursos();
   const novo: Curso = {
     ...dados,
     id: 'cur-' + Date.now(),
     criadoEm: new Date().toISOString(),
   };
-  lista.unshift(novo);
-  salvarCursos(lista);
+  const novaLista = [novo, ...lista];
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(novaLista));
+    try {
+      await fetch('/instituicoes.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_curso',
+          curso: novo,
+        }),
+      });
+    } catch (e) {}
+  }
   return novo;
 }
 
-export function atualizarCurso(
+export async function atualizarCurso(
   id: string,
   updates: Partial<Curso>
-): Curso | null {
+): Promise<Curso | null> {
   const lista = getCursos();
   const index = lista.findIndex((c) => c.id === id);
   if (index === -1) return null;
 
   lista[index] = { ...lista[index], ...updates };
-  salvarCursos(lista);
+  await salvarCursos(lista);
   return lista[index];
 }
 
-export function removerCurso(id: string): boolean {
+export async function removerCurso(id: string): Promise<boolean> {
   const lista = getCursos();
   const filtrada = lista.filter((c) => c.id !== id);
   if (filtrada.length === lista.length) return false;
 
-  salvarCursos(filtrada);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(filtrada));
+    try {
+      await fetch('/instituicoes.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_curso',
+          id,
+        }),
+      });
+    } catch (e) {}
+  }
+
   return true;
 }
 
 export function getCursosPorInstituicao(instituicaoId: string): Curso[] {
   return getCursos().filter((c) => c.instituicaoId === instituicaoId);
+}
+
+// Sincronização centralizada com o servidor Hostinger
+export async function sincronizarInstituicoesServidor(): Promise<{ instituicoes: Instituicao[]; cursos: Curso[] }> {
+  if (typeof window === 'undefined') {
+    return { instituicoes: INSTITUICOES_INICIAIS, cursos: CURSOS_INICIAIS };
+  }
+
+  try {
+    const res = await fetch('/instituicoes.php?t=' + Date.now(), { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.instituicoes) && data.instituicoes.length > 0) {
+        localStorage.setItem(STORAGE_KEY_INSTITUICOES, JSON.stringify(data.instituicoes));
+      }
+      if (data && Array.isArray(data.cursos) && data.cursos.length > 0) {
+        localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(data.cursos));
+      }
+      return {
+        instituicoes: data.instituicoes || getInstituicoes(),
+        cursos: data.cursos || getCursos(),
+      };
+    }
+  } catch (e) {
+    console.warn('Servidor offline para instituições, mantendo dados locais:', e);
+  }
+
+  return {
+    instituicoes: getInstituicoes(),
+    cursos: getCursos(),
+  };
+}
+
+// Helper para preenchimento dinâmico de Selects de Turmas e Instituições
+export interface OpcaoTurmaFaculdade {
+  label: string;
+  valor: string;
+  categoria: 'CURSO_TURMA' | 'INSTITUICAO' | 'LEGADO';
+}
+
+export function getOpcoesTurmasFaculdades(): OpcaoTurmaFaculdade[] {
+  const cursos = getCursos();
+  const insts = getInstituicoes();
+  const opcoes: OpcaoTurmaFaculdade[] = [];
+  const jaAdicionados = new Set<string>();
+
+  // 1. Cursos e Turmas Ativas cadastradas
+  cursos.forEach((c) => {
+    const siglaOuNome = c.instituicaoSigla || c.instituicaoNome;
+    if (Array.isArray(c.turmasAtivas) && c.turmasAtivas.length > 0) {
+      c.turmasAtivas.forEach((turma) => {
+        const val = `${c.nome} ${siglaOuNome} ${turma}`.trim();
+        if (!jaAdicionados.has(val.toLowerCase())) {
+          jaAdicionados.add(val.toLowerCase());
+          opcoes.push({
+            label: `${c.nome} - ${siglaOuNome} (${turma})`,
+            valor: val,
+            categoria: 'CURSO_TURMA',
+          });
+        }
+      });
+    } else {
+      const val = `${c.nome} ${siglaOuNome}`.trim();
+      if (!jaAdicionados.has(val.toLowerCase())) {
+        jaAdicionados.add(val.toLowerCase());
+        opcoes.push({
+          label: `${c.nome} - ${siglaOuNome}`,
+          valor: val,
+          categoria: 'CURSO_TURMA',
+        });
+      }
+    }
+  });
+
+  // 2. Instituições de Ensino cadastradas diretamente
+  insts.forEach((inst) => {
+    const val = inst.sigla ? `${inst.nome} (${inst.sigla})` : inst.nome;
+    if (!jaAdicionados.has(val.toLowerCase())) {
+      jaAdicionados.add(val.toLowerCase());
+      opcoes.push({
+        label: `${inst.nome} ${inst.sigla ? `[${inst.sigla}]` : ''} - ${inst.cidade}/${inst.uf}`,
+        valor: val,
+        categoria: 'INSTITUICAO',
+      });
+    }
+  });
+
+  // 3. Opções Legadas para garantir compatibilidade com vendas antigas
+  const legados = [
+    'Direito Mackenzie 2027.1',
+    'Medicina USP 2026.2',
+    'Administração FGV 2026.2',
+    'Engenharia Civil Poli-USP 2027.1',
+    'Enfermagem Albert Einstein 2026.2',
+    'Odontologia UNIP 2027.1',
+  ];
+
+  legados.forEach((leg) => {
+    if (!jaAdicionados.has(leg.toLowerCase())) {
+      jaAdicionados.add(leg.toLowerCase());
+      opcoes.push({
+        label: leg,
+        valor: leg,
+        categoria: 'LEGADO',
+      });
+    }
+  });
+
+  return opcoes;
 }

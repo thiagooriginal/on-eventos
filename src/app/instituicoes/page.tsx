@@ -49,6 +49,7 @@ import {
   adicionarCurso,
   atualizarCurso,
   removerCurso,
+  sincronizarInstituicoesServidor,
 } from '@/lib/instituicoes';
 
 export default function InstituicoesPage() {
@@ -94,8 +95,17 @@ export default function InstituicoesPage() {
 
   // Toast / Mensagens de feedback
   const [feedback, setFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
-  const carregarDados = () => {
+  const carregarDados = async () => {
+    try {
+      const servidor = await sincronizarInstituicoesServidor();
+      if (servidor) {
+        setInstituicoes(servidor.instituicoes);
+        setCursos(servidor.cursos);
+        return;
+      }
+    } catch (e) {}
     setInstituicoes(getInstituicoes());
     setCursos(getCursos());
   };
@@ -144,13 +154,14 @@ export default function InstituicoesPage() {
     setModalInstAberto(true);
   };
 
-  const handleSalvarInst = (e: React.FormEvent) => {
+  const handleSalvarInst = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formInstNome.trim()) {
       exibirFeedback('Preencha o nome da instituição.', 'erro');
       return;
     }
 
+    setSalvando(true);
     const cores = [
       'from-purple-600 to-indigo-600',
       'from-blue-600 to-cyan-600',
@@ -160,55 +171,62 @@ export default function InstituicoesPage() {
       'from-indigo-600 to-violet-600',
     ];
 
-    if (instEditando) {
-      atualizarInstituicao(instEditando.id, {
-        nome: formInstNome.trim(),
-        sigla: formInstSigla.trim().toUpperCase() || formInstNome.slice(0, 4).toUpperCase(),
-        tipo: formInstTipo,
-        campus: formInstCampus.trim() || 'Campus Central',
-        cidade: formInstCidade.trim(),
-        uf: formInstUf.trim().toUpperCase(),
-        endereco: formInstEndereco.trim(),
-        contatoResponsavel: formInstResponsavel.trim(),
-        telefone: formInstTelefone.trim(),
-        whatsapp: formInstWhatsapp.trim(),
-        email: formInstEmail.trim(),
-        status: formInstStatus,
-      });
-      exibirFeedback(`Instituição "${formInstNome}" atualizada com sucesso!`);
-    } else {
-      adicionarInstituicao({
-        nome: formInstNome.trim(),
-        sigla: formInstSigla.trim().toUpperCase() || formInstNome.slice(0, 4).toUpperCase(),
-        tipo: formInstTipo,
-        campus: formInstCampus.trim() || 'Campus Principal',
-        cidade: formInstCidade.trim(),
-        uf: formInstUf.trim().toUpperCase(),
-        endereco: formInstEndereco.trim(),
-        contatoResponsavel: formInstResponsavel.trim(),
-        telefone: formInstTelefone.trim(),
-        whatsapp: formInstWhatsapp.trim(),
-        email: formInstEmail.trim(),
-        status: formInstStatus,
-        cor: cores[Math.floor(Math.random() * cores.length)],
-      });
-      exibirFeedback(`Instituição "${formInstNome}" cadastrada com sucesso!`);
-    }
+    try {
+      if (instEditando) {
+        await atualizarInstituicao(instEditando.id, {
+          nome: formInstNome.trim(),
+          sigla: formInstSigla.trim().toUpperCase() || formInstNome.slice(0, 4).toUpperCase(),
+          tipo: formInstTipo,
+          campus: formInstCampus.trim() || 'Campus Central',
+          cidade: formInstCidade.trim(),
+          uf: formInstUf.trim().toUpperCase(),
+          endereco: formInstEndereco.trim(),
+          contatoResponsavel: formInstResponsavel.trim(),
+          telefone: formInstTelefone.trim(),
+          whatsapp: formInstWhatsapp.trim(),
+          email: formInstEmail.trim(),
+          status: formInstStatus,
+        });
+        exibirFeedback(`Instituição "${formInstNome}" atualizada com sucesso!`);
+      } else {
+        await adicionarInstituicao({
+          nome: formInstNome.trim(),
+          sigla: formInstSigla.trim().toUpperCase() || formInstNome.slice(0, 4).toUpperCase(),
+          tipo: formInstTipo,
+          campus: formInstCampus.trim() || 'Campus Principal',
+          cidade: formInstCidade.trim(),
+          uf: formInstUf.trim().toUpperCase(),
+          endereco: formInstEndereco.trim(),
+          contatoResponsavel: formInstResponsavel.trim(),
+          telefone: formInstTelefone.trim(),
+          whatsapp: formInstWhatsapp.trim(),
+          email: formInstEmail.trim(),
+          status: formInstStatus,
+          cor: cores[Math.floor(Math.random() * cores.length)],
+        });
+        exibirFeedback(`Instituição "${formInstNome}" cadastrada com sucesso!`);
+      }
 
-    setModalInstAberto(false);
-    carregarDados();
+      setModalInstAberto(false);
+      await carregarDados();
+    } catch (err: any) {
+      exibirFeedback('Erro ao salvar instituição.', 'erro');
+    } finally {
+      setSalvando(false);
+    }
   };
 
-  const handleExcluirInst = (inst: Instituicao) => {
+  const handleExcluirInst = async (inst: Instituicao) => {
     const cursosVinculados = cursos.filter((c) => c.instituicaoId === inst.id);
     const aviso = cursosVinculados.length > 0
       ? `Atenção: Existem ${cursosVinculados.length} curso(s) vinculados a esta instituição. Ao excluir a instituição, esses cursos também serão removidos. Deseja continuar?`
       : `Deseja realmente remover a instituição "${inst.nome}"?`;
 
     if (confirm(aviso)) {
-      removerInstituicao(inst.id);
+      setInstituicoes((prev) => prev.filter((i) => i.id !== inst.id));
+      await removerInstituicao(inst.id);
       exibirFeedback(`Instituição "${inst.nome}" removida.`, 'sucesso');
-      carregarDados();
+      await carregarDados();
     }
   };
 
@@ -243,7 +261,7 @@ export default function InstituicoesPage() {
     setModalCursoAberto(true);
   };
 
-  const handleSalvarCurso = (e: React.FormEvent) => {
+  const handleSalvarCurso = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formCursoNome.trim()) {
       exibirFeedback('Preencha o nome do curso.', 'erro');
@@ -256,54 +274,62 @@ export default function InstituicoesPage() {
       return;
     }
 
+    setSalvando(true);
     const turmasArray = formCursoTurmas
       .split(/[,;\/]+/)
       .map((t) => t.trim())
       .filter(Boolean);
 
-    if (cursoEditando) {
-      atualizarCurso(cursoEditando.id, {
-        instituicaoId: instSelecionada.id,
-        instituicaoNome: instSelecionada.nome,
-        instituicaoSigla: instSelecionada.sigla,
-        nome: formCursoNome.trim(),
-        grau: formCursoGrau,
-        area: formCursoArea,
-        periodo: formCursoPeriodo,
-        turmasAtivas: turmasArray.length > 0 ? turmasArray : ['2026.2'],
-        estimativaAlunos: Number(formCursoAlunos) || 0,
-        coordenador: formCursoCoordenador.trim(),
-        contato: formCursoContato.trim(),
-        status: formCursoStatus,
-      });
-      exibirFeedback(`Curso "${formCursoNome}" atualizado com sucesso!`);
-    } else {
-      adicionarCurso({
-        instituicaoId: instSelecionada.id,
-        instituicaoNome: instSelecionada.nome,
-        instituicaoSigla: instSelecionada.sigla,
-        nome: formCursoNome.trim(),
-        grau: formCursoGrau,
-        area: formCursoArea,
-        periodo: formCursoPeriodo,
-        turmasAtivas: turmasArray.length > 0 ? turmasArray : ['2026.2'],
-        estimativaAlunos: Number(formCursoAlunos) || 0,
-        coordenador: formCursoCoordenador.trim(),
-        contato: formCursoContato.trim(),
-        status: formCursoStatus,
-      });
-      exibirFeedback(`Curso "${formCursoNome}" cadastrado para ${instSelecionada.sigla}!`);
-    }
+    try {
+      if (cursoEditando) {
+        await atualizarCurso(cursoEditando.id, {
+          instituicaoId: instSelecionada.id,
+          instituicaoNome: instSelecionada.nome,
+          instituicaoSigla: instSelecionada.sigla,
+          nome: formCursoNome.trim(),
+          grau: formCursoGrau,
+          area: formCursoArea,
+          periodo: formCursoPeriodo,
+          turmasAtivas: turmasArray.length > 0 ? turmasArray : ['2026.2'],
+          estimativaAlunos: Number(formCursoAlunos) || 0,
+          coordenador: formCursoCoordenador.trim(),
+          contato: formCursoContato.trim(),
+          status: formCursoStatus,
+        });
+        exibirFeedback(`Curso "${formCursoNome}" atualizado com sucesso!`);
+      } else {
+        await adicionarCurso({
+          instituicaoId: instSelecionada.id,
+          instituicaoNome: instSelecionada.nome,
+          instituicaoSigla: instSelecionada.sigla,
+          nome: formCursoNome.trim(),
+          grau: formCursoGrau,
+          area: formCursoArea,
+          periodo: formCursoPeriodo,
+          turmasAtivas: turmasArray.length > 0 ? turmasArray : ['2026.2'],
+          estimativaAlunos: Number(formCursoAlunos) || 0,
+          coordenador: formCursoCoordenador.trim(),
+          contato: formCursoContato.trim(),
+          status: formCursoStatus,
+        });
+        exibirFeedback(`Curso "${formCursoNome}" cadastrado para ${instSelecionada.sigla}!`);
+      }
 
-    setModalCursoAberto(false);
-    carregarDados();
+      setModalCursoAberto(false);
+      await carregarDados();
+    } catch (err: any) {
+      exibirFeedback('Erro ao salvar curso.', 'erro');
+    } finally {
+      setSalvando(false);
+    }
   };
 
-  const handleExcluirCurso = (curso: Curso) => {
+  const handleExcluirCurso = async (curso: Curso) => {
     if (confirm(`Deseja realmente remover o curso "${curso.nome}" (${curso.instituicaoSigla})?`)) {
-      removerCurso(curso.id);
+      setCursos((prev) => prev.filter((c) => c.id !== curso.id));
+      await removerCurso(curso.id);
       exibirFeedback(`Curso "${curso.nome}" removido com sucesso.`);
-      carregarDados();
+      await carregarDados();
     }
   };
 

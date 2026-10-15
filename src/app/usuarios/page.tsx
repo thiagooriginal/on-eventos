@@ -55,6 +55,7 @@ export default function UsuariosPage() {
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState<UsuarioSistema | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
   // Form de Novo Usuário
   const [formNome, setFormNome] = useState('');
@@ -100,15 +101,16 @@ export default function UsuariosPage() {
     }, 4000);
   };
 
-  const handleCadastrarNovo = (e: React.FormEvent) => {
+  const handleCadastrarNovo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formNome.trim() || !formEmail.trim()) {
       exibirFeedback('Preencha pelo menos Nome e E-mail.', 'erro');
       return;
     }
 
+    setSalvando(true);
     try {
-      adicionarUsuario({
+      const novo = await adicionarUsuario({
         nome: formNome.trim(),
         email: formEmail.trim().toLowerCase(),
         senha: formSenha || 'On@2026',
@@ -119,7 +121,12 @@ export default function UsuariosPage() {
         status: 'ATIVO',
       });
 
-      carregar();
+      // Atualização imediata do estado React
+      setUsuarios((prev) => [
+        novo,
+        ...prev.filter((u) => u.email.toLowerCase() !== novo.email.toLowerCase()),
+      ]);
+
       setModalNovoAberto(false);
       // Limpa campos
       setFormNome('');
@@ -127,46 +134,67 @@ export default function UsuariosPage() {
       setFormSenha('On@2026');
       setFormTelefone('');
       setFormNivel('BASICO');
-      exibirFeedback('Novo usuário cadastrado com sucesso!');
+      exibirFeedback(`Novo usuário "${novo.nome}" cadastrado com sucesso!`);
+      await carregar();
     } catch (err: any) {
       exibirFeedback(err.message || 'Erro ao cadastrar usuário.', 'erro');
+    } finally {
+      setSalvando(false);
     }
   };
 
-  const handleSalvarEdicao = (e: React.FormEvent) => {
+  const handleSalvarEdicao = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!usuarioEditando) return;
 
-    atualizarUsuario(usuarioEditando.id, {
-      nome: usuarioEditando.nome,
-      email: usuarioEditando.email,
-      cargo: usuarioEditando.cargo,
-      departamento: usuarioEditando.departamento,
-      telefone: usuarioEditando.telefone,
-      nivel: usuarioEditando.nivel,
-      status: usuarioEditando.status,
-    });
+    setSalvando(true);
+    try {
+      const atualizado = await atualizarUsuario(usuarioEditando.id, {
+        nome: usuarioEditando.nome,
+        email: usuarioEditando.email,
+        cargo: usuarioEditando.cargo,
+        departamento: usuarioEditando.departamento,
+        telefone: usuarioEditando.telefone,
+        nivel: usuarioEditando.nivel,
+        status: usuarioEditando.status,
+      });
 
-    carregar();
-    setModalEditarAberto(false);
-    setUsuarioEditando(null);
-    exibirFeedback('Dados do usuário atualizados com sucesso!');
-  };
+      if (atualizado) {
+        setUsuarios((prev) => prev.map((u) => (u.id === atualizado.id ? atualizado : u)));
+      }
 
-  const handleAlternarNivel = (id: string, nome: string, nivelAtual: NivelUsuario) => {
-    const novoNivel = nivelAtual === 'ADMIN' ? 'BÁSICO' : 'ADMINISTRADOR';
-    if (confirm(`Deseja alterar o nível de "${nome}" para ${novoNivel}?`)) {
-      alternarNivelUsuario(id);
-      carregar();
-      exibirFeedback(`Nível de ${nome} alterado para ${novoNivel}!`);
+      setModalEditarAberto(false);
+      setUsuarioEditando(null);
+      exibirFeedback('Dados do usuário atualizados com sucesso!');
+      await carregar();
+    } catch (err: any) {
+      exibirFeedback('Erro ao atualizar dados do usuário.', 'erro');
+    } finally {
+      setSalvando(false);
     }
   };
 
-  const handleAlternarStatus = (id: string, nome: string, statusAtual: string) => {
+  const handleAlternarNivel = async (id: string, nome: string, nivelAtual: NivelUsuario) => {
+    const novoNivel = nivelAtual === 'ADMIN' ? 'BÁSICO' : 'ADMINISTRADOR';
+    if (confirm(`Deseja alterar o nível de "${nome}" para ${novoNivel}?`)) {
+      setUsuarios((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, nivel: nivelAtual === 'ADMIN' ? 'BASICO' : 'ADMIN' } : u))
+      );
+      await alternarNivelUsuario(id);
+      exibirFeedback(`Nível de ${nome} alterado para ${novoNivel}!`);
+      await carregar();
+    }
+  };
+
+  const handleAlternarStatus = async (id: string, nome: string, statusAtual: string) => {
     const novo = statusAtual === 'ATIVO' ? 'Inativo' : 'Ativo';
-    alternarStatusUsuario(id);
-    carregar();
+    const novoStatus = statusAtual === 'ATIVO' ? 'INATIVO' : 'ATIVO';
+    setUsuarios((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, status: novoStatus } : u))
+    );
+    await alternarStatusUsuario(id);
     exibirFeedback(`Usuário ${nome} agora está ${novo}!`);
+    await carregar();
   };
 
   const handleExcluir = async (id: string, nome: string) => {
@@ -791,9 +819,17 @@ export default function UsuariosPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-md transition"
+                    disabled={salvando}
+                    className="px-5 py-2.5 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-md transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center space-x-1.5"
                   >
-                    Salvar e Cadastrar Usuário
+                    {salvando ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1" />
+                        <span>Cadastrando...</span>
+                      </>
+                    ) : (
+                      <span>Salvar e Cadastrar Usuário</span>
+                    )}
                   </button>
                 </div>
               </form>
@@ -947,9 +983,17 @@ export default function UsuariosPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 rounded-2xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md transition"
+                    disabled={salvando}
+                    className="px-5 py-2.5 rounded-2xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center space-x-1.5"
                   >
-                    Salvar Alterações
+                    {salvando ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1" />
+                        <span>Salvando...</span>
+                      </>
+                    ) : (
+                      <span>Salvar Alterações</span>
+                    )}
                   </button>
                 </div>
               </form>

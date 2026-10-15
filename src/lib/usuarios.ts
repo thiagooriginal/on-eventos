@@ -95,22 +95,30 @@ export function getUsuarios(): UsuarioSistema[] {
   }
 }
 
-export function salvarUsuarios(usuarios: UsuarioSistema[]): void {
-  if (typeof window === 'undefined') return;
+export async function salvarUsuarios(usuarios: UsuarioSistema[]): Promise<boolean> {
+  if (typeof window === 'undefined') return true;
   try {
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(usuarios));
-    // Sincroniza em segundo plano com o servidor Hostinger
-    fetch('/usuarios.php', {
+    // Sincroniza diretamente com o servidor Hostinger
+    const res = await fetch('/usuarios.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'save',
         usuarios,
       }),
-    }).catch(() => {});
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.usuarios)) {
+        localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(data.usuarios));
+      }
+      return true;
+    }
   } catch (e) {
     console.error('Erro ao salvar usuários:', e);
   }
+  return false;
 }
 
 export async function sincronizarUsuariosServidor(): Promise<UsuarioSistema[]> {
@@ -126,14 +134,16 @@ export async function sincronizarUsuariosServidor(): Promise<UsuarioSistema[]> {
         return serverUsers;
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Servidor inacessível, mantendo dados locais:', e);
+  }
 
   return getUsuarios();
 }
 
-export function adicionarUsuario(
+export async function adicionarUsuario(
   dados: Omit<UsuarioSistema, 'id' | 'criadoEm' | 'ultimoAcesso' | 'avatarCor'>
-): UsuarioSistema {
+): Promise<UsuarioSistema> {
   const usuarios = getUsuarios();
   const avatarCor = CORES_AVATAR[Math.floor(Math.random() * CORES_AVATAR.length)];
 
@@ -146,15 +156,42 @@ export function adicionarUsuario(
     avatarCor,
   };
 
-  const novaLista = [novoUsuario, ...usuarios];
-  salvarUsuarios(novaLista);
+  const emailLimpo = novoUsuario.email.toLowerCase().trim();
+  const novaLista = [novoUsuario, ...usuarios.filter((u) => u.email.toLowerCase().trim() !== emailLimpo)];
+
+  if (typeof window !== 'undefined') {
+    // 1. Salva imediatamente no localStorage
+    localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(novaLista));
+
+    // 2. Persiste atomicamente no servidor Hostinger e aguarda confirmação
+    try {
+      const res = await fetch('/usuarios.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          usuario: novoUsuario,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.usuarios) && data.usuarios.length > 0) {
+          localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(data.usuarios));
+        }
+      }
+    } catch (e) {
+      console.warn('Salvo localmente, servidor offline:', e);
+    }
+  }
+
   return novoUsuario;
 }
 
-export function atualizarUsuario(
+export async function atualizarUsuario(
   id: string,
   atualizacoes: Partial<UsuarioSistema>
-): UsuarioSistema | null {
+): Promise<UsuarioSistema | null> {
   const usuarios = getUsuarios();
   const index = usuarios.findIndex((u) => u.id === id);
   if (index === -1) return null;
@@ -164,11 +201,11 @@ export function atualizarUsuario(
     ...atualizacoes,
   };
 
-  salvarUsuarios(usuarios);
+  await salvarUsuarios(usuarios);
   return usuarios[index];
 }
 
-export function alternarNivelUsuario(id: string): UsuarioSistema | null {
+export async function alternarNivelUsuario(id: string): Promise<UsuarioSistema | null> {
   const usuarios = getUsuarios();
   const index = usuarios.findIndex((u) => u.id === id);
   if (index === -1) return null;
@@ -177,11 +214,11 @@ export function alternarNivelUsuario(id: string): UsuarioSistema | null {
   const novoNivel: NivelUsuario = nivelAtual === 'ADMIN' ? 'BASICO' : 'ADMIN';
 
   usuarios[index].nivel = novoNivel;
-  salvarUsuarios(usuarios);
+  await salvarUsuarios(usuarios);
   return usuarios[index];
 }
 
-export function alternarStatusUsuario(id: string): UsuarioSistema | null {
+export async function alternarStatusUsuario(id: string): Promise<UsuarioSistema | null> {
   const usuarios = getUsuarios();
   const index = usuarios.findIndex((u) => u.id === id);
   if (index === -1) return null;
@@ -189,7 +226,7 @@ export function alternarStatusUsuario(id: string): UsuarioSistema | null {
   const statusAtual = usuarios[index].status;
   usuarios[index].status = statusAtual === 'ATIVO' ? 'INATIVO' : 'ATIVO';
 
-  salvarUsuarios(usuarios);
+  await salvarUsuarios(usuarios);
   return usuarios[index];
 }
 
@@ -201,12 +238,14 @@ export async function removerUsuario(id: string): Promise<boolean> {
   }
 
   const novaLista = usuarios.filter((u) => u.id !== id);
-  salvarUsuarios(novaLista);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(novaLista));
+  }
 
   // Dispara exclusão direta no servidor central Hostinger
   try {
     if (typeof window !== 'undefined') {
-      await fetch('/usuarios.php', {
+      const res = await fetch('/usuarios.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -215,6 +254,12 @@ export async function removerUsuario(id: string): Promise<boolean> {
           email: usuario?.email || '',
         }),
       });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.usuarios)) {
+          localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(data.usuarios));
+        }
+      }
     }
   } catch (e) {}
 
@@ -250,10 +295,10 @@ export function autenticarUsuario(email: string, senhaDigitada: string): {
     return { sucesso: false, erro: 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.' };
   }
 
-  // Registra horário do login
+  // Registra horário do login (sem bloquear o retorno)
   atualizarUsuario(usuario.id, {
     ultimoAcesso: 'Hoje às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-  });
+  }).catch(() => {});
 
   return { sucesso: true, usuario };
 }

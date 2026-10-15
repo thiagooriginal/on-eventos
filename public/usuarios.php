@@ -108,26 +108,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Ação: Salvar lista inteira (sincronização)
-    if ($action === 'save' && isset($payload['usuarios']) && is_array($payload['usuarios'])) {
-        $usuarios = array_values($payload['usuarios']);
-        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        echo json_encode(['sucesso' => true, 'total' => count($usuarios)]);
-        exit;
-    }
-
     // Ação: Adicionar novo usuário
     if ($action === 'add' && !empty($payload['usuario'])) {
         $novo = $payload['usuario'];
-        // Remove duplicidade se já existir com mesmo e-mail
         $novoEmail = strtolower(trim($novo['email'] ?? ''));
-        $usuarios = array_filter($usuarios, function($u) use ($novoEmail) {
-            return strtolower(trim($u['email'] ?? '')) !== $novoEmail;
-        });
-        array_unshift($usuarios, $novo);
-        $usuarios = array_values($usuarios);
-        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        echo json_encode(['sucesso' => true, 'usuario' => $novo]);
+        $usuariosFiltrados = [];
+        foreach ($usuarios as $u) {
+            if (strtolower(trim($u['email'] ?? '')) !== $novoEmail) {
+                $usuariosFiltrados[] = $u;
+            }
+        }
+        array_unshift($usuariosFiltrados, $novo);
+        $usuarios = array_values($usuariosFiltrados);
+        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        echo json_encode(['sucesso' => true, 'usuario' => $novo, 'usuarios' => $usuarios], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Ação: Salvar lista inteira (sincronização)
+    if ($action === 'save' && isset($payload['usuarios']) && is_array($payload['usuarios'])) {
+        $usuarios = array_values($payload['usuarios']);
+        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        echo json_encode(['sucesso' => true, 'total' => count($usuarios), 'usuarios' => $usuarios], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;
     }
 }

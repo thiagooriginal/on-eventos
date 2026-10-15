@@ -39,6 +39,7 @@ import {
   alternarNivelUsuario,
   alternarStatusUsuario,
   removerUsuario,
+  sincronizarUsuariosServidor,
   UsuarioSistema,
   NivelUsuario,
 } from '@/lib/usuarios';
@@ -64,7 +65,14 @@ export default function UsuariosPage() {
   const [formDepartamento, setFormDepartamento] = useState('Comercial');
   const [formTelefone, setFormTelefone] = useState('');
 
-  const carregar = () => {
+  const carregar = async () => {
+    try {
+      const serverUsers = await sincronizarUsuariosServidor();
+      if (serverUsers) {
+        setUsuarios(serverUsers);
+        return;
+      }
+    } catch (e) {}
     setUsuarios(getUsuarios());
   };
 

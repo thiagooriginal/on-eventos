@@ -18,7 +18,7 @@ import {
   Sparkles,
   ShieldAlert,
 } from 'lucide-react';
-import { autenticarUsuario, getUsuarios } from '@/lib/usuarios';
+import { autenticarUsuario, getUsuarios, sincronizarUsuariosServidor } from '@/lib/usuarios';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,6 +49,11 @@ export default function LoginPage() {
     }
   }, [bloqueadoAte]);
 
+  // Sincroniza usuários do servidor Hostinger ao carregar a tela
+  useEffect(() => {
+    sincronizarUsuariosServidor().catch(() => {});
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -69,7 +74,15 @@ export default function LoginPage() {
       }
 
       // Validação estrita e segura
-      const auth = autenticarUsuario(emailLimpo, senhaLimpa);
+      let auth = autenticarUsuario(emailLimpo, senhaLimpa);
+
+      // Se falhou inicialmente, tenta sincronizar imediatamente com o servidor central
+      if (!auth.sucesso) {
+        try {
+          await sincronizarUsuariosServidor();
+          auth = autenticarUsuario(emailLimpo, senhaLimpa);
+        } catch (e) {}
+      }
 
       if (!auth.sucesso || !auth.usuario) {
         const novasFalhas = tentativasFalhas + 1;

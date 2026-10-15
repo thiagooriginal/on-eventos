@@ -49,6 +49,20 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     avatarCor: 'from-purple-600 to-indigo-600 text-white',
   },
   {
+    id: 'usr-valter',
+    nome: 'Valter Sá',
+    email: 'valter.sa@hotmail.com',
+    senha: '1gabriella5',
+    nivel: 'ADMIN',
+    cargo: 'Consultor Comercial',
+    departamento: 'Comercial & Vendas',
+    telefone: '(11) 91219-8389',
+    status: 'ATIVO',
+    criadoEm: '2026-10-14T20:00:00.000Z',
+    ultimoAcesso: 'Nunca acessou',
+    avatarCor: 'from-blue-600 to-indigo-600 text-white',
+  },
+  {
     id: 'usr-3',
     nome: 'Rodrigo Consultor',
     email: 'vendedor.rodrigo@formatura.com.br',
@@ -112,6 +126,18 @@ export function getUsuarios(): UsuarioSistema[] {
     if (salvo) {
       const parsed = JSON.parse(salvo);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        // Garante que todos os usuários base (como Valter) estejam presentes no cache local
+        const emailsSalvos = new Set(parsed.map((u: UsuarioSistema) => u.email.toLowerCase()));
+        let modificado = false;
+        USUARIOS_INICIAIS.forEach((uIni) => {
+          if (!emailsSalvos.has(uIni.email.toLowerCase())) {
+            parsed.push(uIni);
+            modificado = true;
+          }
+        });
+        if (modificado) {
+          localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(parsed));
+        }
         return parsed;
       }
     }
@@ -127,9 +153,42 @@ export function salvarUsuarios(usuarios: UsuarioSistema[]): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(usuarios));
+    // Sincroniza em segundo plano com o servidor Hostinger
+    fetch('/usuarios.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        usuarios,
+      }),
+    }).catch(() => {});
   } catch (e) {
     console.error('Erro ao salvar usuários:', e);
   }
+}
+
+export async function sincronizarUsuariosServidor(): Promise<UsuarioSistema[]> {
+  if (typeof window === 'undefined') return USUARIOS_INICIAIS;
+
+  try {
+    const res = await fetch('/usuarios.php?t=' + Date.now(), { cache: 'no-store' });
+    if (res.ok) {
+      const serverUsers = await res.json();
+      if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+        const locais = getUsuarios();
+        const mapa = new Map<string, UsuarioSistema>();
+        USUARIOS_INICIAIS.forEach((u) => mapa.set(u.email.toLowerCase(), u));
+        locais.forEach((u) => mapa.set(u.email.toLowerCase(), u));
+        serverUsers.forEach((u: UsuarioSistema) => mapa.set(u.email.toLowerCase(), u));
+
+        const unificados = Array.from(mapa.values());
+        localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(unificados));
+        return unificados;
+      }
+    }
+  } catch (e) {}
+
+  return getUsuarios();
 }
 
 export function adicionarUsuario(

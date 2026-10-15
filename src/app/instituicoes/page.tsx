@@ -1300,7 +1300,7 @@ export default function InstituicoesPage() {
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: 2026.1, 2026.2, 2027.1"
+                    placeholder="Ex: 2025.2, 2026.1, 2026.2, 2027.1"
                     value={formCursoTurmas}
                     onChange={(e) => setFormCursoTurmas(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"

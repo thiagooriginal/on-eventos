@@ -165,6 +165,31 @@ const BRINDES_DISPONIVEIS: { nome: BrindeTipo; descricao: string; valorPadrao: n
 
 const VENDAS_INICIAIS: VendaAlbum[] = [];
 
+export const PERIODOS_DISPONIVEIS: string[] = [
+  '2025.2',
+  '2026.1',
+  '2026.2',
+  '2027.1',
+  '2027.2',
+  '2028.1',
+  '2028.2',
+  '2029.1',
+  '2029.2',
+  '2030.1',
+  '2030.2',
+  '2031.1',
+  '2031.2',
+  '2032.1',
+  '2032.2',
+];
+
+export const formatarLabelPeriodo = (periodo: string): string => {
+  const partes = periodo.split('.');
+  const ano = partes[0];
+  const sem = partes[1] === '1' ? '1º Semestre' : partes[1] === '2' ? '2º Semestre' : '';
+  return sem ? `${periodo} (${sem} ${ano})` : periodo;
+};
+
 export default function VendasAlbunsPage() {
   const [vendas, setVendas] = useState<VendaAlbum[]>(VENDAS_INICIAIS);
   const [busca, setBusca] = useState('');
@@ -198,7 +223,7 @@ export default function VendasAlbunsPage() {
   const [formInstituicaoBusca, setFormInstituicaoBusca] = useState('');
   const [dropdownInstAberto, setDropdownInstAberto] = useState(false);
   const [formCursoNome, setFormCursoNome] = useState('Direito');
-  const [formPeriodo, setFormPeriodo] = useState('2027.1');
+  const [formPeriodo, setFormPeriodo] = useState('2025.2');
   const [formTurma, setFormTurma] = useState('Direito Mackenzie 2027.1');
   const [isOutraTurma, setIsOutraTurma] = useState(false);
   const [turmaManual, setTurmaManual] = useState('');
@@ -288,9 +313,9 @@ export default function VendasAlbunsPage() {
       let instNome = venda.instituicaoNome?.trim() || '';
       let per = venda.periodo?.trim() || '';
 
-      // Se não tiver período explícito, tentar extrair da turmaNome (ex: 2026.1, 2027.2, 2026/2)
+      // Se não tiver período explícito, tentar extrair da turmaNome (ex: 2025.2, 2026.1, 2027.2)
       if (!per && venda.turmaNome) {
-        const matchPer = venda.turmaNome.match(/\b(202[0-9](\.[1-2]|\/[1-2])?)\b/);
+        const matchPer = venda.turmaNome.match(/\b((?:202[0-9]|203[0-9])(?:\.[1-2]|\/[1-2])?)\b/);
         if (matchPer) {
           per = matchPer[1].replace('/', '.');
         }
@@ -355,9 +380,8 @@ export default function VendasAlbunsPage() {
   const todosPeriodosParaFiltro = React.useMemo(() => {
     const mapPer = new Map<string, number>();
 
-    // Períodos padrões de referência
-    const padroes = ['2026.1', '2026.2', '2027.1', '2027.2', '2028.1', '2028.2'];
-    padroes.forEach((p) => mapPer.set(p, 0));
+    // Períodos padrões de referência de 2025.2 em diante
+    PERIODOS_DISPONIVEIS.forEach((p) => mapPer.set(p, 0));
 
     // Contabiliza períodos das vendas
     vendas.forEach((v) => {
@@ -488,7 +512,7 @@ export default function VendasAlbunsPage() {
     }
 
     const instFinal = (formInstituicaoNome.trim() || formInstituicaoBusca.trim() || 'Geral').trim();
-    const periodoFinal = (formPeriodo.trim() || '2027.1').trim();
+    const periodoFinal = (formPeriodo.trim() || '2025.2').trim();
     const cursoFinal = (formCursoNome.trim() || 'Geral').trim();
     const turmaFinal = `${cursoFinal} - ${instFinal} (${periodoFinal})`;
 
@@ -1505,12 +1529,11 @@ export default function VendasAlbunsPage() {
                           onChange={(e) => setFormPeriodo(e.target.value)}
                           className="w-full bg-white text-slate-900 text-xs font-bold rounded-xl p-3 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
                         >
-                          <option value="2026.1">2026.1 (1º Semestre 2026)</option>
-                          <option value="2026.2">2026.2 (2º Semestre 2026)</option>
-                          <option value="2027.1">2027.1 (1º Semestre 2027)</option>
-                          <option value="2027.2">2027.2 (2º Semestre 2027)</option>
-                          <option value="2028.1">2028.1 (1º Semestre 2028)</option>
-                          <option value="2028.2">2028.2 (2º Semestre 2028)</option>
+                          {PERIODOS_DISPONIVEIS.map((p) => (
+                            <option key={p} value={p}>
+                              {formatarLabelPeriodo(p)}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>

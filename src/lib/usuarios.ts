@@ -62,48 +62,6 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     ultimoAcesso: 'Nunca acessou',
     avatarCor: 'from-blue-600 to-indigo-600 text-white',
   },
-  {
-    id: 'usr-3',
-    nome: 'Rodrigo Consultor',
-    email: 'vendedor.rodrigo@formatura.com.br',
-    senha: 'On@2026',
-    nivel: 'BASICO',
-    cargo: 'Consultor Comercial de Formaturas',
-    departamento: 'Comercial',
-    telefone: '(11) 97654-3210',
-    status: 'ATIVO',
-    criadoEm: '2026-02-01T14:30:00.000Z',
-    ultimoAcesso: 'Hoje às 11:42',
-    avatarCor: 'from-blue-500 to-cyan-500 text-white',
-  },
-  {
-    id: 'usr-4',
-    nome: 'Camila Fotografia',
-    email: 'camila.fotos@formatura.com.br',
-    senha: 'On@2026',
-    nivel: 'BASICO',
-    cargo: 'Especialista em Vendas de Álbuns & Kits',
-    departamento: 'Fotografia & Produção',
-    telefone: '(11) 96543-2109',
-    status: 'ATIVO',
-    criadoEm: '2026-02-10T11:00:00.000Z',
-    ultimoAcesso: 'Hoje às 10:25',
-    avatarCor: 'from-fuchsia-500 to-pink-500 text-white',
-  },
-  {
-    id: 'usr-5',
-    nome: 'Larissa Atendimento',
-    email: 'larissa.comissao@formatura.com.br',
-    senha: 'On@2026',
-    nivel: 'BASICO',
-    cargo: 'Coordenadora de Atendimento às Comissões',
-    departamento: 'Atendimento & Suporte',
-    telefone: '(11) 95432-1098',
-    status: 'ATIVO',
-    criadoEm: '2026-03-05T08:15:00.000Z',
-    ultimoAcesso: 'Ontem às 17:50',
-    avatarCor: 'from-emerald-500 to-teal-500 text-white',
-  },
 ];
 
 const CORES_AVATAR = [
@@ -126,22 +84,10 @@ export function getUsuarios(): UsuarioSistema[] {
     if (salvo) {
       const parsed = JSON.parse(salvo);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Garante que todos os usuários base (como Valter) estejam presentes no cache local
-        const emailsSalvos = new Set(parsed.map((u: UsuarioSistema) => u.email.toLowerCase()));
-        let modificado = false;
-        USUARIOS_INICIAIS.forEach((uIni) => {
-          if (!emailsSalvos.has(uIni.email.toLowerCase())) {
-            parsed.push(uIni);
-            modificado = true;
-          }
-        });
-        if (modificado) {
-          localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(parsed));
-        }
         return parsed;
       }
     }
-    // Inicializa com os usuários padrão com senha protegida
+    // Inicializa com os usuários padrão se não houver nada salvo
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(USUARIOS_INICIAIS));
     return USUARIOS_INICIAIS;
   } catch (e) {
@@ -175,15 +121,9 @@ export async function sincronizarUsuariosServidor(): Promise<UsuarioSistema[]> {
     if (res.ok) {
       const serverUsers = await res.json();
       if (Array.isArray(serverUsers) && serverUsers.length > 0) {
-        const locais = getUsuarios();
-        const mapa = new Map<string, UsuarioSistema>();
-        USUARIOS_INICIAIS.forEach((u) => mapa.set(u.email.toLowerCase(), u));
-        locais.forEach((u) => mapa.set(u.email.toLowerCase(), u));
-        serverUsers.forEach((u: UsuarioSistema) => mapa.set(u.email.toLowerCase(), u));
-
-        const unificados = Array.from(mapa.values());
-        localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(unificados));
-        return unificados;
+        // O servidor é a autoridade central: reflete exclusões e cadastros com exatidão
+        localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(serverUsers));
+        return serverUsers;
       }
     }
   } catch (e) {}
@@ -253,15 +193,31 @@ export function alternarStatusUsuario(id: string): UsuarioSistema | null {
   return usuarios[index];
 }
 
-export function removerUsuario(id: string): boolean {
+export async function removerUsuario(id: string): Promise<boolean> {
   const usuarios = getUsuarios();
   const usuario = usuarios.find((u) => u.id === id);
-  if (usuario && (usuario.email === 'thiago@onagenciadeeventos.com.br' || usuario.email === 'admin@formatura.com.br')) {
+  if (usuario && (usuario.email.toLowerCase() === 'thiago@onagenciadeeventos.com.br' || usuario.email.toLowerCase() === 'admin@formatura.com.br')) {
     return false;
   }
 
   const novaLista = usuarios.filter((u) => u.id !== id);
   salvarUsuarios(novaLista);
+
+  // Dispara exclusão direta no servidor central Hostinger
+  try {
+    if (typeof window !== 'undefined') {
+      await fetch('/usuarios.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          id,
+          email: usuario?.email || '',
+        }),
+      });
+    }
+  } catch (e) {}
+
   return true;
 }
 

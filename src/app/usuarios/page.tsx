@@ -169,14 +169,17 @@ export default function UsuariosPage() {
     exibirFeedback(`Usuário ${nome} agora está ${novo}!`);
   };
 
-  const handleExcluir = (id: string, nome: string) => {
+  const handleExcluir = async (id: string, nome: string) => {
     if (confirm(`Tem certeza que deseja excluir o usuário "${nome}"? Esta ação não pode ser desfeita.`)) {
-      const ok = removerUsuario(id);
+      // Remove da interface visual de imediato
+      setUsuarios((prev) => prev.filter((u) => u.id !== id));
+      const ok = await removerUsuario(id);
       if (ok) {
-        carregar();
         exibirFeedback(`Usuário ${nome} foi removido com sucesso.`);
+        await carregar();
       } else {
         exibirFeedback(`Não é permitido excluir o Administrador principal da agência.`, 'erro');
+        await carregar();
       }
     }
   };

@@ -56,48 +56,6 @@ function getUsuariosBase() {
             'ultimoAcesso' => 'Nunca acessou',
             'avatarCor' => 'from-blue-600 to-indigo-600 text-white',
         ],
-        [
-            'id' => 'usr-3',
-            'nome' => 'Rodrigo Consultor',
-            'email' => 'vendedor.rodrigo@formatura.com.br',
-            'senha' => 'On@2026',
-            'nivel' => 'BASICO',
-            'cargo' => 'Consultor Comercial de Formaturas',
-            'departamento' => 'Comercial',
-            'telefone' => '(11) 97654-3210',
-            'status' => 'ATIVO',
-            'criadoEm' => '2026-02-01T14:30:00.000Z',
-            'ultimoAcesso' => 'Hoje',
-            'avatarCor' => 'from-blue-500 to-cyan-500 text-white',
-        ],
-        [
-            'id' => 'usr-4',
-            'nome' => 'Camila Fotografia',
-            'email' => 'camila.fotos@formatura.com.br',
-            'senha' => 'On@2026',
-            'nivel' => 'BASICO',
-            'cargo' => 'Especialista em Vendas de Álbuns & Kits',
-            'departamento' => 'Fotografia & Produção',
-            'telefone' => '(11) 96543-2109',
-            'status' => 'ATIVO',
-            'criadoEm' => '2026-02-10T11:00:00.000Z',
-            'ultimoAcesso' => 'Hoje',
-            'avatarCor' => 'from-fuchsia-500 to-pink-500 text-white',
-        ],
-        [
-            'id' => 'usr-5',
-            'nome' => 'Larissa Atendimento',
-            'email' => 'larissa.comissao@formatura.com.br',
-            'senha' => 'On@2026',
-            'nivel' => 'BASICO',
-            'cargo' => 'Coordenadora de Atendimento às Comissões',
-            'departamento' => 'Atendimento & Suporte',
-            'telefone' => '(11) 95432-1098',
-            'status' => 'ATIVO',
-            'criadoEm' => '2026-03-05T08:15:00.000Z',
-            'ultimoAcesso' => 'Hoje',
-            'avatarCor' => 'from-emerald-500 to-teal-500 text-white',
-        ],
     ];
 }
 
@@ -108,33 +66,9 @@ if (!file_exists($dataFile)) {
 }
 
 $content = file_get_contents($dataFile);
-$usuarios = json_decode($content, true) ?: getUsuariosBase();
-
-// Garante que Valter está sempre presente e ativo
-$valterPresente = false;
-foreach ($usuarios as &$u) {
-    if (strtolower($u['email']) === 'valter.sa@hotmail.com') {
-        $u['senha'] = '1gabriella5';
-        $u['status'] = 'ATIVO';
-        $valterPresente = true;
-        break;
-    }
-}
-if (!$valterPresente) {
-    $usuarios[] = [
-        'id' => 'usr-valter',
-        'nome' => 'Valter Sá',
-        'email' => 'valter.sa@hotmail.com',
-        'senha' => '1gabriella5',
-        'nivel' => 'ADMIN',
-        'cargo' => 'Consultor Comercial',
-        'departamento' => 'Comercial & Vendas',
-        'telefone' => '(11) 91219-8389',
-        'status' => 'ATIVO',
-        'criadoEm' => '2026-10-14T20:00:00.000Z',
-        'ultimoAcesso' => 'Nunca acessou',
-        'avatarCor' => 'from-blue-600 to-indigo-600 text-white',
-    ];
+$usuarios = json_decode($content, true);
+if (!is_array($usuarios) || empty($usuarios)) {
+    $usuarios = getUsuariosBase();
     file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
 
@@ -143,20 +77,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($raw, true) ?: $_POST;
     $action = $payload['action'] ?? 'save';
 
-    if ($action === 'save' && !empty($payload['usuarios']) && is_array($payload['usuarios'])) {
-        $usuarios = $payload['usuarios'];
+    // Ação: Exclusão definitiva de um usuário
+    if ($action === 'delete') {
+        $idParaRemover = $payload['id'] ?? '';
+        $emailParaRemover = strtolower(trim($payload['email'] ?? ''));
+
+        $usuariosFiltrados = [];
+        foreach ($usuarios as $u) {
+            $uEmail = strtolower(trim($u['email'] ?? ''));
+            // Impede exclusão dos donos do sistema
+            if ($uEmail === 'thiago@onagenciadeeventos.com.br' || $uEmail === 'admin@formatura.com.br') {
+                $usuariosFiltrados[] = $u;
+                continue;
+            }
+
+            $bateId = !empty($idParaRemover) && $u['id'] === $idParaRemover;
+            $bateEmail = !empty($emailParaRemover) && $uEmail === $emailParaRemover;
+
+            if ($bateId || $bateEmail) {
+                // Usuário excluído com sucesso (ignorado na nova lista)
+                continue;
+            }
+
+            $usuariosFiltrados[] = $u;
+        }
+
+        $usuarios = array_values($usuariosFiltrados);
+        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Usuário excluído definitivamente', 'usuarios' => $usuarios]);
+        exit;
+    }
+
+    // Ação: Salvar lista inteira (sincronização)
+    if ($action === 'save' && isset($payload['usuarios']) && is_array($payload['usuarios'])) {
+        $usuarios = array_values($payload['usuarios']);
         file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         echo json_encode(['sucesso' => true, 'total' => count($usuarios)]);
         exit;
     }
 
+    // Ação: Adicionar novo usuário
     if ($action === 'add' && !empty($payload['usuario'])) {
         $novo = $payload['usuario'];
-        $usuarios[] = $novo;
+        // Remove duplicidade se já existir com mesmo e-mail
+        $novoEmail = strtolower(trim($novo['email'] ?? ''));
+        $usuarios = array_filter($usuarios, function($u) use ($novoEmail) {
+            return strtolower(trim($u['email'] ?? '')) !== $novoEmail;
+        });
+        array_unshift($usuarios, $novo);
+        $usuarios = array_values($usuarios);
         file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         echo json_encode(['sucesso' => true, 'usuario' => $novo]);
         exit;
     }
 }
 
-echo json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+echo json_encode(array_values($usuarios), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);

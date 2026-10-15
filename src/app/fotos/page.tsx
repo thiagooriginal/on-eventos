@@ -1809,7 +1809,7 @@ export default function VendasAlbunsPage() {
                             onChange={(e) => setFormCartaoParcelas(e.target.value)}
                             className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-mono font-bold"
                           >
-                            {[1, 2, 3, 4, 5, 6, 8, 10, 12].map((p) => (
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 24].map((p) => (
                               <option key={p} value={p}>
                                 {p}x de R$ {(somaTotalKit / p).toFixed(2)}
                               </option>
@@ -1859,7 +1859,7 @@ export default function VendasAlbunsPage() {
                             onChange={(e) => setFormBoletoParcelas(e.target.value)}
                             className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-mono font-bold"
                           >
-                            {[1, 2, 3, 4, 5, 6, 8, 10, 12].map((p) => (
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 24].map((p) => (
                               <option key={p} value={p}>
                                 {p} parcelas de R$ {(somaTotalKit / p).toFixed(2)}
                               </option>

@@ -37,11 +37,20 @@ import {
   Link2,
   Package,
   Trash2,
+  SlidersHorizontal,
+  GraduationCap,
+  School,
+  Mail,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import {
+  getInstituicoes,
+  getCursos,
   getOpcoesTurmasFaculdades,
   sincronizarInstituicoesServidor,
+  adicionarInstituicao,
+  Instituicao,
+  Curso,
   OpcaoTurmaFaculdade,
 } from '@/lib/instituicoes';
 
@@ -74,6 +83,8 @@ export interface VendaAlbum {
   alunoCpf: string;
   alunoTelefone: string;
   alunoEmail: string;
+  instituicaoNome?: string;
+  periodo?: string;
   turmaNome: string;
   // Configuração do Álbum
   modeloAlbum: ModeloAlbumTipo;
@@ -160,7 +171,14 @@ export default function VendasAlbunsPage() {
   const [filtroModelo, setFiltroModelo] = useState<string>('TODOS');
   const [filtroPagamento, setFiltroPagamento] = useState<'TODOS' | 'CARTAO' | 'BOLETO' | 'PIX'>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [filtroInstituicao, setFiltroInstituicao] = useState<string>('TODAS');
+  const [filtroPeriodo, setFiltroPeriodo] = useState<string>('TODOS');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Instituições e Cursos Cadastrados
+  const [instituicoesCadastradas, setInstituicoesCadastradas] = useState<Instituicao[]>([]);
+  const [cursosCadastrados, setCursosCadastrados] = useState<Curso[]>([]);
+  const [opcoesTurmas, setOpcoesTurmas] = useState<OpcaoTurmaFaculdade[]>([]);
 
   // Estados dos Modais
   const [modalNovaVendaAberto, setModalNovaVendaAberto] = useState(false);
@@ -173,8 +191,15 @@ export default function VendasAlbunsPage() {
   const [formNome, setFormNome] = useState('');
   const [formCpf, setFormCpf] = useState('');
   const [formTelefone, setFormTelefone] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+
+  // Instituição, Curso & Período no Formulário
+  const [formInstituicaoNome, setFormInstituicaoNome] = useState('');
+  const [formInstituicaoBusca, setFormInstituicaoBusca] = useState('');
+  const [dropdownInstAberto, setDropdownInstAberto] = useState(false);
+  const [formCursoNome, setFormCursoNome] = useState('Direito');
+  const [formPeriodo, setFormPeriodo] = useState('2027.1');
   const [formTurma, setFormTurma] = useState('Direito Mackenzie 2027.1');
-  const [opcoesTurmas, setOpcoesTurmas] = useState<OpcaoTurmaFaculdade[]>([]);
   const [isOutraTurma, setIsOutraTurma] = useState(false);
   const [turmaManual, setTurmaManual] = useState('');
 
@@ -257,29 +282,144 @@ export default function VendasAlbunsPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Carregar turmas e instituições cadastradas
+  // Helper para padronizar e extrair Instituição e Período de qualquer venda (inclusive legadas)
+  const extrairInfoTurma = React.useCallback(
+    (venda: VendaAlbum) => {
+      let instNome = venda.instituicaoNome?.trim() || '';
+      let per = venda.periodo?.trim() || '';
+
+      // Se não tiver período explícito, tentar extrair da turmaNome (ex: 2026.1, 2027.2, 2026/2)
+      if (!per && venda.turmaNome) {
+        const matchPer = venda.turmaNome.match(/\b(202[0-9](\.[1-2]|\/[1-2])?)\b/);
+        if (matchPer) {
+          per = matchPer[1].replace('/', '.');
+        }
+      }
+
+      // Se não tiver instituição explícita, identificar por cruzamento
+      if (!instNome && venda.turmaNome) {
+        const turmaUpper = venda.turmaNome.toUpperCase();
+        for (const inst of instituicoesCadastradas) {
+          if (
+            turmaUpper.includes(inst.nome.toUpperCase()) ||
+            (inst.sigla && turmaUpper.includes(inst.sigla.toUpperCase()))
+          ) {
+            instNome = inst.nome;
+            break;
+          }
+        }
+
+        if (!instNome) {
+          if (turmaUpper.includes('MACKENZIE')) instNome = 'Universidade Presbiteriana Mackenzie';
+          else if (turmaUpper.includes('USP')) instNome = 'Universidade de São Paulo (USP)';
+          else if (turmaUpper.includes('FGV')) instNome = 'Fundação Getulio Vargas (FGV)';
+          else if (turmaUpper.includes('ANHEMBI')) instNome = 'Universidade Anhembi Morumbi';
+          else if (turmaUpper.includes('PUC')) instNome = 'Pontifícia Universidade Católica (PUC)';
+          else if (turmaUpper.includes('FMU')) instNome = 'FMU - Centro Universitário';
+          else if (turmaUpper.includes('ESPM')) instNome = 'ESPM São Paulo';
+          else if (turmaUpper.includes('SANTA MARCELINA')) instNome = 'Faculdade Santa Marcelina';
+          else {
+            instNome = venda.turmaNome;
+          }
+        }
+      }
+
+      return {
+        instituicao: instNome || 'Geral / Outros',
+        periodo: per || '2027.1',
+      };
+    },
+    [instituicoesCadastradas]
+  );
+
+  // Lista única de todas as instituições para o filtro
+  const todasInstituicoesParaFiltro = React.useMemo(() => {
+    const mapInst = new Map<string, number>();
+
+    // 1. Inclui todas as cadastradas no sistema
+    instituicoesCadastradas.forEach((inst) => {
+      mapInst.set(inst.nome, 0);
+    });
+
+    // 2. Contabiliza vendas por instituição (incluindo qualquer instituição digitada)
+    vendas.forEach((v) => {
+      const info = extrairInfoTurma(v);
+      const atual = mapInst.get(info.instituicao) || 0;
+      mapInst.set(info.instituicao, atual + 1);
+    });
+
+    return Array.from(mapInst.entries()).map(([nome, total]) => ({ nome, total }));
+  }, [instituicoesCadastradas, vendas, extrairInfoTurma]);
+
+  // Lista única de todos os períodos para o filtro
+  const todosPeriodosParaFiltro = React.useMemo(() => {
+    const mapPer = new Map<string, number>();
+
+    // Períodos padrões de referência
+    const padroes = ['2026.1', '2026.2', '2027.1', '2027.2', '2028.1', '2028.2'];
+    padroes.forEach((p) => mapPer.set(p, 0));
+
+    // Contabiliza períodos das vendas
+    vendas.forEach((v) => {
+      const info = extrairInfoTurma(v);
+      const atual = mapPer.get(info.periodo) || 0;
+      mapPer.set(info.periodo, atual + 1);
+    });
+
+    return Array.from(mapPer.entries()).map(([periodo, total]) => ({ periodo, total }));
+  }, [vendas, extrairInfoTurma]);
+
+  // Cursos da instituição selecionada para sugestão rápida
+  const cursosDaInstituicaoSelecionada = React.useMemo(() => {
+    if (!formInstituicaoNome) return [];
+    const inst = instituicoesCadastradas.find(
+      (i) => i.nome.toLowerCase() === formInstituicaoNome.toLowerCase()
+    );
+    if (!inst) return [];
+    return cursosCadastrados.filter((c) => c.instituicaoId === inst.id);
+  }, [formInstituicaoNome, instituicoesCadastradas, cursosCadastrados]);
+
+  // Carregar turmas, instituições e cursos cadastrados
   useEffect(() => {
-    const listaInicial = getOpcoesTurmasFaculdades();
-    setOpcoesTurmas(listaInicial);
-    if (listaInicial.length > 0 && !formTurma) {
-      setFormTurma(listaInicial[0].valor);
+    const insts = getInstituicoes();
+    const cur = getCursos();
+    const opcoes = getOpcoesTurmasFaculdades();
+    setInstituicoesCadastradas(insts);
+    setCursosCadastrados(cur);
+    setOpcoesTurmas(opcoes);
+
+    if (insts.length > 0 && !formInstituicaoNome) {
+      setFormInstituicaoNome(insts[0].nome);
+      setFormInstituicaoBusca(insts[0].nome);
     }
+
     sincronizarInstituicoesServidor()
-      .then(() => {
-        const atualizadas = getOpcoesTurmasFaculdades();
-        setOpcoesTurmas(atualizadas);
-        if (atualizadas.length > 0 && !formTurma) {
-          setFormTurma(atualizadas[0].valor);
+      .then((resultado) => {
+        if (resultado && resultado.instituicoes) {
+          setInstituicoesCadastradas(resultado.instituicoes);
+          setCursosCadastrados(resultado.cursos);
+          const atualizadas = getOpcoesTurmasFaculdades();
+          setOpcoesTurmas(atualizadas);
+          if (resultado.instituicoes.length > 0 && !formInstituicaoNome) {
+            setFormInstituicaoNome(resultado.instituicoes[0].nome);
+            setFormInstituicaoBusca(resultado.instituicoes[0].nome);
+          }
         }
       })
       .catch(() => {});
   }, []);
 
   const abrirModalNovaVenda = () => {
+    const insts = getInstituicoes();
+    const cur = getCursos();
+    setInstituicoesCadastradas(insts);
+    setCursosCadastrados(cur);
     const atualizadas = getOpcoesTurmasFaculdades();
     setOpcoesTurmas(atualizadas);
-    if (atualizadas.length > 0 && !formTurma) {
-      setFormTurma(atualizadas[0].valor);
+
+    if (insts.length > 0 && !formInstituicaoNome) {
+      setFormInstituicaoNome(insts[0].nome);
+      setFormInstituicaoBusca(insts[0].nome);
     }
     setFormAbaAtiva('ALBUM');
     setModalNovaVendaAberto(true);
@@ -340,12 +480,17 @@ export default function VendasAlbunsPage() {
   };
 
   // Submeter Criação de Nova Venda do Kit
-  const handleSubmitNovaVenda = (e: React.FormEvent) => {
+  const handleSubmitNovaVenda = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formNome.trim() || !formCpf.trim()) {
       showToast('Por favor, preencha o nome e CPF do formando.');
       return;
     }
+
+    const instFinal = (formInstituicaoNome.trim() || formInstituicaoBusca.trim() || 'Geral').trim();
+    const periodoFinal = (formPeriodo.trim() || '2027.1').trim();
+    const cursoFinal = (formCursoNome.trim() || 'Geral').trim();
+    const turmaFinal = `${cursoFinal} - ${instFinal} (${periodoFinal})`;
 
     const novoCodigo = `ALB-2026-${String(vendas.length + 90).padStart(3, '0')}`;
     const dataHoje = new Date().toLocaleDateString('pt-BR');
@@ -363,7 +508,9 @@ export default function VendasAlbunsPage() {
       alunoCpf: formCpf.trim(),
       alunoTelefone: formTelefone.trim() || '(11) 99999-9999',
       alunoEmail: formEmail.trim(),
-      turmaNome: formTurma,
+      instituicaoNome: instFinal,
+      periodo: periodoFinal,
+      turmaNome: turmaFinal,
       modeloAlbum: formModeloAlbum,
       valorAlbum: numValorAlbum,
       brindes: formBrindes,
@@ -380,10 +527,34 @@ export default function VendasAlbunsPage() {
       observacoes: formObservacoes.trim(),
     };
 
+    // Se for uma instituição nova que não existe na lista, cadastrá-la no sistema
+    const instExiste = instituicoesCadastradas.some(
+      (i) => i.nome.toLowerCase() === instFinal.toLowerCase()
+    );
+    if (!instExiste && instFinal && instFinal !== 'Geral') {
+      try {
+        const novaInst = await adicionarInstituicao({
+          nome: instFinal,
+          sigla: instFinal.slice(0, 6).toUpperCase(),
+          tipo: 'FACULDADE',
+          campus: 'Principal',
+          cidade: 'São Paulo',
+          uf: 'SP',
+          contatoResponsavel: 'Coordenação',
+          telefone: '',
+          whatsapp: '',
+          email: '',
+          status: 'ATIVO',
+          cor: 'from-purple-600 to-indigo-600',
+        });
+        setInstituicoesCadastradas((prev) => [novaInst, ...prev]);
+      } catch (err) {}
+    }
+
     const atualizadas = [nova, ...vendas];
     salvarVendasLocal(atualizadas);
     setModalNovaVendaAberto(false);
-    showToast(`Venda ${novoCodigo} do ${formModeloAlbum} cadastrada com sucesso!`);
+    showToast(`Venda ${novoCodigo} (${instFinal}) cadastrada com sucesso!`);
 
     // Reset
     setFormNome('');
@@ -440,33 +611,56 @@ export default function VendasAlbunsPage() {
     showToast('Etapa de produção do álbum avançada!');
   };
 
-  // Métricas
-  const totalFaturamento = vendas.reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalCartao = vendas
-    .filter((v) => v.formaPagamento === 'CARTAO')
-    .reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalBoleto = vendas
-    .filter((v) => v.formaPagamento === 'BOLETO')
-    .reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalEmProducao = vendas.filter(
-    (v) => v.statusProducao === 'EM_DIAGRAMACAO' || v.statusProducao === 'EM_GRAFICA'
-  ).length;
-
-  // Filtragem
+  // Filtragem completa com busca, modelo, pagamento, status, instituição e período
   const vendasFiltradas = vendas.filter((v) => {
+    const info = extrairInfoTurma(v);
+
     const matchBusca =
       v.alunoNome.toLowerCase().includes(busca.toLowerCase()) ||
       v.alunoCpf.includes(busca) ||
       v.codigoPedido.toLowerCase().includes(busca.toLowerCase()) ||
       v.turmaNome.toLowerCase().includes(busca.toLowerCase()) ||
+      info.instituicao.toLowerCase().includes(busca.toLowerCase()) ||
+      info.periodo.toLowerCase().includes(busca.toLowerCase()) ||
       v.modeloAlbum.toLowerCase().includes(busca.toLowerCase());
 
     const matchModelo = filtroModelo === 'TODOS' || v.modeloAlbum === filtroModelo;
     const matchPagamento = filtroPagamento === 'TODOS' || v.formaPagamento === filtroPagamento;
     const matchStatus = filtroStatus === 'TODOS' || v.statusProducao === filtroStatus;
 
-    return matchBusca && matchModelo && matchPagamento && matchStatus;
+    const matchInstituicao =
+      filtroInstituicao === 'TODAS' ||
+      info.instituicao.toLowerCase() === filtroInstituicao.toLowerCase() ||
+      v.turmaNome.toLowerCase().includes(filtroInstituicao.toLowerCase());
+
+    const matchPeriodo =
+      filtroPeriodo === 'TODOS' ||
+      info.periodo.toLowerCase() === filtroPeriodo.toLowerCase() ||
+      v.turmaNome.toLowerCase().includes(filtroPeriodo.toLowerCase());
+
+    return matchBusca && matchModelo && matchPagamento && matchStatus && matchInstituicao && matchPeriodo;
   });
+
+  const temFiltroAtivo =
+    filtroInstituicao !== 'TODAS' ||
+    filtroPeriodo !== 'TODOS' ||
+    filtroModelo !== 'TODOS' ||
+    filtroPagamento !== 'TODOS' ||
+    busca.trim() !== '';
+
+  // Métricas reativas: recalculam em tempo real quando houver filtro ativo
+  const vendasBaseMetricas = temFiltroAtivo ? vendasFiltradas : vendas;
+
+  const totalFaturamento = vendasBaseMetricas.reduce((acc, v) => acc + v.valorTotalKit, 0);
+  const totalCartao = vendasBaseMetricas
+    .filter((v) => v.formaPagamento === 'CARTAO')
+    .reduce((acc, v) => acc + v.valorTotalKit, 0);
+  const totalBoleto = vendasBaseMetricas
+    .filter((v) => v.formaPagamento === 'BOLETO')
+    .reduce((acc, v) => acc + v.valorTotalKit, 0);
+  const totalEmProducao = vendasBaseMetricas.filter(
+    (v) => v.statusProducao === 'EM_DIAGRAMACAO' || v.statusProducao === 'EM_GRAFICA'
+  ).length;
 
   return (
     <div className="min-h-screen bg-[#F4F6FB] flex flex-col lg:flex-row antialiased font-sans">
@@ -527,7 +721,7 @@ export default function VendasAlbunsPage() {
         </header>
 
         {/* =========================================================================
-            CARDS DE MÉTRICAS COM RELEVO TÁTIL 3D
+            CARDS DE MÉTRICAS COM RELEVO TÁTIL 3D (REATIVOS AO FILTRO ATIVO)
             ========================================================================= */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {/* Card 1: Total Vendido */}
@@ -545,7 +739,10 @@ export default function VendasAlbunsPage() {
             </div>
             <div className="mt-2 flex items-center text-[11px] text-emerald-600 font-semibold">
               <TrendingUp className="w-3.5 h-3.5 mr-1" />
-              <span>{vendas.length} kits contratados</span>
+              <span>
+                {vendasBaseMetricas.length} {vendasBaseMetricas.length === 1 ? 'kit contratado' : 'kits contratados'}
+                {temFiltroAtivo ? ' (filtrado)' : ''}
+              </span>
             </div>
           </div>
 
@@ -563,7 +760,7 @@ export default function VendasAlbunsPage() {
               R$ {totalCartao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>
             <div className="mt-2 text-[11px] text-slate-500">
-              {vendas.filter((v) => v.formaPagamento === 'CARTAO').length} vendas liquidadas
+              {vendasBaseMetricas.filter((v) => v.formaPagamento === 'CARTAO').length} vendas liquidadas
             </div>
           </div>
 
@@ -581,7 +778,7 @@ export default function VendasAlbunsPage() {
               R$ {totalBoleto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>
             <div className="mt-2 text-[11px] text-amber-600 font-semibold">
-              {vendas.filter((v) => v.formaPagamento === 'BOLETO').length} carnês emitidos Sicredi
+              {vendasBaseMetricas.filter((v) => v.formaPagamento === 'BOLETO').length} carnês emitidos Sicredi
             </div>
           </div>
 
@@ -605,19 +802,110 @@ export default function VendasAlbunsPage() {
         </section>
 
         {/* =========================================================================
-            BARRA DE BUSCA E FILTROS RÁPIDOS
+            BANNER INFORMATIVO DE CONTROLE POR INSTITUIÇÃO & PERÍODO
+            ========================================================================= */}
+        {temFiltroAtivo && (
+          <div className="bg-gradient-to-r from-[#2A176B] via-[#3B1F8C] to-[#4C1D95] text-white rounded-[24px] p-4.5 mb-6 shadow-[0_8px_24px_rgba(59,31,140,0.25)] border border-purple-400/30 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-200">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur-md text-purple-200 flex items-center justify-center shrink-0 border border-white/20">
+                <Filter className="w-5 h-5 text-purple-200" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-purple-200">
+                    Controle de Vendas por Instituição & Período
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/25 text-emerald-300 border border-emerald-400/40">
+                    {vendasFiltradas.length} {vendasFiltradas.length === 1 ? 'álbum vendido' : 'álbuns vendidos'}
+                  </span>
+                </div>
+                <p className="text-xs text-purple-100/90 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {filtroInstituicao !== 'TODAS' && (
+                    <span>
+                      🏛️ Instituição: <strong className="text-white underline">{filtroInstituicao}</strong>
+                    </span>
+                  )}
+                  {filtroPeriodo !== 'TODOS' && (
+                    <span>
+                      📅 Período: <strong className="text-white underline">{filtroPeriodo}</strong>
+                    </span>
+                  )}
+                  {filtroModelo !== 'TODOS' && (
+                    <span>
+                      📖 Modelo: <strong className="text-white underline">{filtroModelo}</strong>
+                    </span>
+                  )}
+                  <span>
+                    Total Apurado: <strong className="text-emerald-300 font-mono">R$ {totalFaturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setFiltroInstituicao('TODAS');
+                setFiltroPeriodo('TODOS');
+                setFiltroModelo('TODOS');
+                setFiltroPagamento('TODOS');
+                setBusca('');
+              }}
+              className="inline-flex items-center justify-center space-x-1.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 shadow-sm transition hover:scale-102 cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+              <span>Limpar Filtros</span>
+            </button>
+          </div>
+        )}
+
+        {/* =========================================================================
+            BARRA DE BUSCA E FILTROS RÁPIDOS (COM INSTITUIÇÃO & PERÍODO)
             ========================================================================= */}
         <div className="bg-white rounded-[24px] p-4 mb-6 border border-slate-100 shadow-[0_4px_16px_rgba(0,0,0,0.02)] flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Campo de Busca */}
+          {/* Campo de Busca Geral */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Buscar por formando, CPF, turma, modelo de álbum ou brinde..."
+              placeholder="Buscar por formando, CPF, turma, modelo de álbum..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="w-full bg-[#F4F6FB] text-slate-900 placeholder:text-slate-400 text-xs rounded-2xl pl-9 pr-4 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] shadow-inner transition"
             />
+          </div>
+
+          {/* Filtro por Instituição de Ensino */}
+          <div className="flex items-center space-x-1.5">
+            <select
+              value={filtroInstituicao}
+              onChange={(e) => setFiltroInstituicao(e.target.value)}
+              className="bg-[#F4F6FB] text-slate-800 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] max-w-[210px]"
+              title="Filtrar por Instituição de Ensino"
+            >
+              <option value="TODAS">🏛️ Todas as Instituições</option>
+              {todasInstituicoesParaFiltro.map(({ nome, total }) => (
+                <option key={nome} value={nome}>
+                  {nome} {total > 0 ? `(${total})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro por Período */}
+          <div className="flex items-center space-x-1.5">
+            <select
+              value={filtroPeriodo}
+              onChange={(e) => setFiltroPeriodo(e.target.value)}
+              className="bg-[#F4F6FB] text-slate-800 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+              title="Filtrar por Período de Formatura"
+            >
+              <option value="TODOS">📅 Todos os Períodos</option>
+              {todosPeriodosParaFiltro.map(({ periodo, total }) => (
+                <option key={periodo} value={periodo}>
+                  {periodo} {total > 0 ? `(${total})` : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Filtro por Modelo de Álbum */}
@@ -625,7 +913,7 @@ export default function VendasAlbunsPage() {
             <select
               value={filtroModelo}
               onChange={(e) => setFiltroModelo(e.target.value)}
-              className="bg-[#F4F6FB] text-slate-700 text-xs font-bold rounded-2xl px-3 py-2 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+              className="bg-[#F4F6FB] text-slate-700 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
             >
               <option value="TODOS">Todos os Modelos</option>
               <option value="Album premium">Album premium</option>
@@ -665,7 +953,7 @@ export default function VendasAlbunsPage() {
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <Barcode className="w-3.5 h-3.5 mr-1" /> Boleto / Carnê
+              <Barcode className="w-3.5 h-3.5 mr-1" /> Boleto
             </button>
             <button
               onClick={() => setFiltroPagamento('PIX')}
@@ -739,6 +1027,14 @@ export default function VendasAlbunsPage() {
                         {/* Formando / Turma */}
                         <td className="py-4 px-5">
                           <strong className="text-slate-900 block text-xs">{venda.alunoNome}</strong>
+                          <div className="flex flex-wrap items-center gap-1.5 my-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                              🏛️ {extrairInfoTurma(venda).instituicao}
+                            </span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              📅 {extrairInfoTurma(venda).periodo}
+                            </span>
+                          </div>
                           <span className="text-[11px] text-slate-500 block">{venda.turmaNome}</span>
                           <span className="text-[10px] text-slate-400 font-mono">CPF: {venda.alunoCpf}</span>
                         </td>
@@ -1007,6 +1303,7 @@ export default function VendasAlbunsPage() {
                     </div>
                   </div>
 
+                  {/* Contato do Aluno */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">WhatsApp / Telefone *</label>
@@ -1020,86 +1317,210 @@ export default function VendasAlbunsPage() {
                       />
                     </div>
                     <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-bold text-slate-700">Turma / Faculdade *</label>
-                        <Link
-                          href="/instituicoes"
-                          className="text-[11px] font-bold text-[#7C3AED] hover:underline inline-flex items-center"
-                          title="Cadastrar novas instituições ou cursos"
-                        >
-                          + Nova Faculdade / Curso
-                        </Link>
-                      </div>
-                      <select
-                        value={isOutraTurma ? '__OUTRA__' : formTurma}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '__OUTRA__') {
-                            setIsOutraTurma(true);
-                            setFormTurma(turmaManual || '');
-                          } else {
-                            setIsOutraTurma(false);
-                            setFormTurma(val);
-                          }
-                        }}
+                      <label className="block text-xs font-bold text-slate-700 mb-1">E-mail do Formando</label>
+                      <input
+                        type="email"
+                        placeholder="aluno@email.com"
+                        value={formEmail}
+                        onChange={(e) => setFormEmail(e.target.value)}
                         className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-3 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Seção Inteligente: Instituição de Ensino, Curso e Período */}
+                  <div className="bg-[#FAF8FE] border border-purple-200/80 rounded-2xl p-4 space-y-3.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Building2 className="w-4 h-4 text-[#7C3AED]" />
+                        <label className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                          Instituição de Ensino, Curso & Período
+                        </label>
+                      </div>
+                      <Link
+                        href="/instituicoes"
+                        target="_blank"
+                        className="text-[11px] font-bold text-[#7C3AED] hover:underline inline-flex items-center space-x-1"
+                        title="Cadastrar ou gerenciar instituições e cursos"
                       >
-                        {opcoesTurmas.some((o) => o.categoria === 'CURSO_TURMA') && (
-                          <optgroup label="🎓 Cursos & Turmas Cadastradas">
-                            {opcoesTurmas
-                              .filter((o) => o.categoria === 'CURSO_TURMA')
-                              .map((o) => (
-                                <option key={o.valor} value={o.valor}>
-                                  {o.label}
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
+                        <span>Gerenciar Instituições</span>
+                        <ExternalLink className="w-3 h-3 ml-0.5" />
+                      </Link>
+                    </div>
 
-                        {opcoesTurmas.some((o) => o.categoria === 'INSTITUICAO') && (
-                          <optgroup label="🏛️ Instituições de Ensino Cadastradas">
-                            {opcoesTurmas
-                              .filter((o) => o.categoria === 'INSTITUICAO')
-                              .map((o) => (
-                                <option key={o.valor} value={o.valor}>
-                                  {o.label}
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
-
-                        {opcoesTurmas.some((o) => o.categoria === 'LEGADO') && (
-                          <optgroup label="📌 Turmas de Referência">
-                            {opcoesTurmas
-                              .filter((o) => o.categoria === 'LEGADO')
-                              .map((o) => (
-                                <option key={o.valor} value={o.valor}>
-                                  {o.label}
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
-
-                        <optgroup label="✍️ Digitar Manualmente">
-                          <option value="__OUTRA__">+ Digitar outra faculdade / turma...</option>
-                        </optgroup>
-                      </select>
-
-                      {isOutraTurma && (
-                        <div className="mt-2">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Digite o nome da Faculdade / Turma (Ex: Medicina USP 2027.2)..."
-                            value={turmaManual}
-                            onChange={(e) => {
-                              setTurmaManual(e.target.value);
-                              setFormTurma(e.target.value);
+                    {/* Autocomplete / Busca em Tempo Real de Instituição */}
+                    <div className="relative">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Instituição de Ensino * <span className="text-[11px] font-normal text-slate-500">(digite para buscar ou digite um novo nome)</span>
+                      </label>
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-purple-600 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="Digite o nome da Faculdade / Instituição (ex: Mackenzie, Anhembi, USP, juan...)"
+                          value={formInstituicaoBusca}
+                          onFocus={() => setDropdownInstAberto(true)}
+                          onChange={(e) => {
+                            setFormInstituicaoBusca(e.target.value);
+                            setFormInstituicaoNome(e.target.value);
+                            setDropdownInstAberto(true);
+                          }}
+                          className="w-full bg-white text-slate-900 text-xs font-semibold rounded-xl pl-9 pr-10 py-3 border border-purple-200 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] shadow-xs"
+                        />
+                        {formInstituicaoBusca && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormInstituicaoBusca('');
+                              setFormInstituicaoNome('');
                             }}
-                            className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border-2 border-[#7C3AED] focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/30 font-medium"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-md"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Dropdown de sugestões e pesquisa inteligente */}
+                      {dropdownInstAberto && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-30"
+                            onClick={() => setDropdownInstAberto(false)}
                           />
-                        </div>
+                          <div className="absolute left-0 right-0 mt-1 z-40 bg-white rounded-2xl shadow-2xl border border-purple-200 max-h-64 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-150">
+                            {/* Opção para usar texto digitado como nova instituição */}
+                            {formInstituicaoBusca.trim() && (
+                              <div
+                                onClick={() => {
+                                  setFormInstituicaoNome(formInstituicaoBusca.trim());
+                                  setDropdownInstAberto(false);
+                                }}
+                                className="p-3 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-900 text-xs font-bold cursor-pointer flex items-center justify-between transition"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <Plus className="w-4 h-4 text-[#7C3AED] shrink-0" />
+                                  <span>
+                                    Usar <strong className="underline">&quot;{formInstituicaoBusca.trim()}&quot;</strong> como instituição
+                                  </span>
+                                </div>
+                                <span className="text-[10px] uppercase font-bold text-purple-700 bg-white px-2 py-0.5 rounded-md border border-purple-200 shrink-0">
+                                  Confirmar
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Instituições cadastradas correspondentes */}
+                            {instituicoesCadastradas
+                              .filter((inst) => {
+                                if (!formInstituicaoBusca.trim()) return true;
+                                const q = formInstituicaoBusca.toLowerCase();
+                                return (
+                                  inst.nome.toLowerCase().includes(q) ||
+                                  inst.sigla.toLowerCase().includes(q) ||
+                                  inst.cidade.toLowerCase().includes(q)
+                                );
+                              })
+                              .map((inst) => (
+                                <div
+                                  key={inst.id}
+                                  onClick={() => {
+                                    setFormInstituicaoNome(inst.nome);
+                                    setFormInstituicaoBusca(inst.nome);
+                                    setDropdownInstAberto(false);
+                                  }}
+                                  className={`p-3 text-xs hover:bg-purple-50/50 cursor-pointer flex items-center justify-between transition ${
+                                    formInstituicaoNome.toLowerCase() === inst.nome.toLowerCase()
+                                      ? 'bg-purple-50/80 font-bold'
+                                      : ''
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center space-x-2">
+                                      <span className="font-bold text-slate-800">{inst.nome}</span>
+                                      {inst.sigla && (
+                                        <span className="text-[10px] font-black px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded">
+                                          {inst.sigla}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                                      {inst.campus} &bull; {inst.cidade}/{inst.uf}
+                                    </span>
+                                  </div>
+                                  {formInstituicaoNome.toLowerCase() === inst.nome.toLowerCase() && (
+                                    <Check className="w-4 h-4 text-[#7C3AED] shrink-0" />
+                                  )}
+                                </div>
+                              ))}
+
+                            {instituicoesCadastradas.length === 0 && !formInstituicaoBusca.trim() && (
+                              <div className="p-4 text-center text-xs text-slate-400">
+                                Nenhuma instituição cadastrada ainda. Digite o nome acima para cadastrar.
+                              </div>
+                            )}
+                          </div>
+                        </>
                       )}
+                    </div>
+
+                    {/* Curso e Período */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {/* Curso */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Curso do Formando *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="ex: Direito, Medicina, Administração..."
+                          value={formCursoNome}
+                          onChange={(e) => setFormCursoNome(e.target.value)}
+                          className="w-full bg-white text-slate-900 text-xs font-semibold rounded-xl p-3 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                        />
+
+                        {/* Sugestões de cursos da instituição selecionada */}
+                        {cursosDaInstituicaoSelecionada.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                            <span className="text-[10px] text-slate-400">Sugestões:</span>
+                            {cursosDaInstituicaoSelecionada.slice(0, 4).map((c) => (
+                              <button
+                                type="button"
+                                key={c.id}
+                                onClick={() => setFormCursoNome(c.nome)}
+                                className="text-[10px] font-bold px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-purple-200 transition cursor-pointer"
+                              >
+                                {c.nome}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Período */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Período de Formatura *</label>
+                        <select
+                          value={formPeriodo}
+                          onChange={(e) => setFormPeriodo(e.target.value)}
+                          className="w-full bg-white text-slate-900 text-xs font-bold rounded-xl p-3 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                        >
+                          <option value="2026.1">2026.1 (1º Semestre 2026)</option>
+                          <option value="2026.2">2026.2 (2º Semestre 2026)</option>
+                          <option value="2027.1">2027.1 (1º Semestre 2027)</option>
+                          <option value="2027.2">2027.2 (2º Semestre 2027)</option>
+                          <option value="2028.1">2028.1 (1º Semestre 2028)</option>
+                          <option value="2028.2">2028.2 (2º Semestre 2028)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Resumo da identificação da turma */}
+                    <div className="bg-white/80 rounded-xl p-2.5 border border-purple-100 flex items-center justify-between text-xs">
+                      <span className="text-slate-500 font-medium">Turma vinculada:</span>
+                      <span className="font-bold text-purple-900">
+                        {formCursoNome.trim() || 'Curso'} - {formInstituicaoNome.trim() || formInstituicaoBusca.trim() || 'Instituição'} ({formPeriodo.trim() || 'Período'})
+                      </span>
                     </div>
                   </div>
 

@@ -156,6 +156,7 @@ export const menuItens: MenuItem[] = [
 
 export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
   const [mobileAberto, setMobileAberto] = useState(false);
+  const [albunsAtrasadosCount, setAlbunsAtrasadosCount] = useState<number>(0);
   const [usuario, setUsuario] = useState<{ nome: string; email: string; perfil: string }>({
     nome: 'Administrador ON',
     email: 'admin@formatura.com.br',
@@ -191,6 +192,27 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
           email: parsed.email || 'admin@formatura.com.br',
           perfil: parsed.perfil || 'ADMIN',
         });
+
+        // Contabiliza álbuns com prazo vencido para alerta no menu
+        const albunsRaw = localStorage.getItem('on_vendas_albuns_estado');
+        if (albunsRaw) {
+          const albuns = JSON.parse(albunsRaw);
+          if (Array.isArray(albuns)) {
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+
+            const atrasados = albuns.filter((v: any) => {
+              if (v.statusProducao === 'ENTREGUE') return false;
+              if (!v.prazoProducao) return false;
+              const p = String(v.prazoProducao).split('-');
+              if (p.length !== 3) return false;
+              const dPrazo = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+              dPrazo.setHours(0, 0, 0, 0);
+              return dPrazo.getTime() < hoje.getTime();
+            });
+            setAlbunsAtrasadosCount(atrasados.length);
+          }
+        }
       } catch (e) {
         localStorage.removeItem('on_usuario_logado');
         window.location.replace('/login/index.html');
@@ -281,7 +303,11 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
                   <span className="text-sm truncate">{item.titulo}</span>
                 </div>
 
-                {item.badge && (
+                {item.id === 'fotos' && albunsAtrasadosCount > 0 ? (
+                  <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 bg-rose-600 text-white border border-rose-300 animate-pulse shadow-sm">
+                    🚨 {albunsAtrasadosCount} {albunsAtrasadosCount > 1 ? 'Atrasados' : 'Atrasado'}
+                  </span>
+                ) : item.badge ? (
                   <span
                     className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                       isAtivo
@@ -291,7 +317,7 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
                   >
                     {item.badge}
                   </span>
-                )}
+                ) : null}
               </a>
             );
           })}

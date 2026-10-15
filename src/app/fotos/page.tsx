@@ -41,6 +41,14 @@ import {
   GraduationCap,
   School,
   Mail,
+  AlertTriangle,
+  UserCheck,
+  Bell,
+  CalendarClock,
+  UserPlus,
+  Edit3,
+  CheckSquare,
+  History,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import {
@@ -53,6 +61,11 @@ import {
   Curso,
   OpcaoTurmaFaculdade,
 } from '@/lib/instituicoes';
+import {
+  getUsuarios,
+  sincronizarUsuariosServidor,
+  UsuarioSistema,
+} from '@/lib/usuarios';
 
 export type ModeloAlbumTipo = 'Album premium' | 'Album Preto' | 'Album Slim' | 'Album Colégio';
 
@@ -104,9 +117,120 @@ export interface VendaAlbum {
   // Boleto
   boletoQtdParcelas?: number;
   parcelasBoletos?: ParcelaBoleto[];
-  // Produção
+  // Produção & Gestão de Prazos e Responsável
   statusProducao: 'EM_DIAGRAMACAO' | 'EM_GRAFICA' | 'PRONTO_ENTREGA' | 'ENTREGUE';
   observacoes?: string;
+  responsavelId?: string;
+  responsavelNome?: string;
+  responsavelEmail?: string;
+  prazoProducao?: string; // Formato YYYY-MM-DD
+  concluidoEm?: string; // Data DD/MM/AAAA em que foi finalizado
+}
+
+export interface StatusPrazo {
+  atrasado: boolean;
+  venceHoje: boolean;
+  urgente: boolean;
+  diasRestantes: number;
+  texto: string;
+  badgeClasse: string;
+}
+
+export function formatarDataBR(dataIso?: string): string {
+  if (!dataIso) return 'Sem data';
+  const partes = dataIso.split('-');
+  if (partes.length === 3) {
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  }
+  return dataIso;
+}
+
+export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: string): StatusPrazo {
+  if (statusProducao === 'ENTREGUE') {
+    return {
+      atrasado: false,
+      venceHoje: false,
+      urgente: false,
+      diasRestantes: 0,
+      texto: 'Concluído / Entregue',
+      badgeClasse: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    };
+  }
+
+  if (!prazoProducao) {
+    return {
+      atrasado: false,
+      venceHoje: false,
+      urgente: false,
+      diasRestantes: 999,
+      texto: 'Sem prazo definido',
+      badgeClasse: 'bg-slate-100 text-slate-500 border-slate-200',
+    };
+  }
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const partes = prazoProducao.split('-');
+  if (partes.length !== 3) {
+    return {
+      atrasado: false,
+      venceHoje: false,
+      urgente: false,
+      diasRestantes: 999,
+      texto: prazoProducao,
+      badgeClasse: 'bg-slate-100 text-slate-600 border-slate-200',
+    };
+  }
+
+  const prazo = new Date(parseInt(partes[0], 10), parseInt(partes[1], 10) - 1, parseInt(partes[2], 10));
+  prazo.setHours(0, 0, 0, 0);
+
+  const diffMs = prazo.getTime() - hoje.getTime();
+  const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDias < 0) {
+    const dias = Math.abs(diffDias);
+    return {
+      atrasado: true,
+      venceHoje: false,
+      urgente: true,
+      diasRestantes: diffDias,
+      texto: `Atrasado há ${dias} ${dias === 1 ? 'dia' : 'dias'}!`,
+      badgeClasse: 'bg-rose-100 text-rose-800 border-rose-300 font-extrabold animate-pulse',
+    };
+  }
+
+  if (diffDias === 0) {
+    return {
+      atrasado: false,
+      venceHoje: true,
+      urgente: true,
+      diasRestantes: 0,
+      texto: 'Vence HOJE!',
+      badgeClasse: 'bg-amber-100 text-amber-900 border-amber-300 font-black',
+    };
+  }
+
+  if (diffDias <= 3) {
+    return {
+      atrasado: false,
+      venceHoje: false,
+      urgente: true,
+      diasRestantes: diffDias,
+      texto: `Vence em ${diffDias} ${diffDias === 1 ? 'dia' : 'dias'}`,
+      badgeClasse: 'bg-amber-50 text-amber-800 border-amber-200 font-bold',
+    };
+  }
+
+  return {
+    atrasado: false,
+    venceHoje: false,
+    urgente: false,
+    diasRestantes: diffDias,
+    texto: `Prazo: ${diffDias} dias`,
+    badgeClasse: 'bg-blue-50 text-blue-700 border-blue-200 font-semibold',
+  };
 }
 
 const MODELOS_DISPONIVEIS: { modelo: ModeloAlbumTipo; descricao: string; valorSugerido: number; badgeColor: string }[] = [
@@ -198,7 +322,27 @@ export default function VendasAlbunsPage() {
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [filtroInstituicao, setFiltroInstituicao] = useState<string>('TODAS');
   const [filtroPeriodo, setFiltroPeriodo] = useState<string>('TODOS');
+  const [filtroResponsavel, setFiltroResponsavel] = useState<string>('TODOS');
+  const [filtroPrazo, setFiltroPrazo] = useState<string>('TODOS');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Usuário Logado e Usuários do Sistema para Atribuição de Responsáveis
+  const [usuarioLogado, setUsuarioLogado] = useState<{
+    nome: string;
+    email: string;
+    perfil: string;
+  } | null>(null);
+  const [usuariosSistema, setUsuariosSistema] = useState<UsuarioSistema[]>([]);
+
+  // Estados de Alerta de Prazos Vencidos
+  const [modalAlertaPrazoAberto, setModalAlertaPrazoAberto] = useState(false);
+  const [alertaJaExibidoSessao, setAlertaJaExibidoSessao] = useState(false);
+
+  // Modal de Edição Rápida de Responsável e Prazo
+  const [vendaEditandoPrazo, setVendaEditandoPrazo] = useState<VendaAlbum | null>(null);
+  const [editResponsavelNome, setEditResponsavelNome] = useState('');
+  const [editResponsavelEmail, setEditResponsavelEmail] = useState('');
+  const [editPrazoProducao, setEditPrazoProducao] = useState('');
 
   // Instituições e Cursos Cadastrados
   const [instituicoesCadastradas, setInstituicoesCadastradas] = useState<Instituicao[]>([]);
@@ -217,6 +361,15 @@ export default function VendasAlbunsPage() {
   const [formCpf, setFormCpf] = useState('');
   const [formTelefone, setFormTelefone] = useState('');
   const [formEmail, setFormEmail] = useState('');
+
+  // Responsável & Prazo Limite no Formulário
+  const [formResponsavelNome, setFormResponsavelNome] = useState('');
+  const [formResponsavelEmail, setFormResponsavelEmail] = useState('');
+  const [formPrazoProducao, setFormPrazoProducao] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split('T')[0];
+  });
 
   // Instituição, Curso & Período no Formulário
   const [formInstituicaoNome, setFormInstituicaoNome] = useState('');
@@ -403,8 +556,33 @@ export default function VendasAlbunsPage() {
     return cursosCadastrados.filter((c) => c.instituicaoId === inst.id);
   }, [formInstituicaoNome, instituicoesCadastradas, cursosCadastrados]);
 
-  // Carregar turmas, instituições e cursos cadastrados
+  // Carregar turmas, instituições, cursos e usuários do sistema
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const usuarioSalvo = localStorage.getItem('on_usuario_logado');
+        if (usuarioSalvo) {
+          const parsed = JSON.parse(usuarioSalvo);
+          if (parsed && parsed.nome) {
+            setUsuarioLogado(parsed);
+            setFormResponsavelNome(parsed.nome);
+            setFormResponsavelEmail(parsed.email || '');
+          }
+        }
+      } catch (e) {}
+
+      // Carregar usuários ativos do sistema
+      const usersLocais = getUsuarios().filter((u) => u.status === 'ATIVO');
+      setUsuariosSistema(usersLocais);
+      sincronizarUsuariosServidor()
+        .then((res) => {
+          if (res && res.usuarios) {
+            setUsuariosSistema(res.usuarios.filter((u) => u.status === 'ATIVO'));
+          }
+        })
+        .catch(() => {});
+    }
+
     const insts = getInstituicoes();
     const cur = getCursos();
     const opcoes = getOpcoesTurmasFaculdades();
@@ -432,6 +610,102 @@ export default function VendasAlbunsPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Lista de álbuns com prazo atrasado (relevantes para o usuário ou admin)
+  const albunsAtrasados = React.useMemo(() => {
+    return vendas.filter((v) => {
+      if (v.statusProducao === 'ENTREGUE') return false;
+      const st = calcularStatusPrazo(v.prazoProducao, v.statusProducao);
+      if (!st.atrasado) return false;
+
+      // Se for admin, visualiza todos os atrasados da agência.
+      // Se for usuário regular, visualiza aqueles atribuídos a ele ou sem responsável.
+      if (!usuarioLogado) return true;
+      const isAdmin = usuarioLogado.perfil?.toUpperCase().includes('ADMIN');
+      if (isAdmin) return true;
+
+      const isMeu =
+        !v.responsavelNome ||
+        v.responsavelNome.toLowerCase() === usuarioLogado.nome.toLowerCase() ||
+        (v.responsavelEmail &&
+          usuarioLogado.email &&
+          v.responsavelEmail.toLowerCase() === usuarioLogado.email.toLowerCase());
+
+      return isMeu;
+    });
+  }, [vendas, usuarioLogado]);
+
+  // Alerta insistente: aciona o modal na entrada da página caso haja atrasos pendentes
+  useEffect(() => {
+    if (albunsAtrasados.length > 0 && !alertaJaExibidoSessao) {
+      setModalAlertaPrazoAberto(true);
+      setAlertaJaExibidoSessao(true);
+    }
+  }, [albunsAtrasados, alertaJaExibidoSessao]);
+
+  // Ação de Concluir Produção e Finalizar Processo
+  const handleConcluirProducao = (vendaId: string) => {
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    const atualizadas = vendas.map((v) => {
+      if (v.id === vendaId) {
+        return {
+          ...v,
+          statusProducao: 'ENTREGUE' as const,
+          concluidoEm: hoje,
+        };
+      }
+      return v;
+    });
+    salvarVendasLocal(atualizadas);
+    showToast('Processo do álbum CONCLUÍDO e entregue com sucesso! Alerta encerrado.');
+  };
+
+  // Ação de Estender o Prazo (+7d, +15d, etc.)
+  const handleEstenderPrazo = (vendaId: string, diasExtras: number) => {
+    const atualizadas = vendas.map((v) => {
+      if (v.id === vendaId) {
+        const d = new Date();
+        d.setDate(d.getDate() + diasExtras);
+        const novoPrazo = d.toISOString().split('T')[0];
+        return {
+          ...v,
+          prazoProducao: novoPrazo,
+        };
+      }
+      return v;
+    });
+    salvarVendasLocal(atualizadas);
+    showToast(`Prazo prorrogado em +${diasExtras} dias com sucesso!`);
+  };
+
+  // Abrir modal de edição de responsável e prazo
+  const abrirModalEditarPrazo = (venda: VendaAlbum) => {
+    setVendaEditandoPrazo(venda);
+    setEditResponsavelNome(venda.responsavelNome || usuarioLogado?.nome || '');
+    setEditResponsavelEmail(venda.responsavelEmail || usuarioLogado?.email || '');
+    setEditPrazoProducao(venda.prazoProducao || new Date().toISOString().split('T')[0]);
+  };
+
+  // Salvar alterações de responsável e prazo
+  const handleSalvarEdicaoPrazo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vendaEditandoPrazo) return;
+
+    const atualizadas = vendas.map((v) => {
+      if (v.id === vendaEditandoPrazo.id) {
+        return {
+          ...v,
+          responsavelNome: editResponsavelNome.trim() || undefined,
+          responsavelEmail: editResponsavelEmail.trim() || undefined,
+          prazoProducao: editPrazoProducao || undefined,
+        };
+      }
+      return v;
+    });
+    salvarVendasLocal(atualizadas);
+    setVendaEditandoPrazo(null);
+    showToast('Responsável e prazo de produção atualizados com sucesso!');
+  };
 
   const abrirModalNovaVenda = () => {
     const insts = getInstituicoes();
@@ -549,6 +823,9 @@ export default function VendasAlbunsPage() {
       parcelasBoletos: parcelasGeradas,
       statusProducao: 'EM_DIAGRAMACAO',
       observacoes: formObservacoes.trim(),
+      responsavelNome: formResponsavelNome.trim() || usuarioLogado?.nome || 'Equipe de Produção',
+      responsavelEmail: formResponsavelEmail.trim() || usuarioLogado?.email || '',
+      prazoProducao: formPrazoProducao,
     };
 
     // Se for uma instituição nova que não existe na lista, cadastrá-la no sistema
@@ -588,6 +865,9 @@ export default function VendasAlbunsPage() {
     setFormObservacoes('');
     setFormCartaoNsu('');
     setFormAbaAtiva('ALBUM');
+    const dReset = new Date();
+    dReset.setDate(dReset.getDate() + 30);
+    setFormPrazoProducao(dReset.toISOString().split('T')[0]);
   };
 
   // Alternar pagamento de parcela no boleto
@@ -622,11 +902,16 @@ export default function VendasAlbunsPage() {
       'PRONTO_ENTREGA',
       'ENTREGUE',
     ];
+    const hoje = new Date().toLocaleDateString('pt-BR');
     const atualizadas = vendas.map((v) => {
       if (v.id === vendaId) {
         const idx = ordem.indexOf(v.statusProducao);
         const proximo = idx < ordem.length - 1 ? ordem[idx + 1] : ordem[idx];
-        return { ...v, statusProducao: proximo };
+        return {
+          ...v,
+          statusProducao: proximo,
+          concluidoEm: proximo === 'ENTREGUE' ? hoje : v.concluidoEm,
+        };
       }
       return v;
     });
@@ -635,9 +920,10 @@ export default function VendasAlbunsPage() {
     showToast('Etapa de produção do álbum avançada!');
   };
 
-  // Filtragem completa com busca, modelo, pagamento, status, instituição e período
+  // Filtragem completa com busca, modelo, pagamento, status, instituição, período, responsável e prazo
   const vendasFiltradas = vendas.filter((v) => {
     const info = extrairInfoTurma(v);
+    const stPrazo = calcularStatusPrazo(v.prazoProducao, v.statusProducao);
 
     const matchBusca =
       v.alunoNome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -646,7 +932,8 @@ export default function VendasAlbunsPage() {
       v.turmaNome.toLowerCase().includes(busca.toLowerCase()) ||
       info.instituicao.toLowerCase().includes(busca.toLowerCase()) ||
       info.periodo.toLowerCase().includes(busca.toLowerCase()) ||
-      v.modeloAlbum.toLowerCase().includes(busca.toLowerCase());
+      v.modeloAlbum.toLowerCase().includes(busca.toLowerCase()) ||
+      (v.responsavelNome && v.responsavelNome.toLowerCase().includes(busca.toLowerCase()));
 
     const matchModelo = filtroModelo === 'TODOS' || v.modeloAlbum === filtroModelo;
     const matchPagamento = filtroPagamento === 'TODOS' || v.formaPagamento === filtroPagamento;
@@ -662,7 +949,43 @@ export default function VendasAlbunsPage() {
       info.periodo.toLowerCase() === filtroPeriodo.toLowerCase() ||
       v.turmaNome.toLowerCase().includes(filtroPeriodo.toLowerCase());
 
-    return matchBusca && matchModelo && matchPagamento && matchStatus && matchInstituicao && matchPeriodo;
+    const matchResponsavel =
+      filtroResponsavel === 'TODOS'
+        ? true
+        : filtroResponsavel === 'MEUS'
+        ? (v.responsavelNome?.toLowerCase() === usuarioLogado?.nome.toLowerCase() ||
+           (v.responsavelEmail &&
+             usuarioLogado?.email &&
+             v.responsavelEmail.toLowerCase() === usuarioLogado.email.toLowerCase()))
+        : filtroResponsavel === 'SEM_RESPONSAVEL'
+        ? !v.responsavelNome
+        : v.responsavelNome?.toLowerCase() === filtroResponsavel.toLowerCase();
+
+    const matchPrazo =
+      filtroPrazo === 'TODOS'
+        ? true
+        : filtroPrazo === 'ATRASADOS'
+        ? stPrazo.atrasado
+        : filtroPrazo === 'HOJE'
+        ? stPrazo.venceHoje
+        : filtroPrazo === 'URGENTES'
+        ? stPrazo.urgente || stPrazo.atrasado
+        : filtroPrazo === 'NO_PRAZO'
+        ? !stPrazo.atrasado && v.statusProducao !== 'ENTREGUE'
+        : filtroPrazo === 'CONCLUIDOS'
+        ? v.statusProducao === 'ENTREGUE'
+        : true;
+
+    return (
+      matchBusca &&
+      matchModelo &&
+      matchPagamento &&
+      matchStatus &&
+      matchInstituicao &&
+      matchPeriodo &&
+      matchResponsavel &&
+      matchPrazo
+    );
   });
 
   const temFiltroAtivo =
@@ -670,6 +993,8 @@ export default function VendasAlbunsPage() {
     filtroPeriodo !== 'TODOS' ||
     filtroModelo !== 'TODOS' ||
     filtroPagamento !== 'TODOS' ||
+    filtroResponsavel !== 'TODOS' ||
+    filtroPrazo !== 'TODOS' ||
     busca.trim() !== '';
 
   // Métricas reativas: recalculam em tempo real quando houver filtro ativo
@@ -743,6 +1068,43 @@ export default function VendasAlbunsPage() {
             </button>
           </div>
         </header>
+
+        {/* =========================================================================
+            ALERTA PERSISTENTE NA TELA PARA ÁLBUNS ATRASADOS
+            ========================================================================= */}
+        {albunsAtrasados.length > 0 && (
+          <div className="bg-gradient-to-r from-rose-600 via-rose-500 to-red-600 text-white rounded-[24px] p-4.5 mb-6 shadow-[0_8px_24px_rgba(225,29,72,0.3)] border border-rose-300/40 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-200">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md text-white flex items-center justify-center shrink-0 border border-white/30 animate-pulse">
+                <AlertTriangle className="w-6 h-6 text-amber-200" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-white flex items-center">
+                    <Bell className="w-3.5 h-3.5 mr-1.5 text-amber-300 animate-bounce" />
+                    Alerta de Produção: Prazo Limite Vencido
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-white text-rose-700 shadow-xs">
+                    {albunsAtrasados.length} {albunsAtrasados.length === 1 ? 'álbum em atraso' : 'álbuns em atraso'}
+                  </span>
+                </div>
+                <p className="text-xs text-rose-50 mt-1">
+                  Você possui álbuns em produção cuja data limite expirou. <strong>Este aviso permanecerá ativo na tela</strong> até que o processo seja concluído ou o prazo prorrogado.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                onClick={() => setModalAlertaPrazoAberto(true)}
+                className="px-4 py-2.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 text-xs font-extrabold shadow-sm transition hover:scale-102 cursor-pointer flex items-center space-x-1.5"
+              >
+                <CheckSquare className="w-4 h-4 text-rose-600" />
+                <span>Ver & Resolver Atrasos ({albunsAtrasados.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* =========================================================================
             CARDS DE MÉTRICAS COM RELEVO TÁTIL 3D (REATIVOS AO FILTRO ATIVO)
@@ -826,7 +1188,7 @@ export default function VendasAlbunsPage() {
         </section>
 
         {/* =========================================================================
-            BANNER INFORMATIVO DE CONTROLE POR INSTITUIÇÃO & PERÍODO
+            BANNER INFORMATIVO DE CONTROLE POR INSTITUIÇÃO & PERÍODO & RESPONSÁVEL
             ========================================================================= */}
         {temFiltroAtivo && (
           <div className="bg-gradient-to-r from-[#2A176B] via-[#3B1F8C] to-[#4C1D95] text-white rounded-[24px] p-4.5 mb-6 shadow-[0_8px_24px_rgba(59,31,140,0.25)] border border-purple-400/30 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-200">
@@ -837,10 +1199,10 @@ export default function VendasAlbunsPage() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-black uppercase tracking-wider text-purple-200">
-                    Controle de Vendas por Instituição & Período
+                    Controle de Vendas Filtrado
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/25 text-emerald-300 border border-emerald-400/40">
-                    {vendasFiltradas.length} {vendasFiltradas.length === 1 ? 'álbum vendido' : 'álbuns vendidos'}
+                    {vendasFiltradas.length} {vendasFiltradas.length === 1 ? 'álbum encontrado' : 'álbuns encontrados'}
                   </span>
                 </div>
                 <p className="text-xs text-purple-100/90 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -859,6 +1221,34 @@ export default function VendasAlbunsPage() {
                       📖 Modelo: <strong className="text-white underline">{filtroModelo}</strong>
                     </span>
                   )}
+                  {filtroResponsavel !== 'TODOS' && (
+                    <span>
+                      👤 Responsável:{' '}
+                      <strong className="text-white underline">
+                        {filtroResponsavel === 'MEUS'
+                          ? `Atribuídos a Mim (${usuarioLogado?.nome})`
+                          : filtroResponsavel === 'SEM_RESPONSAVEL'
+                          ? 'Sem Responsável'
+                          : filtroResponsavel}
+                      </strong>
+                    </span>
+                  )}
+                  {filtroPrazo !== 'TODOS' && (
+                    <span>
+                      ⏱️ Prazo:{' '}
+                      <strong className="text-amber-300 underline">
+                        {filtroPrazo === 'ATRASADOS'
+                          ? '🚨 Apenas Atrasados'
+                          : filtroPrazo === 'HOJE'
+                          ? '⚠️ Vence Hoje'
+                          : filtroPrazo === 'URGENTES'
+                          ? '⏳ Urgentes'
+                          : filtroPrazo === 'NO_PRAZO'
+                          ? '✅ No Prazo'
+                          : '📦 Concluídos'}
+                      </strong>
+                    </span>
+                  )}
                   <span>
                     Total Apurado: <strong className="text-emerald-300 font-mono">R$ {totalFaturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
                   </span>
@@ -872,6 +1262,8 @@ export default function VendasAlbunsPage() {
                 setFiltroPeriodo('TODOS');
                 setFiltroModelo('TODOS');
                 setFiltroPagamento('TODOS');
+                setFiltroResponsavel('TODOS');
+                setFiltroPrazo('TODOS');
                 setBusca('');
               }}
               className="inline-flex items-center justify-center space-x-1.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 shadow-sm transition hover:scale-102 cursor-pointer shrink-0"
@@ -883,7 +1275,7 @@ export default function VendasAlbunsPage() {
         )}
 
         {/* =========================================================================
-            BARRA DE BUSCA E FILTROS RÁPIDOS (COM INSTITUIÇÃO & PERÍODO)
+            BARRA DE BUSCA E FILTROS RÁPIDOS (COM INSTITUIÇÃO, PERÍODO, RESPONSÁVEL & PRAZOS)
             ========================================================================= */}
         <div className="bg-white rounded-[24px] p-4 mb-6 border border-slate-100 shadow-[0_4px_16px_rgba(0,0,0,0.02)] flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Campo de Busca Geral */}
@@ -891,7 +1283,7 @@ export default function VendasAlbunsPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Buscar por formando, CPF, turma, modelo de álbum..."
+              placeholder="Buscar por formando, CPF, turma, modelo, responsável..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="w-full bg-[#F4F6FB] text-slate-900 placeholder:text-slate-400 text-xs rounded-2xl pl-9 pr-4 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] shadow-inner transition"
@@ -903,7 +1295,7 @@ export default function VendasAlbunsPage() {
             <select
               value={filtroInstituicao}
               onChange={(e) => setFiltroInstituicao(e.target.value)}
-              className="bg-[#F4F6FB] text-slate-800 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] max-w-[210px]"
+              className="bg-[#F4F6FB] text-slate-800 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] max-w-[190px]"
               title="Filtrar por Instituição de Ensino"
             >
               <option value="TODAS">🏛️ Todas as Instituições</option>
@@ -932,6 +1324,44 @@ export default function VendasAlbunsPage() {
             </select>
           </div>
 
+          {/* Filtro por Responsável */}
+          <div className="flex items-center space-x-1.5">
+            <select
+              value={filtroResponsavel}
+              onChange={(e) => setFiltroResponsavel(e.target.value)}
+              className="bg-[#F4F6FB] text-slate-800 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] max-w-[170px]"
+              title="Filtrar por Usuário Responsável"
+            >
+              <option value="TODOS">👤 Todos os Responsáveis</option>
+              {usuarioLogado && (
+                <option value="MEUS">⭐ Meus Álbuns</option>
+              )}
+              <option value="SEM_RESPONSAVEL">❓ Sem Responsável</option>
+              {usuariosSistema.map((u) => (
+                <option key={u.id} value={u.nome}>
+                  👤 {u.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro por Prazo / Atrasos */}
+          <div className="flex items-center space-x-1.5">
+            <select
+              value={filtroPrazo}
+              onChange={(e) => setFiltroPrazo(e.target.value)}
+              className="bg-[#F4F6FB] text-slate-800 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+              title="Filtrar por Situação do Prazo"
+            >
+              <option value="TODOS">⏱️ Prazos (Todos)</option>
+              <option value="ATRASADOS">🚨 Apenas Atrasados</option>
+              <option value="HOJE">⚠️ Vence Hoje</option>
+              <option value="URGENTES">⏳ Urgentes (≤3d)</option>
+              <option value="NO_PRAZO">✅ Em Aberto (No Prazo)</option>
+              <option value="CONCLUIDOS">📦 Concluídos / Entregues</option>
+            </select>
+          </div>
+
           {/* Filtro por Modelo de Álbum */}
           <div className="flex items-center space-x-1.5">
             <select
@@ -939,7 +1369,7 @@ export default function VendasAlbunsPage() {
               onChange={(e) => setFiltroModelo(e.target.value)}
               className="bg-[#F4F6FB] text-slate-700 text-xs font-bold rounded-2xl px-3 py-2.5 border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
             >
-              <option value="TODOS">Todos os Modelos</option>
+              <option value="TODOS">Modelos (Todos)</option>
               <option value="Album premium">Album premium</option>
               <option value="Album Preto">Album Preto</option>
               <option value="Album Slim">Album Slim</option>
@@ -1153,28 +1583,66 @@ export default function VendasAlbunsPage() {
                           )}
                         </td>
 
-                        {/* Status de Produção */}
+                        {/* Status de Produção & Prazos */}
                         <td className="py-4 px-5">
-                          {venda.statusProducao === 'EM_DIAGRAMACAO' && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                              <Clock className="w-3 h-3 mr-1" /> Em Diagramação
-                            </span>
-                          )}
-                          {venda.statusProducao === 'EM_GRAFICA' && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                              <Layers className="w-3 h-3 mr-1" /> Em Gráfica
-                            </span>
-                          )}
-                          {venda.statusProducao === 'PRONTO_ENTREGA' && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                              <CheckCircle2 className="w-3 h-3 mr-1" /> Pronto p/ Entrega
-                            </span>
-                          )}
-                          {venda.statusProducao === 'ENTREGUE' && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3 mr-1" /> Entregue
-                            </span>
-                          )}
+                          <div>
+                            {venda.statusProducao === 'EM_DIAGRAMACAO' && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                <Clock className="w-3 h-3 mr-1" /> Em Diagramação
+                              </span>
+                            )}
+                            {venda.statusProducao === 'EM_GRAFICA' && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                <Layers className="w-3 h-3 mr-1" /> Em Gráfica
+                              </span>
+                            )}
+                            {venda.statusProducao === 'PRONTO_ENTREGA' && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                <CheckCircle2 className="w-3 h-3 mr-1" /> Pronto p/ Entrega
+                              </span>
+                            )}
+                            {venda.statusProducao === 'ENTREGUE' && (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 mr-1" /> Entregue
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Prazo e Responsável */}
+                          {(() => {
+                            const st = calcularStatusPrazo(venda.prazoProducao, venda.statusProducao);
+                            return (
+                              <div className="mt-1.5 space-y-1">
+                                <div className="flex items-center space-x-1">
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] border ${st.badgeClasse}`}
+                                    title={venda.prazoProducao ? `Data Limite: ${formatarDataBR(venda.prazoProducao)}` : 'Sem prazo definido'}
+                                  >
+                                    <CalendarClock className="w-3 h-3 mr-1 shrink-0" />
+                                    {st.texto}
+                                  </span>
+                                  <button
+                                    onClick={() => abrirModalEditarPrazo(venda)}
+                                    className="p-1 rounded-lg hover:bg-purple-100 text-slate-400 hover:text-purple-700 transition"
+                                    title="Editar responsável e prazo limite"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                <div className="flex items-center space-x-1 text-[10px] text-slate-500">
+                                  <UserCheck className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="truncate max-w-[140px] font-semibold text-slate-700">
+                                    {venda.responsavelNome || 'Não atribuído'}
+                                  </span>
+                                </div>
+                                {venda.prazoProducao && (
+                                  <div className="text-[9px] text-slate-400 font-mono">
+                                    Data Limite: {formatarDataBR(venda.prazoProducao)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Ações */}
@@ -1199,14 +1667,30 @@ export default function VendasAlbunsPage() {
                             </button>
                           )}
 
-                          <button
-                            onClick={() => avancarStatusProducao(venda.id)}
-                            className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11px] border border-slate-200 transition shadow-2xs hover:translate-y-[-1px]"
-                            title="Avançar etapa de produção do álbum"
-                          >
-                            <span>Avançar</span>
-                            <ChevronRight className="w-3.5 h-3.5 inline ml-0.5" />
-                          </button>
+                          {venda.statusProducao !== 'ENTREGUE' ? (
+                            <>
+                              <button
+                                onClick={() => handleConcluirProducao(venda.id)}
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition shadow-2xs hover:translate-y-[-1px]"
+                                title="Concluir processo de produção e entregar álbum"
+                              >
+                                <CheckSquare className="w-3.5 h-3.5 inline mr-1" />
+                                <span>Concluir</span>
+                              </button>
+                              <button
+                                onClick={() => avancarStatusProducao(venda.id)}
+                                className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11px] border border-slate-200 transition shadow-2xs hover:translate-y-[-1px]"
+                                title="Avançar etapa de produção do álbum"
+                              >
+                                <span>Avançar</span>
+                                <ChevronRight className="w-3.5 h-3.5 inline ml-0.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-500 font-bold text-[11px] border border-slate-200">
+                              ✓ Concluído
+                            </span>
+                          )}
 
                           <a
                             href={`https://wa.me/55${venda.alunoTelefone.replace(/\D/g, '')}?text=Olá%20${encodeURIComponent(
@@ -1883,6 +2367,89 @@ export default function VendasAlbunsPage() {
                     </div>
                   )}
 
+                  {/* Seção: Responsável e Prazo Limite de Produção */}
+                  <div className="p-4 bg-purple-50/70 rounded-2xl border border-purple-200/90 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-purple-900 flex items-center">
+                        <UserCheck className="w-4 h-4 mr-1.5 text-purple-600" />
+                        Responsável & Prazo Limite de Produção
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                        Alerta de Atraso Automático
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Usuário Responsável *
+                        </label>
+                        <select
+                          value={formResponsavelNome}
+                          onChange={(e) => {
+                            const nome = e.target.value;
+                            setFormResponsavelNome(nome);
+                            const achei = usuariosSistema.find((u) => u.nome === nome);
+                            if (achei) setFormResponsavelEmail(achei.email);
+                          }}
+                          className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-purple-200 font-bold"
+                        >
+                          {usuariosSistema.length === 0 && (
+                            <option value={usuarioLogado?.nome || 'Administrador'}>
+                              {usuarioLogado?.nome || 'Administrador'} (Você)
+                            </option>
+                          )}
+                          {usuariosSistema.map((u) => (
+                            <option key={u.id} value={u.nome}>
+                              {u.nome} ({u.perfil})
+                            </option>
+                          ))}
+                          {usuarioLogado && !usuariosSistema.some((u) => u.nome === usuarioLogado.nome) && (
+                            <option value={usuarioLogado.nome}>
+                              {usuarioLogado.nome} (Você)
+                            </option>
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Data Limite de Produção / Entrega *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={formPrazoProducao}
+                          onChange={(e) => setFormPrazoProducao(e.target.value)}
+                          className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-purple-200 font-mono font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Chips rápidos de prazo */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[10px] font-bold text-purple-800 mr-1">Atalhos de prazo:</span>
+                      {[15, 30, 45, 60].map((dias) => (
+                        <button
+                          key={dias}
+                          type="button"
+                          onClick={() => {
+                            const d = new Date();
+                            d.setDate(d.getDate() + dias);
+                            setFormPrazoProducao(d.toISOString().split('T')[0]);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-purple-100 text-[10px] font-bold text-purple-800 border border-purple-200 transition shadow-2xs"
+                        >
+                          +{dias} dias
+                        </button>
+                      ))}
+                    </div>
+
+                    <p className="text-[10px] text-purple-800 leading-tight">
+                      Caso o álbum não seja entregue até a data estipulada, o sistema emitirá alertas visuais insistentes para o usuário marcado até a conclusão.
+                    </p>
+                  </div>
+
                   {/* Observações */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Observações da Produção</label>
@@ -2217,6 +2784,262 @@ export default function VendasAlbunsPage() {
               <Printer className="w-4 h-4" />
               <span>Imprimir Recibo de Venda</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 4: ALERTA DE PRAZOS DE PRODUÇÃO VENCIDOS (INSISTENTE NA TELA)
+          ========================================================================= */}
+      {modalAlertaPrazoAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 lg:p-8 shadow-2xl border border-rose-200 animate-in zoom-in-95 duration-200">
+            {/* Header do Alerta */}
+            <div className="flex items-center justify-between pb-4 border-b border-rose-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-lg shadow-rose-600/30 animate-pulse shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-black text-rose-950">
+                      Alerta de Prazos Vencidos na Produção
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                      {albunsAtrasados.length} {albunsAtrasados.length === 1 ? 'pendente' : 'pendentes'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Os álbuns abaixo ultrapassaram o prazo limite de entrega e requerem ação imediata:
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalAlertaPrazoAberto(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition"
+                title="Fechar janela (o alerta permanece na barra superior)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Lista de Álbuns Atrasados */}
+            <div className="my-5 space-y-3.5">
+              {albunsAtrasados.length === 0 ? (
+                <div className="p-8 text-center bg-emerald-50 rounded-2xl border border-emerald-200">
+                  <CheckSquare className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-emerald-950">Excelente! Não há nenhum álbum atrasado no momento.</p>
+                  <p className="text-xs text-emerald-700 mt-1">Todos os processos estão dentro do prazo estipulado.</p>
+                </div>
+              ) : (
+                albunsAtrasados.map((venda) => {
+                  const st = calcularStatusPrazo(venda.prazoProducao, venda.statusProducao);
+
+                  return (
+                    <div
+                      key={venda.id}
+                      className="p-4 rounded-2xl border border-rose-200 bg-rose-50/50 hover:bg-rose-50/80 transition shadow-2xs space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-mono font-bold text-xs text-slate-800">
+                              {venda.codigoPedido}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                              {st.texto}
+                            </span>
+                          </div>
+                          <strong className="text-slate-900 text-sm block mt-0.5">
+                            {venda.alunoNome}
+                          </strong>
+                          <span className="text-xs text-slate-600 block">
+                            {venda.turmaNome} &bull; Modelo: <strong className="text-purple-900">{venda.modeloAlbum}</strong>
+                          </span>
+                        </div>
+
+                        <div className="text-left sm:text-right">
+                          <span className="text-[11px] text-slate-500 block">
+                            Prazo Estipulado: <strong className="text-rose-700 font-mono">{formatarDataBR(venda.prazoProducao)}</strong>
+                          </span>
+                          <span className="text-[11px] text-slate-500 block">
+                            Responsável: <strong className="text-slate-800">{venda.responsavelNome || 'Não Atribuído'}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Botões Rápidos de Resolução */}
+                      <div className="pt-2 border-t border-rose-200/60 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-[10px] font-bold text-slate-500 mr-1">Prorrogar:</span>
+                          <button
+                            onClick={() => handleEstenderPrazo(venda.id, 7)}
+                            className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition"
+                            title="Adicionar mais 7 dias ao prazo"
+                          >
+                            +7 dias
+                          </button>
+                          <button
+                            onClick={() => handleEstenderPrazo(venda.id, 15)}
+                            className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition"
+                            title="Adicionar mais 15 dias ao prazo"
+                          >
+                            +15 dias
+                          </button>
+                          <button
+                            onClick={() => {
+                              setModalAlertaPrazoAberto(false);
+                              abrirModalEditarPrazo(venda);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white hover:bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200 shadow-2xs transition flex items-center space-x-1"
+                            title="Ajustar data exata ou alterar responsável"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>Alterar</span>
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => handleConcluirProducao(venda.id)}
+                          className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm transition flex items-center space-x-1.5"
+                          title="Finalizar este álbum como entregue e remover alerta"
+                        >
+                          <CheckSquare className="w-3.5 h-3.5" />
+                          <span>Concluir / Entregue</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer do Alerta */}
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+              <span className="flex items-center space-x-1 text-amber-700">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>O aviso permanece no topo da tela até a conclusão ou prorrogação de todos os itens.</span>
+              </span>
+              <button
+                onClick={() => setModalAlertaPrazoAberto(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition shrink-0"
+              >
+                Entendido / Fechar Janela
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 5: EDIÇÃO RÁPIDA DE RESPONSÁVEL E PRAZO DE PRODUÇÃO
+          ========================================================================= */}
+      {vendaEditandoPrazo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] w-full max-w-lg p-6 lg:p-7 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md">
+                  <CalendarClock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Ajustar Responsável & Prazo Limite
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {vendaEditandoPrazo.codigoPedido} &bull; {vendaEditandoPrazo.alunoNome}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setVendaEditandoPrazo(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarEdicaoPrazo} className="mt-4 space-y-4">
+              {/* Usuário Responsável */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
+                  <UserCheck className="w-3.5 h-3.5 mr-1 text-purple-600" />
+                  Usuário Responsável pelo Álbum:
+                </label>
+                <select
+                  value={editResponsavelNome}
+                  onChange={(e) => {
+                    const nome = e.target.value;
+                    setEditResponsavelNome(nome);
+                    const achei = usuariosSistema.find((u) => u.nome === nome);
+                    if (achei) setEditResponsavelEmail(achei.email);
+                  }}
+                  className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-3 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                >
+                  <option value="">Selecione um usuário...</option>
+                  {usuariosSistema.map((u) => (
+                    <option key={u.id} value={u.nome}>
+                      {u.nome} ({u.email}) - {u.perfil}
+                    </option>
+                  ))}
+                  {usuarioLogado && !usuariosSistema.some((u) => u.nome === usuarioLogado.nome) && (
+                    <option value={usuarioLogado.nome}>
+                      {usuarioLogado.nome} (Você)
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              {/* Data Limite */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
+                  <CalendarClock className="w-3.5 h-3.5 mr-1 text-purple-600" />
+                  Data Limite de Produção / Entrega:
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editPrazoProducao}
+                  onChange={(e) => setEditPrazoProducao(e.target.value)}
+                  className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-3 border border-slate-200 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                />
+
+                {/* Chips rápidos */}
+                <div className="flex items-center space-x-1.5 mt-2">
+                  <span className="text-[10px] font-bold text-slate-400">Atalhos rápidos:</span>
+                  {[15, 30, 45, 60].map((dias) => (
+                    <button
+                      key={dias}
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + dias);
+                        setEditPrazoProducao(d.toISOString().split('T')[0]);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-purple-100 hover:text-purple-800 text-[10px] font-bold text-slate-600 transition"
+                    >
+                      +{dias}d
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setVendaEditandoPrazo(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md transition"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -514,12 +514,28 @@ export default function VendasAlbunsPage() {
   // Carregar vendas centralizadas da nuvem e sincronizar com localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const filtrarFicticios = (lista: any[]) => {
+        const nomesFicticios = [
+          'gabriel santos souza',
+          'amanda oliveira lima',
+          'leonardo castro ferreira',
+        ];
+        const idsFicticios = ['venda-001', 'venda-002', 'venda-003'];
+        return (lista || []).filter(
+          (v: any) =>
+            !idsFicticios.includes(v.id) &&
+            !nomesFicticios.includes((v.alunoNome || '').trim().toLowerCase())
+        );
+      };
+
       try {
         const salvo = localStorage.getItem('on_vendas_albuns_estado');
         if (salvo) {
           const parsed = JSON.parse(salvo);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setVendas(parsed);
+          if (Array.isArray(parsed)) {
+            const limpas = filtrarFicticios(parsed);
+            setVendas(limpas);
+            localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
           }
         }
       } catch (e) {}
@@ -531,10 +547,11 @@ export default function VendasAlbunsPage() {
           return res.json();
         })
         .then((dadosServidor) => {
-          if (Array.isArray(dadosServidor) && dadosServidor.length > 0) {
-            setVendas(dadosServidor);
+          if (Array.isArray(dadosServidor)) {
+            const limpas = filtrarFicticios(dadosServidor);
+            setVendas(limpas);
             try {
-              localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(dadosServidor));
+              localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
             } catch (e) {}
           }
         })
@@ -554,6 +571,21 @@ export default function VendasAlbunsPage() {
           body: JSON.stringify({ action: 'save', vendas: novas }),
         }).catch(() => {});
       } catch (e) {}
+    }
+  };
+
+  const handleExcluirVenda = (vendaId: string) => {
+    if (confirm('Tem certeza que deseja EXCLUIR definitivamente esta venda do sistema?')) {
+      const atualizadas = vendas.filter((v) => v.id !== vendaId);
+      salvarVendasLocal(atualizadas);
+      if (typeof window !== 'undefined') {
+        fetch('/vendas.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', id: vendaId }),
+        }).catch(() => {});
+      }
+      showToast('Venda excluída com sucesso!');
     }
   };
 
@@ -1961,6 +1993,14 @@ export default function VendasAlbunsPage() {
                           >
                             <Phone className="w-3.5 h-3.5" />
                           </a>
+
+                          <button
+                            onClick={() => handleExcluirVenda(venda.id)}
+                            className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-800 border border-rose-200 inline-flex items-center justify-center transition shadow-2xs cursor-pointer"
+                            title="Excluir Venda Definitivamente (Gestor)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </td>
                       </tr>
                     );

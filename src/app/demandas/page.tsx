@@ -34,6 +34,13 @@ import {
   Tag,
   ListTodo,
   RotateCcw,
+  Image as LucideImage,
+  Upload,
+  Maximize2,
+  Eye,
+  FileText,
+  MapPin,
+  Download,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import { getUsuarios, UsuarioSistema } from '@/lib/usuarios';
@@ -68,6 +75,9 @@ export interface DemandaInterna {
   codigo: string;
   titulo: string;
   descricao: string;
+  observacoes?: string;
+  campus?: string;
+  imagens?: string[];
   setor: DemandaSetor;
   prioridade: DemandaPrioridade;
   status: DemandaStatus;
@@ -197,10 +207,14 @@ export default function DemandasInternasPage() {
   const [modalNovaDemandaAberto, setModalNovaDemandaAberto] = useState(false);
   const [demandaEditando, setDemandaEditando] = useState<DemandaInterna | null>(null);
   const [demandaDetalhes, setDemandaDetalhes] = useState<DemandaInterna | null>(null);
+  const [imagemAmpliada, setImagemAmpliada] = useState<string | null>(null);
 
   // Form Nova Demanda
   const [formTitulo, setFormTitulo] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
+  const [formObservacoes, setFormObservacoes] = useState('');
+  const [formCampus, setFormCampus] = useState('');
+  const [formImagens, setFormImagens] = useState<string[]>([]);
   const [formSetor, setFormSetor] = useState<DemandaSetor>('FOTOGRAFIA');
   const [formPrioridade, setFormPrioridade] = useState<DemandaPrioridade>('MEDIA');
   const [formResponsavelNome, setFormResponsavelNome] = useState('');
@@ -212,6 +226,10 @@ export default function DemandasInternasPage() {
   const [formTurmaNome, setFormTurmaNome] = useState('');
   const [formPeriodo, setFormPeriodo] = useState('2026.1');
   const [formChecklistItems, setFormChecklistItems] = useState<string[]>(['']);
+
+  // Modal Detalhes & Edição de Observações
+  const [detalhesObservacoesEditando, setDetalhesObservacoesEditando] = useState(false);
+  const [detalhesTextoObservacoes, setDetalhesTextoObservacoes] = useState('');
 
   // Modal Edição Rápida
   const [editStatus, setEditStatus] = useState<DemandaStatus>('PENDENTE');
@@ -507,6 +525,100 @@ export default function DemandasInternasPage() {
     showToast('Demanda atualizada com sucesso!');
   };
 
+  // Abrir Modal de Detalhes da Demanda com Observações e Fotos
+  const abrirDetalhesDemanda = (demanda: DemandaInterna) => {
+    setDemandaDetalhes(demanda);
+    setDetalhesTextoObservacoes(demanda.observacoes || demanda.descricao || '');
+    setDetalhesObservacoesEditando(false);
+  };
+
+  // Salvar Edição de Observações dentro do Modal de Detalhes
+  const handleSalvarObservacoesDetalhes = () => {
+    if (!demandaDetalhes) return;
+    const txt = detalhesTextoObservacoes.trim();
+    const atualizadas = demandas.map((d) =>
+      d.id === demandaDetalhes.id ? { ...d, observacoes: txt, descricao: txt || d.descricao } : d
+    );
+    salvarDemandas(atualizadas);
+    setDemandaDetalhes({ ...demandaDetalhes, observacoes: txt, descricao: txt || demandaDetalhes.descricao });
+    setDetalhesObservacoesEditando(false);
+    showToast('Observações da demanda salvas com sucesso!');
+  };
+
+  // Upload de Imagens no formulário de Nova Demanda
+  const handleUploadImagensNovo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`A imagem "${file.name}" ultrapassa 5MB. Por favor, escolha um arquivo menor.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = ev.target?.result as string;
+        if (base64) {
+          setFormImagens((prev) => [...prev, base64]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  // Upload de Imagens diretamente dentro do Modal de Detalhes de Demanda existente
+  const handleAdicionarImagensDetalhes = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!demandaDetalhes) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const novasImgs: string[] = [];
+    let lidos = 0;
+    const total = files.length;
+
+    Array.from(files).forEach((file) => {
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`A imagem "${file.name}" ultrapassa 5MB.`);
+        lidos++;
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = ev.target?.result as string;
+        if (base64) {
+          novasImgs.push(base64);
+        }
+        lidos++;
+        if (lidos === total && novasImgs.length > 0) {
+          const imgsFinais = [...(demandaDetalhes.imagens || []), ...novasImgs];
+          const atualizadas = demandas.map((d) =>
+            d.id === demandaDetalhes.id ? { ...d, imagens: imgsFinais } : d
+          );
+          salvarDemandas(atualizadas);
+          setDemandaDetalhes({ ...demandaDetalhes, imagens: imgsFinais });
+          showToast(`${novasImgs.length} foto(s) anexada(s) à demanda com sucesso!`);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  // Remover foto da demanda existente
+  const handleRemoverImagemDetalhes = (idxRemover: number) => {
+    if (!demandaDetalhes) return;
+    if (confirm('Tem certeza que deseja remover esta foto/comprovante da demanda?')) {
+      const imgsFinais = (demandaDetalhes.imagens || []).filter((_, idx) => idx !== idxRemover);
+      const atualizadas = demandas.map((d) =>
+        d.id === demandaDetalhes.id ? { ...d, imagens: imgsFinais } : d
+      );
+      salvarDemandas(atualizadas);
+      setDemandaDetalhes({ ...demandaDetalhes, imagens: imgsFinais });
+      showToast('Foto removida com sucesso!');
+    }
+  };
+
   // Criar Nova Demanda
   const handleCriarDemanda = (e: React.FormEvent) => {
     e.preventDefault();
@@ -531,7 +643,10 @@ export default function DemandasInternasPage() {
       id: `dem_${Date.now()}`,
       codigo: novoCodigo,
       titulo: formTitulo.trim(),
-      descricao: formDescricao.trim() || 'Sem descrição complementar.',
+      descricao: formDescricao.trim() || formObservacoes.trim() || 'Sem descrição complementar.',
+      observacoes: formObservacoes.trim() || formDescricao.trim() || undefined,
+      campus: formCampus.trim() || undefined,
+      imagens: formImagens.length > 0 ? formImagens : undefined,
       setor: formSetor,
       prioridade: formPrioridade,
       status: 'PENDENTE',
@@ -552,6 +667,9 @@ export default function DemandasInternasPage() {
     // Reset Form
     setFormTitulo('');
     setFormDescricao('');
+    setFormObservacoes('');
+    setFormCampus('');
+    setFormImagens([]);
     setFormTurmaNome('');
     setFormChecklistItems(['']);
     const dReset = new Date();
@@ -1078,9 +1196,11 @@ export default function DemandasInternasPage() {
                     return (
                       <tr
                         key={demanda.id}
-                        className={`hover:bg-slate-50/80 transition group ${
+                        onClick={() => abrirDetalhesDemanda(demanda)}
+                        className={`hover:bg-purple-50/40 transition group cursor-pointer ${
                           demanda.status === 'CONCLUIDA' ? 'bg-slate-50/40 opacity-75' : ''
                         }`}
+                        title="Clique na demanda para ver todas as observações, campus e fotos anexadas"
                       >
                         {/* Código & Setor */}
                         <td className="py-3 px-5 whitespace-nowrap">
@@ -1096,19 +1216,42 @@ export default function DemandasInternasPage() {
                         </td>
 
                         {/* Demanda & Contexto */}
-                        <td className="py-3 px-5 max-w-[280px]">
-                          <div className="font-black text-slate-900 group-hover:text-purple-700 transition">
-                            {demanda.titulo}
+                        <td className="py-3 px-5 max-w-[320px]">
+                          <div className="font-black text-slate-900 group-hover:text-purple-700 transition flex items-center space-x-1.5">
+                            <span>{demanda.titulo}</span>
                           </div>
                           <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                            {demanda.descricao}
+                            {demanda.observacoes || demanda.descricao}
                           </p>
-                          {demanda.turmaNome && (
-                            <div className="flex items-center space-x-1 text-[10px] text-slate-500 font-medium mt-1">
-                              <GraduationCap className="w-3 h-3 text-purple-500 shrink-0" />
-                              <span className="truncate">{demanda.turmaNome}</span>
-                            </div>
-                          )}
+
+                          {/* Badges de Turma, Campus, Fotos e Observações */}
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            {demanda.turmaNome && (
+                              <div className="flex items-center space-x-1 text-[10px] text-slate-600 font-medium bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                <GraduationCap className="w-3 h-3 text-purple-600 shrink-0" />
+                                <span className="truncate max-w-[130px]">{demanda.turmaNome}</span>
+                              </div>
+                            )}
+
+                            {demanda.campus && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                <MapPin className="w-2.5 h-2.5 mr-0.5 text-amber-600" />
+                                {demanda.campus}
+                              </span>
+                            )}
+
+                            {demanda.imagens && demanda.imagens.length > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                <LucideImage className="w-2.5 h-2.5 mr-0.5 text-purple-600" />
+                                {demanda.imagens.length} foto(s)
+                              </span>
+                            )}
+
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-50 text-slate-500 border border-slate-200 group-hover:border-purple-300 transition">
+                              <Eye className="w-2.5 h-2.5 mr-0.5 text-purple-500" />
+                              Ver Detalhes
+                            </span>
+                          </div>
                         </td>
 
                         {/* Prioridade */}
@@ -1143,7 +1286,10 @@ export default function DemandasInternasPage() {
                             </span>
                           ) : (
                             <button
-                              onClick={() => avancarStatusDemanda(demanda.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                avancarStatusDemanda(demanda.id);
+                              }}
                               className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black border ${etapa.corBadge} hover:brightness-95 transition shadow-2xs group/btn cursor-pointer`}
                               title={`Etapa atual: ${etapa.nome}. Clique para avançar!`}
                             >
@@ -1166,7 +1312,10 @@ export default function DemandasInternasPage() {
                                 : 'Sem prazo'}
                             </span>
                             <button
-                              onClick={() => abrirModalEditarPrazo(demanda)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalEditarPrazo(demanda);
+                              }}
                               className="p-1 rounded-lg hover:bg-purple-100 text-slate-400 hover:text-purple-700 transition cursor-pointer"
                               title="Editar prazo ou responsável da demanda"
                             >
@@ -1191,9 +1340,12 @@ export default function DemandasInternasPage() {
                         <td className="py-3 px-5 text-right whitespace-nowrap space-x-1.5">
                           {demanda.checklist.length > 0 && (
                             <button
-                              onClick={() => setDemandaDetalhes(demanda)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirDetalhesDemanda(demanda);
+                              }}
                               className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition shadow-2xs"
-                              title="Ver Checklist da Demanda"
+                              title="Ver Checklist & Detalhes da Demanda"
                             >
                               <CheckSquare className="w-3.5 h-3.5 inline mr-1 text-purple-600" />
                               {demanda.checklist.filter((c) => c.concluido).length}/
@@ -1203,7 +1355,10 @@ export default function DemandasInternasPage() {
 
                           {demanda.status === 'CONCLUIDA' ? (
                             <button
-                              onClick={() => handleReabrirDemanda(demanda.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReabrirDemanda(demanda.id);
+                              }}
                               className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-[11px] border border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
                               title="Reabrir Demanda e mover de volta para Demandas Ativas"
                             >
@@ -1212,7 +1367,10 @@ export default function DemandasInternasPage() {
                             </button>
                           ) : (
                             <button
-                              onClick={() => handleConcluirDemanda(demanda.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleConcluirDemanda(demanda.id);
+                              }}
                               className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-200 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
                               title="Marcar Demanda como Concluída (ela sairá da tela ativa e irá para Demandas Concluídas)"
                             >
@@ -1222,7 +1380,10 @@ export default function DemandasInternasPage() {
                           )}
 
                           <button
-                            onClick={() => handleExcluirDemanda(demanda.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExcluirDemanda(demanda.id);
+                            }}
                             className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-900 border border-rose-200 font-bold text-[11px] transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
                             title="Excluir Demanda Definitivamente (Gestor)"
                           >
@@ -1386,32 +1547,110 @@ export default function DemandasInternasPage() {
                 </div>
               </div>
 
-              {/* Vínculo opcional de Turma */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Vincular a uma Turma / Projeto (Opcional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="ex: Medicina Mackenzie 2026.1, Direito USP 2025.2..."
-                  value={formTurmaNome}
-                  onChange={(e) => setFormTurmaNome(e.target.value)}
-                  className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200"
-                />
+              {/* Vínculo opcional de Turma & Campus */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
+                    <GraduationCap className="w-3.5 h-3.5 text-purple-600 mr-1" />
+                    Turma / Projeto (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ex: Medicina Mackenzie 2026.1, Direito USP..."
+                    value={formTurmaNome}
+                    onChange={(e) => setFormTurmaNome(e.target.value)}
+                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
+                    <MapPin className="w-3.5 h-3.5 text-purple-600 mr-1" />
+                    Campus da Faculdade (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ex: Higienópolis, Alphaville, Butantã, Campus Sul..."
+                    value={formCampus}
+                    onChange={(e) => setFormCampus(e.target.value)}
+                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-medium"
+                  />
+                </div>
               </div>
 
-              {/* Descrição Detalhada */}
+              {/* Observações & Orientações Detalhadas */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Descrição / Orientações para a Execução
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center">
+                    <FileText className="w-3.5 h-3.5 text-purple-600 mr-1" />
+                    Observações & Orientações da Demanda
+                  </span>
+                  <span className="text-[10px] text-slate-400">Visível com 1 clique ao abrir a demanda</span>
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Descreva detalhes específicos da demanda, orientações sobre o que precisa ser feito..."
-                  value={formDescricao}
-                  onChange={(e) => setFormDescricao(e.target.value)}
+                  placeholder="Descreva detalhes específicos da demanda, orientações sobre o que precisa ser feito, links, contatos ou observações..."
+                  value={formObservacoes}
+                  onChange={(e) => {
+                    setFormObservacoes(e.target.value);
+                    setFormDescricao(e.target.value);
+                  }}
                   className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-3 border border-slate-200"
                 />
+              </div>
+
+              {/* Campo para Subir Imagens (Fotos, Comprovantes, Prints) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center">
+                    <LucideImage className="w-3.5 h-3.5 text-purple-600 mr-1" />
+                    Anexar Fotos / Imagens / Comprovantes
+                  </span>
+                  <span className="text-[10px] font-bold text-purple-700">
+                    {formImagens.length > 0 ? `${formImagens.length} foto(s) selecionada(s)` : 'Opcional'}
+                  </span>
+                </label>
+                
+                <div className="p-3 bg-purple-50/50 rounded-2xl border border-dashed border-purple-200 space-y-2.5">
+                  <label className="flex items-center justify-center space-x-2 p-2.5 bg-white hover:bg-purple-50 text-purple-700 border border-purple-300 rounded-xl cursor-pointer transition shadow-2xs group">
+                    <Upload className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-extrabold">Selecionar Fotos do Computador</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleUploadImagensNovo}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {formImagens.length > 0 && (
+                    <div className="grid grid-cols-4 gap-2 pt-1">
+                      {formImagens.map((img, idx) => (
+                        <div
+                          key={idx}
+                          className="relative group rounded-xl overflow-hidden border border-purple-200 aspect-square bg-slate-100 shadow-2xs"
+                        >
+                          <img
+                            src={img}
+                            alt={`Anexo ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormImagens((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            className="absolute top-1 right-1 p-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white shadow-md transition"
+                            title="Remover foto"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Botões do Modal */}
@@ -1564,113 +1803,364 @@ export default function DemandasInternasPage() {
       )}
 
       {/* =========================================================================
-          MODAL 3: CHECKLIST & DETALHES DA DEMANDA
+          MODAL 3: DETALHES COMPLETOS DA DEMANDA, OBSERVAÇÕES & FOTOS ANEXADAS
           ========================================================================= */}
-      {demandaDetalhes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-[32px] w-full max-w-lg p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md">
-                  <CheckSquare className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Checklist da Demanda</h3>
-                  <p className="text-xs text-slate-500">{demandaDetalhes.codigo}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setDemandaDetalhes(null)}
-                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {demandaDetalhes && (() => {
+        const setor = SETORES_INFO[demandaDetalhes.setor] || SETORES_INFO.GERAL;
+        const SetorIcon = setor.icone;
+        const etapa = ETAPAS_DEMANDA.find((e) => e.id === demandaDetalhes.status) || ETAPAS_DEMANDA[0];
+        const stPrazo = calcularStatusPrazo(demandaDetalhes.prazoLimite, demandaDetalhes.status);
+        const listaImgs = demandaDetalhes.imagens || [];
 
-            <div className="my-4 space-y-3">
-              <h4 className="text-sm font-black text-slate-900">{demandaDetalhes.titulo}</h4>
-              <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-                {demandaDetalhes.descricao}
-              </p>
-
-              <div className="pt-2">
-                <span className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-2">
-                  Itens a Cumprir ({demandaDetalhes.checklist.filter((c) => c.concluido).length}/
-                  {demandaDetalhes.checklist.length}):
-                </span>
-                <div className="space-y-2">
-                  {demandaDetalhes.checklist.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleChecklistItem(demandaDetalhes.id, item.id)}
-                      className={`w-full text-left p-3 rounded-xl border flex items-center space-x-3 transition cursor-pointer ${
-                        item.concluido
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-semibold'
-                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="bg-white rounded-[32px] w-full max-w-2xl max-h-[92vh] overflow-y-auto p-6 lg:p-7 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+              {/* Header do Modal de Detalhes */}
+              <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+                <div className="space-y-1.5 flex-1 pr-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono font-black text-sm text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200">
+                      {demandaDetalhes.codigo}
+                    </span>
+                    <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${setor.corBadge}`}>
+                      <SetorIcon className="w-3 h-3" />
+                      <span>{setor.rotulo}</span>
+                    </span>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        demandaDetalhes.prioridade === 'URGENTE'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : demandaDetalhes.prioridade === 'ALTA'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : demandaDetalhes.prioridade === 'MEDIA'
+                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                          : 'bg-slate-100 text-slate-700 border border-slate-200'
                       }`}
                     >
+                      Prioridade {demandaDetalhes.prioridade}
+                    </span>
+                  </div>
+
+                  <h3 className="text-lg font-black text-slate-900 pt-1 leading-snug">
+                    {demandaDetalhes.titulo}
+                  </h3>
+                </div>
+
+                <button
+                  onClick={() => setDemandaDetalhes(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Faixa de Informações: Campus, Turma, Responsável & Prazos */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-4 p-3 bg-[#F4F6FB] rounded-2xl border border-slate-200/70 text-xs">
+                {/* Campus */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Campus</span>
+                  <div className="font-bold text-slate-800 flex items-center space-x-1 mt-0.5">
+                    <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
+                    <span className="truncate">{demandaDetalhes.campus || 'Não especificado'}</span>
+                  </div>
+                </div>
+
+                {/* Turma / Projeto */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Turma / Projeto</span>
+                  <div className="font-bold text-slate-800 flex items-center space-x-1 mt-0.5">
+                    <GraduationCap className="w-3 h-3 text-purple-600 shrink-0" />
+                    <span className="truncate">{demandaDetalhes.turmaNome || 'Geral / Livre'}</span>
+                  </div>
+                </div>
+
+                {/* Responsável */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Responsável</span>
+                  <div className="font-bold text-slate-800 flex items-center space-x-1 mt-0.5">
+                    <UserCheck className="w-3 h-3 text-purple-600 shrink-0" />
+                    <span className="truncate">{demandaDetalhes.responsavelNome}</span>
+                  </div>
+                </div>
+
+                {/* Prazo */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Prazo Limite</span>
+                  <div className="font-bold text-slate-800 flex items-center space-x-1 mt-0.5">
+                    <Clock className="w-3 h-3 text-purple-600 shrink-0" />
+                    <span className="font-mono">
+                      {demandaDetalhes.prazoLimite ? formatarDataBR(demandaDetalhes.prazoLimite) : 'Sem prazo'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SEÇÃO 1: OBSERVAÇÕES & ORIENTAÇÕES DA DEMANDA */}
+              <div className="mb-5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-xs font-black text-slate-800 uppercase tracking-wider">
+                    <FileText className="w-4 h-4 text-purple-600" />
+                    <span>Observações & Orientações da Demanda:</span>
+                  </div>
+
+                  {!detalhesObservacoesEditando ? (
+                    <button
+                      type="button"
+                      onClick={() => setDetalhesObservacoesEditando(true)}
+                      className="px-2.5 py-1 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[11px] border border-purple-200 transition flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Editar Observações</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDetalhesTextoObservacoes(demandaDetalhes.observacoes || demandaDetalhes.descricao || '');
+                          setDetalhesObservacoesEditando(false);
+                        }}
+                        className="px-2 py-0.5 rounded-lg text-slate-500 hover:bg-slate-100 text-[11px] font-bold"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSalvarObservacoesDetalhes}
+                        className="px-3 py-1 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-extrabold shadow-sm transition"
+                      >
+                        Salvar Observações
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {detalhesObservacoesEditando ? (
+                  <div className="space-y-2">
+                    <textarea
+                      rows={4}
+                      value={detalhesTextoObservacoes}
+                      onChange={(e) => setDetalhesTextoObservacoes(e.target.value)}
+                      placeholder="Digite as observações, orientações, restrições ou links desta demanda..."
+                      className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-2xl p-3 border border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 leading-relaxed font-medium"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleSalvarObservacoesDetalhes}
+                        className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-sm"
+                      >
+                        Salvar Alterações
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-purple-50/40 p-4 rounded-2xl border border-purple-100 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    {demandaDetalhes.observacoes || demandaDetalhes.descricao || (
+                      <span className="text-slate-400 italic">
+                        Nenhuma observação ou orientação cadastrada ainda. Clique em "Editar Observações" para adicionar.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* SEÇÃO 2: FOTOS & IMAGENS ANEXADAS (GALERIA & UPLOAD) */}
+              <div className="mb-5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-xs font-black text-slate-800 uppercase tracking-wider">
+                    <LucideImage className="w-4 h-4 text-purple-600" />
+                    <span>Fotos & Comprovantes Anexados ({listaImgs.length}):</span>
+                  </div>
+
+                  <label className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-[11px] shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Anexar Mais Fotos</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleAdicionarImagensDetalhes}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {listaImgs.length === 0 ? (
+                  <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-center space-y-1">
+                    <LucideImage className="w-6 h-6 text-slate-300 mx-auto" />
+                    <p className="text-xs text-slate-500 font-medium">
+                      Nenhuma imagem anexada a esta demanda ainda.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Você pode subir fotos de comprovantes, aprovação de layout, amostras ou fotos de turmas.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 p-3 bg-slate-50 rounded-2xl border border-slate-200/80">
+                    {listaImgs.map((img, idx) => (
                       <div
-                        className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 ${
+                        key={idx}
+                        className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-square bg-slate-200 shadow-2xs"
+                      >
+                        <img
+                          src={img}
+                          alt={`Foto ${idx + 1}`}
+                          className="w-full h-full object-cover transition-transform group-hover:scale-105 cursor-pointer"
+                          onClick={() => setImagemAmpliada(img)}
+                        />
+                        {/* Botão Ver Imagem Grande */}
+                        <button
+                          type="button"
+                          onClick={() => setImagemAmpliada(img)}
+                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white"
+                          title="Clique para ampliar"
+                        >
+                          <Maximize2 className="w-5 h-5 drop-shadow" />
+                        </button>
+                        {/* Botão Remover */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoverImagemDetalhes(idx);
+                          }}
+                          className="absolute top-1.5 right-1.5 p-1 rounded-full bg-rose-600/90 hover:bg-rose-700 text-white shadow-md transition"
+                          title="Remover foto"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* SEÇÃO 3: CHECKLIST DA DEMANDA */}
+              {demandaDetalhes.checklist.length > 0 && (
+                <div className="mb-4 space-y-2">
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider block">
+                    Checklist de Tarefas ({demandaDetalhes.checklist.filter((c) => c.concluido).length}/
+                    {demandaDetalhes.checklist.length}):
+                  </span>
+                  <div className="space-y-1.5">
+                    {demandaDetalhes.checklist.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => toggleChecklistItem(demandaDetalhes.id, item.id)}
+                        className={`w-full text-left p-2.5 rounded-xl border flex items-center space-x-2.5 transition cursor-pointer ${
                           item.concluido
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'border-slate-300'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-semibold'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
                         }`}
                       >
-                        {item.concluido && <Check className="w-3.5 h-3.5" />}
-                      </div>
-                      <span className={`text-xs ${item.concluido ? 'line-through text-slate-400' : ''}`}>
-                        {item.texto}
-                      </span>
+                        <div
+                          className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+                            item.concluido
+                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'border-slate-300'
+                          }`}
+                        >
+                          {item.concluido && <Check className="w-3 h-3" />}
+                        </div>
+                        <span className={`text-xs ${item.concluido ? 'line-through text-slate-400' : ''}`}>
+                          {item.texto}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Footer com Ações */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => handleExcluirDemanda(demandaDetalhes.id)}
+                  className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition flex items-center space-x-1.5 cursor-pointer"
+                  title="Excluir Demanda Definitivamente (Gestor)"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>Excluir Demanda</span>
+                </button>
+
+                <div className="flex items-center space-x-2">
+                  {demandaDetalhes.status === 'CONCLUIDA' ? (
+                    <button
+                      onClick={() => {
+                        handleReabrirDemanda(demandaDetalhes.id);
+                        setDemandaDetalhes(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold border border-amber-300 transition flex items-center space-x-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Reabrir Demanda</span>
                     </button>
-                  ))}
+                  ) : (
+                    <button
+                      onClick={() => {
+                        handleConcluirDemanda(demandaDetalhes.id);
+                        setDemandaDetalhes(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Marcar Concluída</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setDemandaDetalhes(null)}
+                    className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                  >
+                    Fechar
+                  </button>
                 </div>
               </div>
             </div>
+          </div>
+        );
+      })()}
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => handleExcluirDemanda(demandaDetalhes.id)}
-                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition flex items-center space-x-1.5 cursor-pointer"
-                title="Excluir Demanda Definitivamente (Gestor)"
-              >
-                <Trash2 className="w-4 h-4 text-rose-600" />
-                <span>Excluir Demanda (Gestor)</span>
-              </button>
-
+      {/* =========================================================================
+          MODAL LIGHTBOX: VISUALIZADOR DE IMAGEM AMPLIADA (ZOOM EM TELA CHEIA)
+          ========================================================================= */}
+      {imagemAmpliada && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => setImagemAmpliada(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between pb-3 text-white">
+              <span className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
+                <LucideImage className="w-4 h-4 text-purple-400" />
+                <span>Visualizador de Imagem / Anexo</span>
+              </span>
               <div className="flex items-center space-x-2">
-                {demandaDetalhes.status === 'CONCLUIDA' ? (
-                  <button
-                    onClick={() => {
-                      handleReabrirDemanda(demandaDetalhes.id);
-                      setDemandaDetalhes(null);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold border border-amber-300 transition flex items-center space-x-1 cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Reabrir Demanda</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      handleConcluirDemanda(demandaDetalhes.id);
-                      setDemandaDetalhes(null);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Marcar Concluída</span>
-                  </button>
-                )}
-                <button
-                  onClick={() => setDemandaDetalhes(null)}
-                  className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                <a
+                  href={imagemAmpliada}
+                  download="anexo_demanda.jpg"
+                  className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition flex items-center space-x-1"
                 >
-                  Fechar
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar</span>
+                </a>
+                <button
+                  onClick={() => setImagemAmpliada(null)}
+                  className="p-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white transition"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
+            <img
+              src={imagemAmpliada}
+              alt="Anexo Ampliado"
+              className="max-h-[80vh] w-auto max-w-full rounded-2xl shadow-2xl border border-white/10 object-contain"
+            />
           </div>
         </div>
       )}

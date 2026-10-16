@@ -511,33 +511,34 @@ export default function VendasAlbunsPage() {
     .reduce((acc, b) => acc + (b.valorAdicional || 0), 0);
   const somaTotalKit = numValorAlbum + numValorBrindes;
 
-  // Carregar do localStorage
+  // Carregar vendas centralizadas da nuvem e sincronizar com localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        // Limpa dados de teste anteriores caso ainda estejam no localStorage
-        const jaLimpo = localStorage.getItem('on_vendas_albuns_zeradas_limpas_v1');
-        if (!jaLimpo) {
-          localStorage.removeItem('on_vendas_albuns_estado');
-          localStorage.setItem('on_vendas_albuns_zeradas_limpas_v1', 'true');
-          setVendas([]);
-          return;
-        }
-
         const salvo = localStorage.getItem('on_vendas_albuns_estado');
         if (salvo) {
           const parsed = JSON.parse(salvo);
-          if (Array.isArray(parsed)) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             setVendas(parsed);
-          } else {
-            setVendas([]);
           }
-        } else {
-          setVendas([]);
         }
-      } catch (e) {
-        setVendas([]);
-      }
+      } catch (e) {}
+
+      // Sincroniza em tempo real com o banco de dados centralizado no servidor
+      fetch('/vendas.php')
+        .then((res) => {
+          if (!res.ok) throw new Error('Falha ao obter vendas');
+          return res.json();
+        })
+        .then((dadosServidor) => {
+          if (Array.isArray(dadosServidor) && dadosServidor.length > 0) {
+            setVendas(dadosServidor);
+            try {
+              localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(dadosServidor));
+            } catch (e) {}
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -546,6 +547,12 @@ export default function VendasAlbunsPage() {
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(novas));
+        // Persiste centralizadamente na nuvem (Hostinger) para todos os computadores e usuários
+        fetch('/vendas.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', vendas: novas }),
+        }).catch(() => {});
       } catch (e) {}
     }
   };

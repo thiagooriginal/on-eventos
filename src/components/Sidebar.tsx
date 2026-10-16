@@ -25,7 +25,18 @@ import {
   X,
   Building2,
   ClipboardList,
+  Eye,
+  EyeOff,
+  Lock,
+  Phone,
+  Mail,
+  Upload,
+  Trash2,
+  Check,
+  User,
+  Edit3,
 } from 'lucide-react';
+import { getUsuarios, salvarUsuarios } from '@/lib/usuarios';
 
 interface SidebarProps {
   paginaAtiva?: string;
@@ -163,14 +174,38 @@ export const menuItens: MenuItem[] = [
   },
 ];
 
+export interface UsuarioSessao {
+  nome: string;
+  email: string;
+  perfil: string;
+  telefone?: string;
+  foto?: string;
+  senha?: string;
+  cargo?: string;
+}
+
 export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
   const [mobileAberto, setMobileAberto] = useState(false);
   const [albunsAtrasadosCount, setAlbunsAtrasadosCount] = useState<number>(0);
-  const [usuario, setUsuario] = useState<{ nome: string; email: string; perfil: string }>({
+  const [usuario, setUsuario] = useState<UsuarioSessao>({
     nome: 'Administrador ON',
     email: 'admin@formatura.com.br',
     perfil: 'ADMIN',
+    telefone: '',
+    foto: '',
   });
+
+  // Estados do Modal "Meu Perfil"
+  const [modalPerfilAberto, setModalPerfilAberto] = useState(false);
+  const [formNome, setFormNome] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formTelefone, setFormTelefone] = useState('');
+  const [formSenha, setFormSenha] = useState('');
+  const [formFoto, setFormFoto] = useState('');
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
+  const [toastPerfil, setToastPerfil] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -196,11 +231,16 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
           return;
         }
 
-        setUsuario({
+        const usrAtual: UsuarioSessao = {
           nome: parsed.nome || 'Administrador ON',
           email: parsed.email || 'admin@formatura.com.br',
           perfil: parsed.perfil || 'ADMIN',
-        });
+          telefone: parsed.telefone || '',
+          foto: parsed.foto || parsed.avatarUrl || '',
+          senha: parsed.senha || '',
+          cargo: parsed.cargo || '',
+        };
+        setUsuario(usrAtual);
 
         // Contabiliza álbuns com prazo vencido para alerta no menu (por etapa de produção)
         const albunsRaw = localStorage.getItem('on_vendas_albuns_estado');
@@ -256,8 +296,128 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
         localStorage.removeItem('on_usuario_logado');
         window.location.replace('/login/index.html');
       }
+
+      // Escuta evento global de atualização de perfil caso ocorra em outra aba/componente
+      const handlePerfilAtualizadoEvent = () => {
+        try {
+          const u = localStorage.getItem('on_usuario_logado');
+          if (u) {
+            const p = JSON.parse(u);
+            setUsuario((ant) => ({
+              ...ant,
+              nome: p.nome || ant.nome,
+              email: p.email || ant.email,
+              telefone: p.telefone || ant.telefone,
+              foto: p.foto || p.avatarUrl || ant.foto,
+            }));
+          }
+        } catch (e) {}
+      };
+      window.addEventListener('on_perfil_atualizado', handlePerfilAtualizadoEvent);
+      return () => {
+        window.removeEventListener('on_perfil_atualizado', handlePerfilAtualizadoEvent);
+      };
     }
   }, []);
+
+  const abrirModalPerfil = () => {
+    setFormNome(usuario.nome);
+    setFormEmail(usuario.email);
+    setFormTelefone(usuario.telefone || '');
+    setFormSenha('');
+    setFormFoto(usuario.foto || '');
+    setMostrarSenha(false);
+    setModalPerfilAberto(true);
+  };
+
+  const handleFotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, escolha uma imagem válida (PNG, JPG, JPEG ou WebP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A imagem é muito pesada. Escolha um arquivo de até 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setFormFoto(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoverFoto = () => {
+    setFormFoto('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSalvarPerfil = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formNome.trim() || !formEmail.trim()) {
+      alert('Por favor, informe seu Nome Completo e E-mail.');
+      return;
+    }
+
+    setSalvandoPerfil(true);
+    try {
+      const salvo = localStorage.getItem('on_usuario_logado');
+      const sessaoAtual = salvo ? JSON.parse(salvo) : {};
+
+      const novaSessao: UsuarioSessao = {
+        ...sessaoAtual,
+        nome: formNome.trim(),
+        email: formEmail.trim(),
+        telefone: formTelefone.trim(),
+        foto: formFoto || undefined,
+        senha: formSenha.trim() || sessaoAtual.senha,
+      };
+
+      localStorage.setItem('on_usuario_logado', JSON.stringify(novaSessao));
+      setUsuario(novaSessao);
+
+      // Sincroniza com a lista de usuários no banco centralizado
+      const todosUsuarios = getUsuarios();
+      const emailAntigo = (sessaoAtual.email || '').toLowerCase().trim();
+      const usuariosAtualizados = todosUsuarios.map((u) => {
+        if (
+          u.email.toLowerCase().trim() === emailAntigo ||
+          u.nome.toLowerCase().trim() === (sessaoAtual.nome || '').toLowerCase().trim()
+        ) {
+          return {
+            ...u,
+            nome: formNome.trim(),
+            email: formEmail.trim(),
+            telefone: formTelefone.trim() || u.telefone,
+            senha: formSenha.trim() || u.senha,
+            avatarUrl: formFoto || u.avatarUrl,
+          };
+        }
+        return u;
+      });
+
+      await salvarUsuarios(usuariosAtualizados);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('on_perfil_atualizado'));
+      }
+
+      setToastPerfil('✓ Dados do seu perfil atualizados com sucesso!');
+      setTimeout(() => setToastPerfil(null), 3500);
+      setModalPerfilAberto(false);
+    } catch (err) {
+      alert('Erro ao salvar dados do perfil. Tente novamente.');
+    } finally {
+      setSalvandoPerfil(false);
+    }
+  };
 
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
@@ -367,8 +527,18 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
       <div className="pt-4 mt-6 border-t border-white/15 px-2">
         <div className="bg-white/10 backdrop-blur-xs rounded-2xl p-3 border border-white/15 shadow-[0_3px_0_0_rgba(0,0,0,0.12)] mb-3">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-900 font-extrabold flex items-center justify-center text-sm shadow-[0_2px_6px_rgba(0,0,0,0.2)]">
-              {usuario.nome.slice(0, 2).toUpperCase()}
+            <div className="relative shrink-0">
+              {usuario.foto ? (
+                <img
+                  src={usuario.foto}
+                  alt={usuario.nome}
+                  className="w-10 h-10 rounded-xl object-cover border border-white/30 shadow-[0_2px_6px_rgba(0,0,0,0.2)]"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-900 font-extrabold flex items-center justify-center text-sm shadow-[0_2px_6px_rgba(0,0,0,0.2)]">
+                  {usuario.nome.slice(0, 2).toUpperCase()}
+                </div>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-white truncate">{usuario.nome}</p>
@@ -385,12 +555,21 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
               </div>
             </div>
           </div>
+
+          {/* Botão Meu Perfil */}
+          <button
+            onClick={abrirModalPerfil}
+            className="w-full mt-2.5 flex items-center justify-center space-x-1.5 py-1.5 px-3 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
+          >
+            <Edit3 className="w-3.5 h-3.5 text-amber-300" />
+            <span>Editar Meu Perfil</span>
+          </button>
         </div>
 
         {/* Botão Sair com Relevo */}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 hover:text-white border border-red-400/30 text-xs font-semibold shadow-[0_2px_0_0_rgba(239,68,68,0.2)] hover:translate-y-[-1px] active:translate-y-[1px] transition-all"
+          className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 hover:text-white border border-red-400/30 text-xs font-semibold shadow-[0_2px_0_0_rgba(239,68,68,0.2)] hover:translate-y-[-1px] active:translate-y-[1px] transition-all cursor-pointer"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>Encerrar Sessão</span>
@@ -436,6 +615,197 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
           {navContent}
         </div>
       </div>
+
+      {/* Toast Flutuante de Perfil */}
+      {toastPerfil && (
+        <div className="fixed bottom-6 right-6 z-[9999] bg-[#36218A] text-white px-5 py-3 rounded-2xl shadow-2xl border border-purple-400/40 text-xs font-bold flex items-center space-x-2 animate-bounce">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <span>{toastPerfil}</span>
+        </div>
+      )}
+
+      {/* Modal Meu Perfil (Dados Cadastrais, E-mail, Senha, Telefone e Foto) */}
+      {modalPerfilAberto && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] w-full max-w-lg overflow-hidden shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+            {/* Cabeçalho do Modal */}
+            <div className="bg-gradient-to-r from-[#4F39F6] to-[#7C3AED] p-5 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
+                  <User className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Meu Perfil de Usuário</h3>
+                  <p className="text-xs text-purple-100">Atualize seus dados, foto de perfil, contato e senha.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalPerfilAberto(false)}
+                className="p-2 text-white/80 hover:text-white rounded-xl hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Formulário do Perfil */}
+            <form onSubmit={handleSalvarPerfil} className="p-6 space-y-4">
+              {/* Seção Foto de Perfil */}
+              <div className="flex items-center space-x-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+                <div className="relative shrink-0">
+                  {formFoto ? (
+                    <img
+                      src={formFoto}
+                      alt="Prévia"
+                      className="w-16 h-16 rounded-2xl object-cover border-2 border-purple-500 shadow-md"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-900 font-black flex items-center justify-center text-xl shadow-md">
+                      {formNome ? formNome.slice(0, 2).toUpperCase() : 'ON'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-bold text-slate-800 block mb-1">Foto de Perfil</span>
+                  <p className="text-[11px] text-slate-500 mb-2">JPG, PNG ou WebP até 5MB. Visível para toda a equipe.</p>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFotoUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{formFoto ? 'Alterar Foto' : 'Carregar Foto'}</span>
+                    </button>
+                    {formFoto && (
+                      <button
+                        type="button"
+                        onClick={handleRemoverFoto}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-700 text-xs font-bold transition cursor-pointer"
+                        title="Remover foto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Nome Completo */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nome Completo *
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    value={formNome}
+                    onChange={(e) => setFormNome(e.target.value)}
+                    placeholder="Seu nome completo"
+                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                  />
+                </div>
+              </div>
+
+              {/* E-mail de Acesso */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  E-mail de Acesso / Login *
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    required
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                    placeholder="exemplo@onagenciadeeventos.com.br"
+                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                  />
+                </div>
+              </div>
+
+              {/* Telefone / WhatsApp */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Telefone / WhatsApp
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={formTelefone}
+                    onChange={(e) => setFormTelefone(e.target.value)}
+                    placeholder="(11) 99999-9999"
+                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                  />
+                </div>
+              </div>
+
+              {/* Nova Senha */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nova Senha de Acesso
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={mostrarSenha ? 'text' : 'password'}
+                    value={formSenha}
+                    onChange={(e) => setFormSenha(e.target.value)}
+                    placeholder="Deixe em branco para manter a senha atual"
+                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-10 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarSenha(!mostrarSenha)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {mostrarSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">Preencha apenas caso queira alterar sua senha de login.</p>
+              </div>
+
+              {/* Nível de Acesso (Informativo) */}
+              <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between text-xs">
+                <span className="font-bold text-purple-900">Nível do Usuário:</span>
+                <span className="font-black px-2.5 py-0.5 rounded-lg bg-purple-200 text-purple-900">
+                  {usuario.perfil.toUpperCase().includes('ADMIN') ? '👑 Administrador Geral' : '👤 Usuário Básico (Operacional)'}
+                </span>
+              </div>
+
+              {/* Botões do Rodapé */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setModalPerfilAberto(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoPerfil}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#4F39F6] to-[#7C3AED] hover:brightness-110 text-white text-xs font-extrabold shadow-md transition cursor-pointer flex items-center space-x-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{salvandoPerfil ? 'Salvando...' : 'Salvar Alterações'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

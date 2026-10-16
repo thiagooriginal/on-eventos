@@ -33,6 +33,7 @@ import {
   Star,
   Tag,
   ListTodo,
+  RotateCcw,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import { getUsuarios, UsuarioSistema } from '@/lib/usuarios';
@@ -84,117 +85,7 @@ export interface DemandaInterna {
 
 const STORAGE_KEY_DEMANDAS = 'on_demandas_internas_v1';
 
-export const DEMANDAS_INICIAIS: DemandaInterna[] = [
-  {
-    id: 'dem-001',
-    codigo: 'DEM-101',
-    titulo: 'Diagramação de layout do Álbum Premium Medicina 2026.1',
-    descricao: 'Confeccionar as lâminas iniciais incluindo fotos de família e sessão de estúdio.',
-    setor: 'FOTOGRAFIA',
-    prioridade: 'URGENTE',
-    status: 'EM_ANDAMENTO',
-    responsavelNome: 'Raphaela Rodrigues',
-    responsavelEmail: 'raphaela@onagenciadeeventos.com.br',
-    dataCriacao: '2026-10-10',
-    prazoLimite: '2026-10-20',
-    turmaNome: 'Medicina Mackenzie 2026.1',
-    instituicaoNome: 'Universidade Presbiteriana Mackenzie',
-    periodo: '2026.1',
-    checklist: [
-      { id: 'c1', texto: 'Receber fotos tratadas em alta definição', concluido: true },
-      { id: 'c2', texto: 'Montar boneca das primeiras 40 páginas', concluido: true },
-      { id: 'c3', texto: 'Enviar para revisão interna do diagramador', concluido: false },
-    ],
-    criadoPorNome: 'Thiago Original',
-  },
-  {
-    id: 'dem-002',
-    codigo: 'DEM-102',
-    titulo: 'Transmitir primeiro lote de remessa CNAB 400 no Sicredi',
-    descricao: 'Realizar upload do arquivo oficial 04220O16.CRM no Sicredi Internet até as 18h.',
-    setor: 'FINANCEIRO',
-    prioridade: 'ALTA',
-    status: 'PENDENTE',
-    responsavelNome: 'Valter Sá',
-    responsavelEmail: 'valter.sa@hotmail.com',
-    dataCriacao: '2026-10-14',
-    prazoLimite: '2026-10-17',
-    turmaNome: 'Direito Mackenzie 2027.1',
-    instituicaoNome: 'Universidade Presbiteriana Mackenzie',
-    periodo: '2027.1',
-    checklist: [
-      { id: 'c1', texto: 'Conferir sequencial inicial 123', concluido: true },
-      { id: 'c2', texto: 'Baixar arquivo 04220O16.CRM gerado', concluido: true },
-      { id: 'c3', texto: 'Transmitir no menu Cobrança > Transferir Arquivos', concluido: false },
-    ],
-    criadoPorNome: 'Thiago Original',
-  },
-  {
-    id: 'dem-003',
-    codigo: 'DEM-103',
-    titulo: 'Revisão dos brindes da turma Direito USP 2025.2',
-    descricao: 'Verificar se todos os formandos selecionaram entre o Trio de Quadros e o Porta-Diploma de acrílico.',
-    setor: 'ATENDIMENTO',
-    prioridade: 'MEDIA',
-    status: 'EM_REVISAO',
-    responsavelNome: 'Raphaela Rodrigues',
-    responsavelEmail: 'raphaela@onagenciadeeventos.com.br',
-    dataCriacao: '2026-10-08',
-    prazoLimite: '2026-10-24',
-    turmaNome: 'Direito USP 2025.2',
-    instituicaoNome: 'Universidade de São Paulo (USP)',
-    periodo: '2025.2',
-    checklist: [
-      { id: 'c1', texto: 'Enviar mensagem no grupo de WhatsApp da comissão', concluido: true },
-      { id: 'c2', texto: 'Planilhar opções pendentes', concluido: true },
-    ],
-    criadoPorNome: 'Raphaela Rodrigues',
-  },
-  {
-    id: 'dem-004',
-    codigo: 'DEM-104',
-    titulo: 'Aprovação de layout com a Comissão de Formatura FGV 2026.2',
-    descricao: 'Coletar assinatura digital do termo de aprovação do convite e das capas do álbum.',
-    setor: 'DESIGN',
-    prioridade: 'URGENTE',
-    status: 'EM_ANDAMENTO',
-    responsavelNome: 'Thiago Original',
-    responsavelEmail: 'thiago@onagenciadeeventos.com.br',
-    dataCriacao: '2026-10-05',
-    prazoLimite: '2026-10-15', // Propositalmente vencido para teste de alerta
-    turmaNome: 'Administração FGV 2026.2',
-    instituicaoNome: 'Fundação Getulio Vargas (FGV)',
-    periodo: '2026.2',
-    checklist: [
-      { id: 'c1', texto: 'Disponibilizar PDF em alta resolução', concluido: true },
-      { id: 'c2', texto: 'Validar dados institucionais da faculdade', concluido: true },
-      { id: 'c3', texto: 'Coletar de acordo formal do presidente', concluido: false },
-    ],
-    criadoPorNome: 'Thiago Original',
-  },
-  {
-    id: 'dem-005',
-    codigo: 'DEM-105',
-    titulo: 'Conferência de medidas das becas para prova solene',
-    descricao: 'Organizar a listagem de tamanhos dos alunos da turma Odontologia Anhembi.',
-    setor: 'GERAL',
-    prioridade: 'NORMAL',
-    status: 'CONCLUIDA',
-    responsavelNome: 'Raphaela Rodrigues',
-    responsavelEmail: 'raphaela@onagenciadeeventos.com.br',
-    dataCriacao: '2026-09-28',
-    prazoLimite: '2026-10-12',
-    concluidoEm: '11/10/2026',
-    turmaNome: 'Odontologia Anhembi 2026.1',
-    instituicaoNome: 'Universidade Anhembi Morumbi',
-    periodo: '2026.1',
-    checklist: [
-      { id: 'c1', texto: 'Receber grade de tamanhos da alfaiataria', concluido: true },
-      { id: 'c2', texto: 'Identificar becas por aluno', concluido: true },
-    ],
-    criadoPorNome: 'Raphaela Rodrigues',
-  },
-];
+export const DEMANDAS_INICIAIS: DemandaInterna[] = [];
 
 export const SETORES_INFO: Record<
   DemandaSetor,
@@ -283,6 +174,7 @@ export const formatarDataBR = (iso: string) => {
 
 export default function DemandasInternasPage() {
   const [demandas, setDemandas] = useState<DemandaInterna[]>([]);
+  const [abaMenuDemandas, setAbaMenuDemandas] = useState<'ATIVAS' | 'CONCLUIDAS' | 'TODAS'>('ATIVAS');
   const [busca, setBusca] = useState('');
   const [filtroResponsavel, setFiltroResponsavel] = useState<string>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
@@ -326,7 +218,7 @@ export default function DemandasInternasPage() {
   const [editResponsavelNome, setEditResponsavelNome] = useState('');
   const [editPrazoLimite, setEditPrazoLimite] = useState('');
 
-  // Carregamento inicial do localStorage
+  // Carregamento inicial do localStorage e sincronização com a nuvem Hostinger
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -345,16 +237,37 @@ export default function DemandasInternasPage() {
         const salvo = localStorage.getItem(STORAGE_KEY_DEMANDAS);
         if (salvo) {
           const parsed = JSON.parse(salvo);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setDemandas(parsed);
-            return;
+          if (Array.isArray(parsed)) {
+            // Remove mockups antigos se existirem para iniciar limpo
+            const temMock = parsed.some((p: any) => p.id === 'dem-001' || p.id === 'dem-002');
+            if (!temMock && parsed.length > 0) {
+              setDemandas(parsed);
+            } else if (temMock) {
+              localStorage.setItem(STORAGE_KEY_DEMANDAS, JSON.stringify([]));
+              setDemandas([]);
+            }
           }
         }
-        localStorage.setItem(STORAGE_KEY_DEMANDAS, JSON.stringify(DEMANDAS_INICIAIS));
-        setDemandas(DEMANDAS_INICIAIS);
       } catch (e) {
-        setDemandas(DEMANDAS_INICIAIS);
+        setDemandas([]);
       }
+
+      // Sincroniza com servidor centralizado
+      fetch('/demandas.php')
+        .then((res) => {
+          if (!res.ok) throw new Error('Falha ao obter demandas');
+          return res.json();
+        })
+        .then((dados) => {
+          if (Array.isArray(dados)) {
+            const limpas = dados.filter((d: any) => d.id !== 'dem-001' && d.id !== 'dem-002');
+            setDemandas(limpas);
+            try {
+              localStorage.setItem(STORAGE_KEY_DEMANDAS, JSON.stringify(limpas));
+            } catch (e) {}
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -363,7 +276,26 @@ export default function DemandasInternasPage() {
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(STORAGE_KEY_DEMANDAS, JSON.stringify(novas));
+        fetch('/demandas.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', demandas: novas }),
+        }).catch(() => {});
       } catch (e) {}
+    }
+  };
+
+  const handleLimparTodasDemandas = () => {
+    if (confirm('Tem certeza que deseja LIMPAR TODAS as demandas para começar o cadastro do zero? Esta ação apagará todas as demandas do sistema.')) {
+      salvarDemandas([]);
+      if (typeof window !== 'undefined') {
+        fetch('/demandas.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'clear' }),
+        }).catch(() => {});
+      }
+      showToast('Todas as demandas foram limpas! Você pode cadastrar do zero.');
     }
   };
 
@@ -482,8 +414,12 @@ export default function DemandasInternasPage() {
     salvarDemandas(atualizadas);
     const atual = atualizadas.find((d) => d.id === demandaId);
     if (atual) {
-      const etapa = ETAPAS_DEMANDA.find((e) => e.id === atual.status);
-      showToast(`Demanda ${atual.codigo} avançou para: ${etapa?.nome}!`);
+      if (atual.status === 'CONCLUIDA') {
+        showToast(`🎉 Demanda ${atual.codigo} CONCLUÍDA! Movida para a aba "Demandas Concluídas".`);
+      } else {
+        const etapa = ETAPAS_DEMANDA.find((e) => e.id === atual.status);
+        showToast(`Demanda ${atual.codigo} avançou para: ${etapa?.nome}!`);
+      }
     }
   };
 
@@ -501,15 +437,41 @@ export default function DemandasInternasPage() {
       return d;
     });
     salvarDemandas(atualizadas);
-    showToast('Demanda marcada como CONCLUÍDA com sucesso! 🎉');
+    showToast('🎉 Demanda CONCLUÍDA! Movida para a aba "Demandas Concluídas".');
   };
 
-  // Excluir demanda
+  // Reabrir demanda concluída (retorna para Em Andamento)
+  const handleReabrirDemanda = (demandaId: string) => {
+    const atualizadas = demandas.map((d) => {
+      if (d.id === demandaId) {
+        return {
+          ...d,
+          status: 'EM_ANDAMENTO' as const,
+          concluidoEm: undefined,
+        };
+      }
+      return d;
+    });
+    salvarDemandas(atualizadas);
+    showToast('Demanda reaberta e movida de volta para as "Demandas Ativas"!');
+  };
+
+  // Excluir demanda definitivamente (Gestor)
   const handleExcluirDemanda = (demandaId: string) => {
-    if (confirm('Tem certeza que deseja excluir esta demanda interna?')) {
+    if (confirm('Tem certeza que deseja EXCLUIR definitivamente esta demanda?')) {
       const atualizadas = demandas.filter((d) => d.id !== demandaId);
       salvarDemandas(atualizadas);
-      showToast('Demanda removida com sucesso!');
+      if (typeof window !== 'undefined') {
+        fetch('/demandas.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', id: demandaId }),
+        }).catch(() => {});
+      }
+      if (demandaDetalhes && demandaDetalhes.id === demandaId) {
+        setDemandaDetalhes(null);
+      }
+      showToast('Demanda excluída com sucesso!');
     }
   };
 
@@ -658,7 +620,15 @@ export default function DemandasInternasPage() {
           ? d.status === 'CONCLUIDA'
           : true;
 
+      const matchAba =
+        abaMenuDemandas === 'ATIVAS'
+          ? d.status !== 'CONCLUIDA' && d.status !== 'CANCELADA'
+          : abaMenuDemandas === 'CONCLUIDAS'
+          ? d.status === 'CONCLUIDA'
+          : true;
+
       return (
+        matchAba &&
         matchBusca &&
         matchResponsavel &&
         matchStatus &&
@@ -670,6 +640,7 @@ export default function DemandasInternasPage() {
     });
   }, [
     demandas,
+    abaMenuDemandas,
     busca,
     filtroResponsavel,
     filtroStatus,
@@ -691,6 +662,9 @@ export default function DemandasInternasPage() {
 
   // Contadores para métricas
   const totalDemandas = demandas.length;
+  const totalAtivas = demandas.filter(
+    (d) => d.status !== 'CONCLUIDA' && d.status !== 'CANCELADA'
+  ).length;
   const totalMinhas = demandas.filter(
     (d) => d.responsavelNome.toLowerCase() === (usuarioLogado?.nome || '').toLowerCase()
   ).length;
@@ -879,6 +853,78 @@ export default function DemandasInternasPage() {
             </div>
           </div>
         </section>
+
+        {/* =========================================================================
+            MENU DE ABAS PRINCIPAL: DEMANDAS ATIVAS vs DEMANDAS CONCLUÍDAS
+            ========================================================================= */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 bg-white/80 backdrop-blur-md p-2 rounded-[22px] border border-slate-200/80 shadow-[0_4px_16px_rgba(0,0,0,0.02)]">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setAbaMenuDemandas('ATIVAS')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 cursor-pointer ${
+                abaMenuDemandas === 'ATIVAS'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                  : 'bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <ClipboardList className="w-4 h-4" />
+              <span>📋 Demandas Ativas</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  abaMenuDemandas === 'ATIVAS'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-purple-100 text-purple-800'
+                }`}
+              >
+                {totalAtivas}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setAbaMenuDemandas('CONCLUIDAS')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 cursor-pointer ${
+                abaMenuDemandas === 'CONCLUIDAS'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+                  : 'bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>✅ Demandas Concluídas</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  abaMenuDemandas === 'CONCLUIDAS'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-emerald-100 text-emerald-800'
+                }`}
+              >
+                {totalConcluidas}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setAbaMenuDemandas('TODAS')}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 cursor-pointer ${
+                abaMenuDemandas === 'TODAS'
+                  ? 'bg-slate-800 text-white shadow-md'
+                  : 'bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Todas ({totalDemandas})</span>
+            </button>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleLimparTodasDemandas}
+              className="px-3 py-2 rounded-xl text-[11px] font-bold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 transition shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+              title="Limpar todas as demandas cadastradas para começar o cadastro do zero"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Limpar Demandas (Zerar)</span>
+            </button>
+          </div>
+        </div>
 
         {/* =========================================================================
             BARRA DE BUSCA E FILTROS RÁPIDOS
@@ -1155,23 +1201,33 @@ export default function DemandasInternasPage() {
                             </button>
                           )}
 
-                          {demanda.status !== 'CONCLUIDA' && (
+                          {demanda.status === 'CONCLUIDA' ? (
+                            <button
+                              onClick={() => handleReabrirDemanda(demanda.id)}
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-[11px] border border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
+                              title="Reabrir Demanda e mover de volta para Demandas Ativas"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                              <span>Reabrir</span>
+                            </button>
+                          ) : (
                             <button
                               onClick={() => handleConcluirDemanda(demanda.id)}
-                              className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-200 transition shadow-2xs"
-                              title="Marcar Demanda como Concluída"
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-200 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
+                              title="Marcar Demanda como Concluída (ela sairá da tela ativa e irá para Demandas Concluídas)"
                             >
-                              <Check className="w-3.5 h-3.5 inline mr-1 text-emerald-600" />
-                              Concluir
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Concluir</span>
                             </button>
                           )}
 
                           <button
                             onClick={() => handleExcluirDemanda(demanda.id)}
-                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                            title="Excluir Demanda"
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-900 border border-rose-200 font-bold text-[11px] transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
+                            title="Excluir Demanda Definitivamente (Gestor)"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Excluir</span>
                           </button>
                         </td>
                       </tr>
@@ -1572,13 +1628,48 @@ export default function DemandasInternasPage() {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
               <button
-                onClick={() => setDemandaDetalhes(null)}
-                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition"
+                type="button"
+                onClick={() => handleExcluirDemanda(demandaDetalhes.id)}
+                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition flex items-center space-x-1.5 cursor-pointer"
+                title="Excluir Demanda Definitivamente (Gestor)"
               >
-                Fechar
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>Excluir Demanda (Gestor)</span>
               </button>
+
+              <div className="flex items-center space-x-2">
+                {demandaDetalhes.status === 'CONCLUIDA' ? (
+                  <button
+                    onClick={() => {
+                      handleReabrirDemanda(demandaDetalhes.id);
+                      setDemandaDetalhes(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold border border-amber-300 transition flex items-center space-x-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Reabrir Demanda</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      handleConcluirDemanda(demandaDetalhes.id);
+                      setDemandaDetalhes(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Marcar Concluída</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setDemandaDetalhes(null)}
+                  className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           </div>
         </div>

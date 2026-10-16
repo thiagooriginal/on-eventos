@@ -68,6 +68,15 @@ import {
   sincronizarUsuariosServidor,
   UsuarioSistema,
 } from '@/lib/usuarios';
+import {
+  SICREDI_CONFIG_OFICIAL,
+  BOLETO_HOMOLOGACAO_PADRAO,
+  gerarNossoNumeroSicredi,
+  gerarLinhaDigitavelECodigoBarrasSicredi,
+  gerarRemessaCnab400Oficial,
+  gerarNomeArquivoRemessaSicredi,
+  gerarSvgCodigoBarrasI25,
+} from '@/lib/sicredi';
 
 export type ModeloAlbumTipo = 'Album premium' | 'Album Preto' | 'Album Slim' | 'Album Colégio';
 
@@ -427,6 +436,7 @@ export default function VendasAlbunsPage() {
 
   // Estados dos Modais
   const [modalNovaVendaAberto, setModalNovaVendaAberto] = useState(false);
+  const [modalHomologacaoSicrediAberto, setModalHomologacaoSicrediAberto] = useState(false);
   const [vendaSelecionadaBoletos, setVendaSelecionadaBoletos] = useState<VendaAlbum | null>(null);
   const [vendaSelecionadaCartao, setVendaSelecionadaCartao] = useState<VendaAlbum | null>(null);
   const [copiadoIdx, setCopiadoIdx] = useState<string | null>(null);
@@ -836,6 +846,22 @@ export default function VendasAlbunsPage() {
     }
   };
 
+  // Download do arquivo de remessa oficial Sicredi CNAB 400
+  const handleDownloadRemessaSicredi = () => {
+    const conteudo = gerarRemessaCnab400Oficial(SICREDI_CONFIG_OFICIAL, [BOLETO_HOMOLOGACAO_PADRAO], 1);
+    const nomeArquivo = gerarNomeArquivoRemessaSicredi(SICREDI_CONFIG_OFICIAL.convenio, new Date(), 'REM');
+    const blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomeArquivo;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`Arquivo de Remessa ${nomeArquivo} baixado com sucesso!`);
+  };
+
   // Alternar Brinde
   const toggleBrinde = (nome: BrindeTipo) => {
     setFormBrindes((prev) =>
@@ -1188,6 +1214,16 @@ export default function VendasAlbunsPage() {
                 <span>Limpar Vendas</span>
               </button>
             )}
+
+            <button
+              onClick={() => setModalHomologacaoSicrediAberto(true)}
+              className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
+              title="Abrir Central de Homologação de Boletos & Remessa Sicredi"
+            >
+              <Building2 className="w-4 h-4 text-emerald-700" />
+              <span>Homologação Sicredi</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5"></span>
+            </button>
 
             <button
               onClick={abrirModalNovaVenda}
@@ -3532,6 +3568,335 @@ export default function VendasAlbunsPage() {
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          MODAL 6: CENTRAL DE HOMOLOGAÇÃO SICREDI (TROCA DE ARQUIVOS & BOLETO PDF)
+          ========================================================================= */}
+      {modalHomologacaoSicrediAberto && (() => {
+        const anoHomolog = parseInt(String(new Date().getFullYear()).slice(-2), 10);
+        const nossoNumHomolog = gerarNossoNumeroSicredi(
+          SICREDI_CONFIG_OFICIAL,
+          anoHomolog,
+          BOLETO_HOMOLOGACAO_PADRAO.nossoNumeroSequencial
+        );
+        const barrasHomolog = gerarLinhaDigitavelECodigoBarrasSicredi(
+          SICREDI_CONFIG_OFICIAL,
+          nossoNumHomolog.nossoNumeroSemFormatacao.slice(0, 8),
+          nossoNumHomolog.dv,
+          BOLETO_HOMOLOGACAO_PADRAO.valor,
+          BOLETO_HOMOLOGACAO_PADRAO.dataVencimento
+        );
+        const svgBarrasHomolog = gerarSvgCodigoBarrasI25(barrasHomolog.codigoBarras);
+        const nomeArquivoRemessa = gerarNomeArquivoRemessaSicredi(SICREDI_CONFIG_OFICIAL.convenio, new Date(), 'REM');
+
+        const textoRespostaEmail = `Olá Luiz Henrique,
+
+Seguem em anexo os arquivos solicitados para validação dos parâmetros de cobrança da ON AGENCIA DE EVENTOS LTDA:
+
+- 1 Boleto em PDF de Homologação (Nosso Número: ${nossoNumHomolog.nossoNumeroFormatado}, Valor: R$ ${BOLETO_HOMOLOGACAO_PADRAO.valor.toFixed(2)}, Vencimento: ${formatarDataBR(BOLETO_HOMOLOGACAO_PADRAO.dataVencimento)}).
+- 1 Arquivo de Remessa CNAB 400 correspondente (${nomeArquivoRemessa}).
+
+Parâmetros utilizados:
+- Banco: 748 (Sicredi)
+- Agência: 0726 | Posto: 86
+- Convênio: 04220 | Conta: 26102-1
+- CNPJ: 30.988.070/0001-60
+
+Ficamos no aguardo da aprovação para liberação em produção.
+
+Atenciosamente,
+ON AGENCIA DE EVENTOS LTDA`;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/75 backdrop-blur-xs overflow-y-auto">
+            <div className="bg-white rounded-[32px] w-full max-w-4xl max-h-[94vh] overflow-y-auto p-5 md:p-8 shadow-2xl border border-emerald-200 animate-in zoom-in-95 duration-150">
+              {/* Header da Homologação */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center space-x-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-lg shadow-emerald-600/25 shrink-0">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-black text-slate-900">
+                        Homologação de Cobrança Sicredi (Banco 748)
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        Padrão Oficial CNAB 400
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Arquivos prontos para validação e resposta ao analista <strong>Luiz Henrique</strong> (Sicredi Vale do Piquiri Abcd PR/SP).
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalHomologacaoSicrediAberto(false)}
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Card com os Dados Oficiais Confirmados */}
+              <div className="my-4 p-4.5 bg-gradient-to-r from-emerald-50/80 via-teal-50/60 to-slate-50 rounded-2xl border border-emerald-200 text-xs space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 pb-2">
+                  <span className="font-extrabold text-emerald-950 flex items-center">
+                    <CheckCircle2 className="w-4 h-4 mr-1.5 text-emerald-600" />
+                    Parâmetros Bancários Confirmados pelo Sicredi:
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                    Beneficiário: ON AGENCIA DE EVENTOS LTDA
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[11px]">
+                  <div className="bg-white p-2 rounded-xl border border-slate-200/80">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Banco</span>
+                    <strong className="text-slate-800">748 (Sicredi)</strong>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200/80">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Agência</span>
+                    <strong className="text-slate-800 font-mono">0726</strong>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200/80">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Posto / UA</span>
+                    <strong className="text-slate-800 font-mono">86</strong>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200/80">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Convênio</span>
+                    <strong className="text-emerald-700 font-mono font-bold">04220</strong>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200/80">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Conta Corrente</span>
+                    <strong className="text-slate-800 font-mono">26102-1</strong>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200/80">
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">CNPJ</span>
+                    <strong className="text-slate-800 font-mono text-[10px]">30.988.070/0001-60</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botões de Ação Direta para Homologação */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 my-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDownloadRemessaSicredi}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md transition cursor-pointer hover:scale-102"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>1. Baixar Remessa ({nomeArquivoRemessa})</span>
+                  </button>
+
+                  <button
+                    onClick={() => window.print()}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-md transition cursor-pointer hover:scale-102"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>2. Imprimir / Salvar Boleto PDF</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => copiarTexto(textoRespostaEmail, 'email-sicredi')}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 shadow-2xs transition cursor-pointer"
+                >
+                  {copiadoIdx === 'email-sicredi' ? (
+                    <Check className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="w-4 h-4 text-slate-500" />
+                  )}
+                  <span>Copiar Mensagem do E-mail</span>
+                </button>
+              </div>
+
+              {/* Visualizador do Boleto de Homologação (Padrão Oficial do Manual Sicredi) */}
+              <div className="mt-5 border-2 border-slate-300 rounded-2xl p-4 md:p-6 bg-white shadow-inner font-sans text-slate-900 printable-boleto">
+                {/* PARTE 1: RECIBO DO PAGADOR */}
+                <div className="border border-slate-400 p-3 rounded-lg mb-4 text-[11px] leading-tight space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-400 pb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-lg font-black tracking-tight text-emerald-800">Sicredi</span>
+                      <span className="text-lg font-black font-mono border-l-2 border-r-2 border-slate-700 px-2">| 748-X |</span>
+                    </div>
+                    <span className="font-bold text-xs uppercase text-slate-600">Recibo do Pagador</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1 border-b border-slate-300 pb-2">
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Local de Pagamento</span>
+                      <strong className="text-[10px] block">PAGÁVEL PREFERENCIALMENTE NAS COOP. DE CRÉDITO DO SICREDI</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Vencimento</span>
+                      <strong className="text-xs font-mono font-black">{formatarDataBR(BOLETO_HOMOLOGACAO_PADRAO.dataVencimento)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Agência / Código Beneficiário</span>
+                      <strong className="text-xs font-mono font-bold">0726.86.04220</strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Nosso Número</span>
+                      <strong className="text-xs font-mono font-black text-purple-900">{nossoNumHomolog.nossoNumeroFormatado}</strong>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1 border-b border-slate-300 pb-2">
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Beneficiário</span>
+                      <strong className="text-[10px] block">ON AGENCIA DE EVENTOS LTDA</strong>
+                      <span className="text-[9px] text-slate-600">CNPJ: 30.988.070/0001-60</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Nº Documento / Espécie</span>
+                      <span className="font-mono text-[11px] font-bold">HOMOLOG01 / DMI</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Data Emissão / Processamento</span>
+                      <span className="font-mono text-[11px]">{formatarDataBR(BOLETO_HOMOLOGACAO_PADRAO.dataEmissao)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] uppercase text-slate-500 block font-bold">Valor do Documento</span>
+                      <strong className="text-sm font-mono font-black text-slate-900">R$ {BOLETO_HOMOLOGACAO_PADRAO.valor.toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <span className="text-[9px] uppercase text-slate-500 block font-bold">Pagador</span>
+                    <strong className="text-xs block">{BOLETO_HOMOLOGACAO_PADRAO.sacadoNome} - CPF: {BOLETO_HOMOLOGACAO_PADRAO.sacadoCpfCnpj}</strong>
+                    <span className="text-[10px] text-slate-600 block">{BOLETO_HOMOLOGACAO_PADRAO.sacadoEndereco} &bull; CEP: {BOLETO_HOMOLOGACAO_PADRAO.sacadoCep} - {BOLETO_HOMOLOGACAO_PADRAO.sacadoCidade}/{BOLETO_HOMOLOGACAO_PADRAO.sacadoUf}</span>
+                  </div>
+                </div>
+
+                {/* LINHA DE CORTE */}
+                <div className="border-t-2 border-dashed border-slate-400 my-4 relative flex items-center justify-center">
+                  <span className="bg-white px-3 text-[9px] text-slate-400 uppercase tracking-widest -mt-2">
+                    Corte na linha abaixo para Ficha de Compensação
+                  </span>
+                </div>
+
+                {/* PARTE 2: FICHA DE COMPENSAÇÃO OFICIAL */}
+                <div className="border-2 border-slate-700 p-3 rounded-lg text-[11px] leading-tight space-y-2">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between border-b-2 border-slate-700 pb-2 gap-2">
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <span className="text-xl font-black tracking-tight text-emerald-800">Sicredi</span>
+                      <span className="text-xl font-black font-mono border-l-2 border-r-2 border-slate-900 px-2.5">748-X</span>
+                    </div>
+                    <div className="text-right min-w-0">
+                      <span className="font-mono font-black text-xs md:text-sm tracking-wider text-slate-950 block select-all">
+                        {barrasHomolog.linhaDigitavel}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tabela de Campos da Ficha de Compensação */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-slate-400">
+                    {/* Coluna 1 & 2: Dados do Título */}
+                    <div className="md:col-span-2 divide-y divide-slate-300 border-r border-slate-400">
+                      <div className="p-2">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">Local de Pagamento</span>
+                        <strong className="text-[10px]">PAGÁVEL PREFERENCIALMENTE NAS COOP. DE CRÉDITO DO SICREDI</strong>
+                      </div>
+                      <div className="p-2">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">Beneficiário</span>
+                        <strong className="text-[10px] block">ON AGENCIA DE EVENTOS LTDA - CNPJ: 30.988.070/0001-60</strong>
+                        <span className="text-[9px] text-slate-500">Cooperativa Sicredi Vale do Piquiri Abcd PR/SP - Palotina PR</span>
+                      </div>
+                      <div className="grid grid-cols-4 divide-x divide-slate-300 p-2 text-[10px]">
+                        <div>
+                          <span className="text-[8px] uppercase text-slate-500 block font-bold">Data Documento</span>
+                          <span className="font-mono">{formatarDataBR(BOLETO_HOMOLOGACAO_PADRAO.dataEmissao)}</span>
+                        </div>
+                        <div className="pl-2">
+                          <span className="text-[8px] uppercase text-slate-500 block font-bold">Nº Documento</span>
+                          <span className="font-mono font-bold">HOMOLOG01</span>
+                        </div>
+                        <div className="pl-2">
+                          <span className="text-[8px] uppercase text-slate-500 block font-bold">Espécie Doc</span>
+                          <span className="font-mono">DMI</span>
+                        </div>
+                        <div className="pl-2">
+                          <span className="text-[8px] uppercase text-slate-500 block font-bold">Aceite</span>
+                          <span className="font-mono">N</span>
+                        </div>
+                      </div>
+                      <div className="p-2 min-h-[90px] bg-slate-50/50">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold mb-1">Instruções de Responsabilidade do Beneficiário</span>
+                        <div className="space-y-0.5 text-[10px] text-slate-800 font-mono">
+                          {BOLETO_HOMOLOGACAO_PADRAO.instrucoes?.map((ins, i) => (
+                            <p key={i}>&bull; {ins}</p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Coluna 3: Valores e Prazos */}
+                    <div className="divide-y divide-slate-300 text-[10px]">
+                      <div className="p-2 bg-slate-50">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">Vencimento</span>
+                        <strong className="text-sm font-mono font-black text-slate-900 block">{formatarDataBR(BOLETO_HOMOLOGACAO_PADRAO.dataVencimento)}</strong>
+                      </div>
+                      <div className="p-2">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">Agência / Código Beneficiário</span>
+                        <strong className="font-mono text-xs block">0726.86.04220</strong>
+                      </div>
+                      <div className="p-2">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">Nosso Número</span>
+                        <strong className="font-mono text-xs text-purple-900 block">{nossoNumHomolog.nossoNumeroFormatado}</strong>
+                      </div>
+                      <div className="p-2 bg-slate-50">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">(=) Valor do Documento</span>
+                        <strong className="text-base font-mono font-black text-slate-950 block">R$ {BOLETO_HOMOLOGACAO_PADRAO.valor.toFixed(2)}</strong>
+                      </div>
+                      <div className="p-2">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">(-) Descontos / Abatimento</span>
+                        <span className="font-mono text-slate-400">R$ 0,00</span>
+                      </div>
+                      <div className="p-2">
+                        <span className="text-[9px] uppercase text-slate-500 block font-bold">(+) Mora / Multa</span>
+                        <span className="font-mono text-slate-400">R$ 0,00</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dados do Pagador */}
+                  <div className="p-2 border border-slate-400 rounded-sm text-[10px] bg-white">
+                    <span className="text-[9px] uppercase text-slate-500 block font-bold">Pagador</span>
+                    <strong className="text-[11px] block text-slate-950">{BOLETO_HOMOLOGACAO_PADRAO.sacadoNome} &bull; CPF: {BOLETO_HOMOLOGACAO_PADRAO.sacadoCpfCnpj}</strong>
+                    <span className="text-slate-700 block">{BOLETO_HOMOLOGACAO_PADRAO.sacadoEndereco} - {BOLETO_HOMOLOGACAO_PADRAO.sacadoCidade}/{BOLETO_HOMOLOGACAO_PADRAO.sacadoUf} - CEP: {BOLETO_HOMOLOGACAO_PADRAO.sacadoCep}</span>
+                  </div>
+
+                  {/* Código de Barras I25 Vetorial */}
+                  <div className="pt-3 pb-1">
+                    <div
+                      className="w-full max-w-xl mx-auto overflow-hidden bg-white py-1"
+                      dangerouslySetInnerHTML={{ __html: svgBarrasHomolog }}
+                    />
+                    <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono mt-1">
+                      <span>Código de Barras FEBRABAN I25: {barrasHomolog.codigoBarras}</span>
+                      <span className="font-bold uppercase text-slate-600">Ficha de Compensação</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rodapé do Modal */}
+              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 mt-5">
+                <span className="text-emerald-800 font-semibold flex items-center">
+                  <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-600" />
+                  Os arquivos gerados estão 100% alinhados com o Manual CNAB 400 Versão 2.00 do Sicredi.
+                </span>
+                <button
+                  onClick={() => setModalHomologacaoSicrediAberto(false)}
+                  className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition"
+                >
+                  Fechar Janela
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   Building2,
+  ClipboardList,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -63,6 +64,14 @@ export const menuItens: MenuItem[] = [
     icone: GraduationCap,
     badge: '8',
     badgeCor: 'bg-teal-400/30 text-teal-200 border border-teal-300/40',
+  },
+  {
+    id: 'demandas',
+    titulo: 'Demandas Internas',
+    href: '/demandas/index.html',
+    icone: ClipboardList,
+    badge: 'Equipe',
+    badgeCor: 'bg-purple-400/30 text-purple-200 border border-purple-300/40',
   },
   {
     id: 'instituicoes',

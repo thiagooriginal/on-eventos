@@ -51,6 +51,8 @@ import {
   History,
   Wallet,
   Banknote,
+  Globe,
+  UploadCloud,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import {
@@ -76,6 +78,10 @@ import {
   gerarRemessaCnab400Oficial,
   gerarNomeArquivoRemessaSicredi,
   gerarSvgCodigoBarrasI25,
+  obterProximoSequencialRemessa,
+  incrementarSequencialRemessa,
+  processarArquivoRetornoSicredi,
+  RetornoSicrediResultado,
 } from '@/lib/sicredi';
 
 export type ModeloAlbumTipo = 'Album premium' | 'Album Preto' | 'Album Slim' | 'Album Colégio';
@@ -407,6 +413,9 @@ export default function VendasAlbunsPage() {
   const [filtroPrazo, setFiltroPrazo] = useState<string>('TODOS');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  // Modo de Exibição das Métricas: Por Período Selecionado ou Total Geral Consolidado
+  const [visaoMetricas, setVisaoMetricas] = useState<'FILTRO_PERIODO' | 'TOTAL_GERAL'>('FILTRO_PERIODO');
+
   // Usuário Logado e Usuários do Sistema para Atribuição de Responsáveis
   const [usuarioLogado, setUsuarioLogado] = useState<{
     nome: string;
@@ -437,6 +446,10 @@ export default function VendasAlbunsPage() {
   // Estados dos Modais
   const [modalNovaVendaAberto, setModalNovaVendaAberto] = useState(false);
   const [modalHomologacaoSicrediAberto, setModalHomologacaoSicrediAberto] = useState(false);
+  const [abaSicredi, setAbaSicredi] = useState<'REMESSA' | 'RETORNO' | 'MODELO'>('REMESSA');
+  const [sequencialRemessaAtual, setSequencialRemessaAtual] = useState<number>(123);
+  const [resultadoRetornoSicredi, setResultadoRetornoSicredi] = useState<RetornoSicrediResultado | null>(null);
+  const [processandoRetorno, setProcessandoRetorno] = useState(false);
   const [vendaSelecionadaBoletos, setVendaSelecionadaBoletos] = useState<VendaAlbum | null>(null);
   const [vendaSelecionadaCartao, setVendaSelecionadaCartao] = useState<VendaAlbum | null>(null);
   const [copiadoIdx, setCopiadoIdx] = useState<string | null>(null);
@@ -1144,8 +1157,13 @@ export default function VendasAlbunsPage() {
     filtroPrazo !== 'TODOS' ||
     busca.trim() !== '';
 
-  // Métricas reativas: recalculam em tempo real quando houver filtro ativo
-  const vendasBaseMetricas = temFiltroAtivo ? vendasFiltradas : vendas;
+  // Métricas reativas: calculam pelo período/filtro ativo OU pelo consolidado total geral
+  const vendasBaseMetricas =
+    visaoMetricas === 'TOTAL_GERAL'
+      ? vendas
+      : temFiltroAtivo
+      ? vendasFiltradas
+      : vendas;
 
   const totalFaturamento = vendasBaseMetricas.reduce((acc, v) => acc + v.valorTotalKit, 0);
   const totalAVista = vendasBaseMetricas
@@ -1204,25 +1222,16 @@ export default function VendasAlbunsPage() {
           </div>
 
           <div className="flex items-center space-x-2.5">
-            {vendas.length > 0 && (
-              <button
-                onClick={handleZerarVendas}
-                className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px]"
-                title="Limpar todos os dados e começar do zero"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Limpar Vendas</span>
-              </button>
-            )}
-
             <button
               onClick={() => setModalHomologacaoSicrediAberto(true)}
               className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
-              title="Abrir Central de Homologação de Boletos & Remessa Sicredi"
+              title="Central Sicredi: Remessas CNAB 400 e Baixa Automática de Boletos"
             >
               <Building2 className="w-4 h-4 text-emerald-700" />
-              <span>Homologação Sicredi</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5"></span>
+              <span>Sicredi Cobrança</span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider ml-1">
+                Homologado
+              </span>
             </button>
 
             <button
@@ -1273,7 +1282,61 @@ export default function VendasAlbunsPage() {
         )}
 
         {/* =========================================================================
-            CARDS DE MÉTRICAS COM RELEVO TÁTIL 3D (REATIVOS AO FILTRO ATIVO)
+            BARRA DE CONTROLE: POR PERÍODO VS TOTAL GERAL ACUMULADO
+            ========================================================================= */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 px-1">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center">
+              <DollarSign className="w-4 h-4 text-purple-600 mr-1" />
+              Painel Financeiro & Vendas:
+            </span>
+            {visaoMetricas === 'FILTRO_PERIODO' ? (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-purple-100 text-purple-900 border border-purple-200">
+                <Calendar className="w-3 h-3 mr-1 text-purple-600" />
+                {filtroPeriodo === 'TODOS'
+                  ? 'Exibindo Todos os Períodos (Dinâmico)'
+                  : `Filtrado pelo Período: ${filtroPeriodo}`}
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
+                <Globe className="w-3 h-3 mr-1 text-emerald-600" />
+                Total Geral Acumulado (Todos os Períodos)
+              </span>
+            )}
+          </div>
+
+          <div className="inline-flex items-center p-1 rounded-2xl bg-white border border-slate-200 shadow-2xs self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setVisaoMetricas('FILTRO_PERIODO')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                visaoMetricas === 'FILTRO_PERIODO'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+              title="Filtrar valores de acordo com o período selecionado no filtro"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Por Período {filtroPeriodo !== 'TODOS' ? `(${filtroPeriodo})` : ''}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisaoMetricas('TOTAL_GERAL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                visaoMetricas === 'TOTAL_GERAL'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+              title="Exibir o total financeiro acumulado de todos os períodos"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>Total Geral</span>
+            </button>
+          </div>
+        </div>
+
+        {/* =========================================================================
+            CARDS DE MÉTRICAS COM RELEVO TÁTIL 3D (REATIVOS AO MODO SELECIONADO)
             ========================================================================= */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
           {/* Card 1: Total Vendido */}
@@ -1293,7 +1356,7 @@ export default function VendasAlbunsPage() {
               <TrendingUp className="w-3.5 h-3.5 mr-1" />
               <span>
                 {vendasBaseMetricas.length} {vendasBaseMetricas.length === 1 ? 'kit contratado' : 'kits contratados'}
-                {temFiltroAtivo ? ' (filtrado)' : ''}
+                {visaoMetricas === 'TOTAL_GERAL' ? ' (geral)' : filtroPeriodo !== 'TODOS' ? ` (${filtroPeriodo})` : ''}
               </span>
             </div>
           </div>
@@ -1315,6 +1378,7 @@ export default function VendasAlbunsPage() {
               <Sparkles className="w-3.5 h-3.5 mr-1 text-teal-500" />
               <span>
                 {vendasBaseMetricas.filter((v) => v.formaPagamento === 'PIX' || v.formaPagamento === 'DINHEIRO').length} liquidadas à vista
+                {visaoMetricas === 'TOTAL_GERAL' ? ' (geral)' : filtroPeriodo !== 'TODOS' ? ` (${filtroPeriodo})` : ''}
               </span>
             </div>
           </div>
@@ -1334,6 +1398,7 @@ export default function VendasAlbunsPage() {
             </div>
             <div className="mt-2 text-[11px] text-slate-500">
               {vendasBaseMetricas.filter((v) => v.formaPagamento === 'CARTAO').length} vendas liquidadas
+              {visaoMetricas === 'TOTAL_GERAL' ? ' (geral)' : filtroPeriodo !== 'TODOS' ? ` (${filtroPeriodo})` : ''}
             </div>
           </div>
 
@@ -1351,7 +1416,8 @@ export default function VendasAlbunsPage() {
               R$ {totalBoleto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </div>
             <div className="mt-2 text-[11px] text-amber-600 font-semibold">
-              {vendasBaseMetricas.filter((v) => v.formaPagamento === 'BOLETO').length} carnês emitidos Sicredi
+              {vendasBaseMetricas.filter((v) => v.formaPagamento === 'BOLETO').length} carnês Sicredi
+              {visaoMetricas === 'TOTAL_GERAL' ? ' (geral)' : filtroPeriodo !== 'TODOS' ? ` (${filtroPeriodo})` : ''}
             </div>
           </div>
 

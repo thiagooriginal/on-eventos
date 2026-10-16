@@ -256,7 +256,7 @@ export function gerarLinhaDigitavelECodigoBarrasSicredi(
 export function gerarNomeArquivoRemessaSicredi(
   convenio: string = '04220',
   data: Date = new Date(),
-  extensao: string = 'REM'
+  extensao: string = 'CRM'
 ): string {
   const ccccc = convenio.padStart(5, '0');
   const mesIndex = data.getMonth() + 1;
@@ -268,6 +268,38 @@ export function gerarNomeArquivoRemessaSicredi(
   const dd = String(data.getDate()).padStart(2, '0');
 
   return `${ccccc}${m}${dd}.${extensao.toUpperCase()}`;
+}
+
+const STORAGE_KEY_SEQUENCIAL = 'on_sicredi_remessa_sequencial_v1';
+export const SEQUENCIAL_OFICIAL_INICIAL = 123; // Determinado oficialmente pelo Sicredi na homologação
+
+export function obterProximoSequencialRemessa(): number {
+  if (typeof window === 'undefined') return SEQUENCIAL_OFICIAL_INICIAL;
+  try {
+    const salvo = localStorage.getItem(STORAGE_KEY_SEQUENCIAL);
+    if (salvo) {
+      const num = parseInt(salvo, 10);
+      if (!isNaN(num) && num >= SEQUENCIAL_OFICIAL_INICIAL) {
+        return num;
+      }
+    }
+    localStorage.setItem(STORAGE_KEY_SEQUENCIAL, String(SEQUENCIAL_OFICIAL_INICIAL));
+    return SEQUENCIAL_OFICIAL_INICIAL;
+  } catch (e) {
+    return SEQUENCIAL_OFICIAL_INICIAL;
+  }
+}
+
+export function incrementarSequencialRemessa(): number {
+  if (typeof window === 'undefined') return SEQUENCIAL_OFICIAL_INICIAL + 1;
+  try {
+    const atual = obterProximoSequencialRemessa();
+    const proximo = atual + 1;
+    localStorage.setItem(STORAGE_KEY_SEQUENCIAL, String(proximo));
+    return proximo;
+  } catch (e) {
+    return SEQUENCIAL_OFICIAL_INICIAL + 1;
+  }
 }
 
 /**
@@ -505,5 +537,152 @@ export function gerarSvgCodigoBarrasI25(codigo44Digitos: string): string {
   const larguraTotal = Math.ceil(posX);
 
   return `<svg viewBox="0 0 ${larguraTotal} ${ALTURA}" width="100%" height="${ALTURA}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">${elementosSvg}</svg>`;
+}
+
+export interface BoletoRetornoSicrediItem {
+  nossoNumero: string;
+  seuNumero: string;
+  codigoOcorrencia: string;
+  descricaoOcorrencia: string;
+  dataOcorrencia: string; // DD/MM/AAAA
+  dataVencimento: string; // DD/MM/AAAA
+  valorTitulo: number;
+  valorPago: number;
+  juros: number;
+  multa: number;
+  desconto: number;
+  tarifa: number;
+  dataCredito: string;
+  isLiquidado: boolean;
+}
+
+export interface RetornoSicrediResultado {
+  cedente: string;
+  dataGravacao: string;
+  numeroRetorno: string;
+  totalTitulos: number;
+  totalLiquidados: number;
+  valorTotalLiquidado: number;
+  itens: BoletoRetornoSicrediItem[];
+}
+
+export const OCORRENCIAS_SICREDI: Record<string, string> = {
+  '02': 'Entrada Confirmada no Banco',
+  '03': 'Entrada Rejeitada',
+  '06': 'Liquidação Normal (Título Pago)',
+  '07': 'Intenção de Pagamento',
+  '09': 'Baixado Automaticamente',
+  '10': 'Baixado Conforme Instruções',
+  '12': 'Abatimento Concedido',
+  '13': 'Abatimento Cancelado',
+  '14': 'Vencimento Alterado',
+  '15': 'Liquidação em Cartório',
+  '17': 'Liquidação Após Baixa',
+  '19': 'Recebimento de Instrução de Protesto',
+  '20': 'Recebimento de Sustação de Protesto',
+  '23': 'Entrada de Título em Cartório',
+  '24': 'Entrada Rejeitada por CEP Irregular',
+  '27': 'Baixa Rejeitada',
+  '28': 'Débito de Tarifas / Custas',
+  '30': 'Alteração Rejeitada',
+  '32': 'Instrução Rejeitada',
+  '33': 'Confirmação de Alteração de Outros Dados',
+  '61': 'Liquidação via PIX',
+  'PX': 'Liquidação via QR Code PIX',
+};
+
+/**
+ * Processa o arquivo de retorno CNAB 400 (.CRT / .RET) do Sicredi
+ * Identifica títulos pagos e liquidados para baixa automática no sistema
+ */
+export function processarArquivoRetornoSicredi(conteudoTexto: string): RetornoSicrediResultado {
+  const linhas = conteudoTexto.split(/\r?\n/).filter((l) => l.trim().length >= 400);
+
+  let cedente = '04220';
+  let dataGravacao = '';
+  let numeroRetorno = '';
+  const itens: BoletoRetornoSicrediItem[] = [];
+
+  linhas.forEach((linha) => {
+    const tipoRegistro = linha.charAt(0);
+
+    // Header (Tipo 0)
+    if (tipoRegistro === '0') {
+      cedente = linha.slice(26, 31).trim();
+      const rawData = linha.slice(94, 102); // AAAAMMDD
+      if (rawData.length === 8) {
+        dataGravacao = `${rawData.slice(6, 8)}/${rawData.slice(4, 6)}/${rawData.slice(0, 4)}`;
+      }
+      numeroRetorno = linha.slice(110, 117).trim();
+    }
+
+    // Detalhe (Tipo 1)
+    if (tipoRegistro === '1') {
+      const nossoNumero = linha.slice(47, 62).trim();
+      const codigoOcorrencia = linha.slice(108, 110).trim();
+      const rawDataOcorrencia = linha.slice(110, 116); // DDMMAA
+      const seuNumero = linha.slice(116, 126).trim();
+      const rawVenc = linha.slice(146, 152); // DDMMAA
+      const valorTitulo = parseInt(linha.slice(152, 165), 10) / 100 || 0;
+      const tarifa = parseInt(linha.slice(175, 188), 10) / 100 || 0;
+      const desconto = parseInt(linha.slice(240, 253), 10) / 100 || 0;
+      const valorPago = parseInt(linha.slice(253, 266), 10) / 100 || 0;
+      const juros = parseInt(linha.slice(266, 279), 10) / 100 || 0;
+      const multa = parseInt(linha.slice(279, 292), 10) / 100 || 0;
+      const rawDataCredito = linha.slice(328, 336); // AAAAMMDD
+
+      const dOcorrencia =
+        rawDataOcorrencia.length === 6
+          ? `${rawDataOcorrencia.slice(0, 2)}/${rawDataOcorrencia.slice(2, 4)}/20${rawDataOcorrencia.slice(4, 6)}`
+          : '';
+
+      const dVenc =
+        rawVenc.length === 6
+          ? `${rawVenc.slice(0, 2)}/${rawVenc.slice(2, 4)}/20${rawVenc.slice(4, 6)}`
+          : '';
+
+      const dCredito =
+        rawDataCredito.length === 8
+          ? `${rawDataCredito.slice(6, 8)}/${rawDataCredito.slice(4, 6)}/${rawDataCredito.slice(0, 4)}`
+          : '';
+
+      const isLiquidado =
+        codigoOcorrencia === '06' ||
+        codigoOcorrencia === '15' ||
+        codigoOcorrencia === '17' ||
+        codigoOcorrencia === '61' ||
+        codigoOcorrencia === 'PX';
+
+      itens.push({
+        nossoNumero,
+        seuNumero,
+        codigoOcorrencia,
+        descricaoOcorrencia: OCORRENCIAS_SICREDI[codigoOcorrencia] || `Ocorrência ${codigoOcorrencia}`,
+        dataOcorrencia: dOcorrencia,
+        dataVencimento: dVenc,
+        valorTitulo,
+        valorPago: valorPago > 0 ? valorPago : valorTitulo,
+        juros,
+        multa,
+        desconto,
+        tarifa,
+        dataCredito: dCredito,
+        isLiquidado,
+      });
+    }
+  });
+
+  const liquidados = itens.filter((i) => i.isLiquidado);
+  const valorTotalLiquidado = liquidados.reduce((acc, i) => acc + i.valorPago, 0);
+
+  return {
+    cedente,
+    dataGravacao,
+    numeroRetorno,
+    totalTitulos: itens.length,
+    totalLiquidados: liquidados.length,
+    valorTotalLiquidado,
+    itens,
+  };
 }
 

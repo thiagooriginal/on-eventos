@@ -29,6 +29,7 @@ import {
   ArrowRight,
   Activity,
   UserCheck,
+  ClipboardList,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 
@@ -44,6 +45,18 @@ const modulosCompletos = [
     corTexto: 'text-emerald-600',
     corBg: 'bg-emerald-50',
     badge: 'Ao Vivo',
+  },
+  {
+    titulo: 'Demandas & Processos Internos',
+    descricao: 'Gestão de tarefas operacionais, atribuição a usuários da equipe, contagem regressiva de prazos e avanço de etapas.',
+    href: '/demandas/index.html',
+    icone: ClipboardList,
+    tag: 'Operação & Equipe',
+    corFundo: 'from-purple-600 to-indigo-600',
+    corBorda: 'border-purple-200',
+    corTexto: 'text-purple-600',
+    corBg: 'bg-purple-50',
+    badge: 'Novo',
   },
   {
     titulo: 'Gestão de Usuários & Níveis',

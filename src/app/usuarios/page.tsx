@@ -405,19 +405,23 @@ export default function UsuariosPage() {
                 <ul className="space-y-1.5 text-slate-200">
                   <li className="flex items-center">
                     <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mr-1.5 shrink-0" />
-                    Visualização e cadastro de oportunidades e turmas no CRM.
+                    <strong>Aba Completa de Vendas de Álbuns:</strong> cadastro de kits, brindes, cartão, PIX e boletos Sicredi.
                   </li>
                   <li className="flex items-center">
                     <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mr-1.5 shrink-0" />
-                    Lançamento de Vendas de Álbuns, Kits de brindes e simulação de parcelas.
+                    <strong>Aba Completa de Projetos de Formatura:</strong> gestão de eventos, colação, baile e adesões.
                   </li>
                   <li className="flex items-center">
                     <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mr-1.5 shrink-0" />
-                    Consulta de dados de alunos e suporte a formandos.
+                    <strong>Aba Completa do CRM da Turma:</strong> funil comercial, qualificação e conversão de turmas.
+                  </li>
+                  <li className="flex items-center">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 mr-1.5 shrink-0" />
+                    <strong>Demandas Internas:</strong> execução de tarefas, checklists e avanço de etapas de trabalho.
                   </li>
                   <li className="flex items-center text-slate-400">
                     <XCircle className="w-3.5 h-3.5 text-rose-400 mr-1.5 shrink-0" />
-                    Sem permissão para deletar turmas, gerenciar equipe ou ver custos confidenciais.
+                    Sem permissão apenas para gerenciar senhas de equipe ou editar parâmetros bancários.
                   </li>
                 </ul>
               </div>

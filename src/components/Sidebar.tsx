@@ -193,7 +193,7 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
           perfil: parsed.perfil || 'ADMIN',
         });
 
-        // Contabiliza álbuns com prazo vencido para alerta no menu
+        // Contabiliza álbuns com prazo vencido para alerta no menu (por etapa de produção)
         const albunsRaw = localStorage.getItem('on_vendas_albuns_estado');
         if (albunsRaw) {
           const albuns = JSON.parse(albunsRaw);
@@ -201,10 +201,40 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
             const hoje = new Date();
             hoje.setHours(0, 0, 0, 0);
 
+            const isAdmin = (parsed.perfil || '').toUpperCase().includes('ADMIN');
+            const userNomeLower = (parsed.nome || '').toLowerCase();
+            const userEmailLower = (parsed.email || '').toLowerCase();
+
             const atrasados = albuns.filter((v: any) => {
               if (v.statusProducao === 'ENTREGUE') return false;
-              if (!v.prazoProducao) return false;
-              const p = String(v.prazoProducao).split('-');
+
+              // Filtrar por usuário responsável caso não seja admin
+              if (!isAdmin) {
+                const isMeu =
+                  !v.responsavelNome ||
+                  v.responsavelNome.toLowerCase() === userNomeLower ||
+                  (v.responsavelEmail && v.responsavelEmail.toLowerCase() === userEmailLower);
+                if (!isMeu) return false;
+              }
+
+              // Resolver prazo da etapa ativa de produção
+              let prazoAtivo = '';
+              if (v.statusProducao === 'EM_DIAGRAMACAO') {
+                prazoAtivo = v.prazoLayout || v.prazoProducao;
+              } else if (v.statusProducao === 'APROVACAO_CLIENTE') {
+                prazoAtivo = v.prazoAprovacaoCliente;
+              } else if (v.statusProducao === 'EM_GRAFICA') {
+                prazoAtivo = v.prazoConfeccao;
+              } else if (v.statusProducao === 'PRONTO_ENTREGA') {
+                prazoAtivo = v.prazoConfeccao || v.prazoProducao;
+              } else {
+                prazoAtivo = v.prazoProducao;
+              }
+
+              // Se a etapa ativa estiver em branco (sem prazo definido ainda), não gera falso atraso
+              if (!prazoAtivo) return false;
+
+              const p = String(prazoAtivo).split('-');
               if (p.length !== 3) return false;
               const dPrazo = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
               dPrazo.setHours(0, 0, 0, 0);

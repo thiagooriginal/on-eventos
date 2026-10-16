@@ -117,14 +117,21 @@ export interface VendaAlbum {
   // Boleto
   boletoQtdParcelas?: number;
   parcelasBoletos?: ParcelaBoleto[];
-  // Produção & Gestão de Prazos e Responsável
-  statusProducao: 'EM_DIAGRAMACAO' | 'EM_GRAFICA' | 'PRONTO_ENTREGA' | 'ENTREGUE';
+  // Produção & Gestão de Prazos por Etapa e Responsável
+  statusProducao: 'EM_DIAGRAMACAO' | 'APROVACAO_CLIENTE' | 'EM_GRAFICA' | 'PRONTO_ENTREGA' | 'ENTREGUE';
   observacoes?: string;
   responsavelId?: string;
   responsavelNome?: string;
   responsavelEmail?: string;
-  prazoProducao?: string; // Formato YYYY-MM-DD
-  concluidoEm?: string; // Data DD/MM/AAAA em que foi finalizado
+  
+  // Prazos específicos por etapa de produção
+  prazoLayout?: string;            // YYYY-MM-DD (1. Criação de Layout)
+  prazoAprovacaoCliente?: string;  // YYYY-MM-DD (2. Aprovação do Cliente)
+  prazoConfeccao?: string;         // YYYY-MM-DD (3. Confecção do Álbum)
+  
+  // Prazo geral ou da etapa ativa (retrocompatibilidade)
+  prazoProducao?: string;          // YYYY-MM-DD
+  concluidoEm?: string;            // Data DD/MM/AAAA em que foi finalizado
 }
 
 export interface StatusPrazo {
@@ -145,7 +152,57 @@ export function formatarDataBR(dataIso?: string): string {
   return dataIso;
 }
 
-export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: string): StatusPrazo {
+export function obterEtapaInfo(statusProducao: string): {
+  id: string;
+  nome: string;
+  nomeCurto: string;
+  corBadge: string;
+  icone: string;
+} {
+  switch (statusProducao) {
+    case 'EM_DIAGRAMACAO':
+      return { id: 'LAYOUT', nome: '1. Criação de Layout', nomeCurto: 'Layout', corBadge: 'bg-blue-50 text-blue-700 border-blue-200', icone: '🎨' };
+    case 'APROVACAO_CLIENTE':
+      return { id: 'APROVACAO', nome: '2. Aprovação do Cliente', nomeCurto: 'Aprovação', corBadge: 'bg-amber-50 text-amber-800 border-amber-200', icone: '👤' };
+    case 'EM_GRAFICA':
+      return { id: 'CONFECCAO', nome: '3. Confecção do Álbum', nomeCurto: 'Confecção', corBadge: 'bg-purple-50 text-purple-700 border-purple-200', icone: '🏭' };
+    case 'PRONTO_ENTREGA':
+      return { id: 'PRONTO', nome: '4. Pronto p/ Entrega', nomeCurto: 'Pronto Entrega', corBadge: 'bg-cyan-50 text-cyan-700 border-cyan-200', icone: '📦' };
+    case 'ENTREGUE':
+      return { id: 'ENTREGUE', nome: '5. Entregue / Concluído', nomeCurto: 'Entregue', corBadge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icone: '✅' };
+    default:
+      return { id: 'LAYOUT', nome: '1. Criação de Layout', nomeCurto: 'Layout', corBadge: 'bg-blue-50 text-blue-700 border-blue-200', icone: '🎨' };
+  }
+}
+
+export function obterPrazoEtapaAtual(venda: VendaAlbum): {
+  prazo?: string;
+  etapaNome: string;
+  etapaCurto: string;
+  temPrazoDefinido: boolean;
+} {
+  const etapa = obterEtapaInfo(venda.statusProducao);
+  let prazo: string | undefined = undefined;
+
+  if (venda.statusProducao === 'EM_DIAGRAMACAO') {
+    prazo = venda.prazoLayout || venda.prazoProducao;
+  } else if (venda.statusProducao === 'APROVACAO_CLIENTE') {
+    prazo = venda.prazoAprovacaoCliente;
+  } else if (venda.statusProducao === 'EM_GRAFICA') {
+    prazo = venda.prazoConfeccao;
+  } else if (venda.statusProducao === 'PRONTO_ENTREGA') {
+    prazo = venda.prazoProducao;
+  }
+
+  return {
+    prazo,
+    etapaNome: etapa.nome,
+    etapaCurto: etapa.nomeCurto,
+    temPrazoDefinido: !!prazo,
+  };
+}
+
+export function calcularStatusPrazo(prazoEtapa?: string, statusProducao?: string, etapaNome?: string): StatusPrazo {
   if (statusProducao === 'ENTREGUE') {
     return {
       atrasado: false,
@@ -157,13 +214,26 @@ export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: str
     };
   }
 
-  if (!prazoProducao) {
+  if (statusProducao === 'PRONTO_ENTREGA') {
+    return {
+      atrasado: false,
+      venceHoje: false,
+      urgente: false,
+      diasRestantes: 0,
+      texto: 'Pronto p/ Entrega',
+      badgeClasse: 'bg-cyan-50 text-cyan-700 border-cyan-200 font-bold',
+    };
+  }
+
+  const prefixoEtapa = etapaNome ? `${etapaNome}: ` : '';
+
+  if (!prazoEtapa) {
     return {
       atrasado: false,
       venceHoje: false,
       urgente: false,
       diasRestantes: 999,
-      texto: 'Sem prazo definido',
+      texto: `${prefixoEtapa}Prazo em branco`,
       badgeClasse: 'bg-slate-100 text-slate-500 border-slate-200',
     };
   }
@@ -171,14 +241,14 @@ export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: str
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
-  const partes = prazoProducao.split('-');
+  const partes = prazoEtapa.split('-');
   if (partes.length !== 3) {
     return {
       atrasado: false,
       venceHoje: false,
       urgente: false,
       diasRestantes: 999,
-      texto: prazoProducao,
+      texto: `${prefixoEtapa}${prazoEtapa}`,
       badgeClasse: 'bg-slate-100 text-slate-600 border-slate-200',
     };
   }
@@ -196,7 +266,7 @@ export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: str
       venceHoje: false,
       urgente: true,
       diasRestantes: diffDias,
-      texto: `Atrasado há ${dias} ${dias === 1 ? 'dia' : 'dias'}!`,
+      texto: `${prefixoEtapa}Atrasado há ${dias} ${dias === 1 ? 'dia' : 'dias'}!`,
       badgeClasse: 'bg-rose-100 text-rose-800 border-rose-300 font-extrabold animate-pulse',
     };
   }
@@ -207,7 +277,7 @@ export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: str
       venceHoje: true,
       urgente: true,
       diasRestantes: 0,
-      texto: 'Vence HOJE!',
+      texto: `${prefixoEtapa}Vence HOJE!`,
       badgeClasse: 'bg-amber-100 text-amber-900 border-amber-300 font-black',
     };
   }
@@ -218,7 +288,7 @@ export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: str
       venceHoje: false,
       urgente: true,
       diasRestantes: diffDias,
-      texto: `Vence em ${diffDias} ${diffDias === 1 ? 'dia' : 'dias'}`,
+      texto: `${prefixoEtapa}Vence em ${diffDias} ${diffDias === 1 ? 'dia' : 'dias'}`,
       badgeClasse: 'bg-amber-50 text-amber-800 border-amber-200 font-bold',
     };
   }
@@ -228,7 +298,7 @@ export function calcularStatusPrazo(prazoProducao?: string, statusProducao?: str
     venceHoje: false,
     urgente: false,
     diasRestantes: diffDias,
-    texto: `Prazo: ${diffDias} dias`,
+    texto: `${prefixoEtapa}${diffDias} dias restantes`,
     badgeClasse: 'bg-blue-50 text-blue-700 border-blue-200 font-semibold',
   };
 }
@@ -338,10 +408,14 @@ export default function VendasAlbunsPage() {
   const [modalAlertaPrazoAberto, setModalAlertaPrazoAberto] = useState(false);
   const [alertaJaExibidoSessao, setAlertaJaExibidoSessao] = useState(false);
 
-  // Modal de Edição Rápida de Responsável e Prazo
+  // Modal de Edição Rápida de Responsável e Prazos por Etapa
   const [vendaEditandoPrazo, setVendaEditandoPrazo] = useState<VendaAlbum | null>(null);
   const [editResponsavelNome, setEditResponsavelNome] = useState('');
   const [editResponsavelEmail, setEditResponsavelEmail] = useState('');
+  const [editStatusProducao, setEditStatusProducao] = useState<VendaAlbum['statusProducao']>('EM_DIAGRAMACAO');
+  const [editPrazoLayout, setEditPrazoLayout] = useState('');
+  const [editPrazoAprovacao, setEditPrazoAprovacao] = useState('');
+  const [editPrazoConfeccao, setEditPrazoConfeccao] = useState('');
   const [editPrazoProducao, setEditPrazoProducao] = useState('');
 
   // Instituições e Cursos Cadastrados
@@ -362,14 +436,17 @@ export default function VendasAlbunsPage() {
   const [formTelefone, setFormTelefone] = useState('');
   const [formEmail, setFormEmail] = useState('');
 
-  // Responsável & Prazo Limite no Formulário
+  // Responsável & Prazos por Etapa no Formulário
   const [formResponsavelNome, setFormResponsavelNome] = useState('');
   const [formResponsavelEmail, setFormResponsavelEmail] = useState('');
-  const [formPrazoProducao, setFormPrazoProducao] = useState(() => {
+  const [formPrazoLayout, setFormPrazoLayout] = useState(() => {
     const d = new Date();
-    d.setDate(d.getDate() + 30);
+    d.setDate(d.getDate() + 15);
     return d.toISOString().split('T')[0];
   });
+  const [formPrazoAprovacao, setFormPrazoAprovacao] = useState('');
+  const [formPrazoConfeccao, setFormPrazoConfeccao] = useState('');
+  const [formPrazoProducao, setFormPrazoProducao] = useState('');
 
   // Instituição, Curso & Período no Formulário
   const [formInstituicaoNome, setFormInstituicaoNome] = useState('');
@@ -615,7 +692,9 @@ export default function VendasAlbunsPage() {
   const albunsAtrasados = React.useMemo(() => {
     return vendas.filter((v) => {
       if (v.statusProducao === 'ENTREGUE') return false;
-      const st = calcularStatusPrazo(v.prazoProducao, v.statusProducao);
+      const infoEtapa = obterPrazoEtapaAtual(v);
+      if (!infoEtapa.prazo) return false;
+      const st = calcularStatusPrazo(infoEtapa.prazo, v.statusProducao, infoEtapa.etapaCurto);
       if (!st.atrasado) return false;
 
       // Se for admin, visualiza todos os atrasados da agência.
@@ -660,13 +739,22 @@ export default function VendasAlbunsPage() {
     showToast('Processo do álbum CONCLUÍDO e entregue com sucesso! Alerta encerrado.');
   };
 
-  // Ação de Estender o Prazo (+7d, +15d, etc.)
+  // Ação de Estender o Prazo da etapa atual (+7d, +15d, etc.)
   const handleEstenderPrazo = (vendaId: string, diasExtras: number) => {
     const atualizadas = vendas.map((v) => {
       if (v.id === vendaId) {
         const d = new Date();
         d.setDate(d.getDate() + diasExtras);
         const novoPrazo = d.toISOString().split('T')[0];
+
+        if (v.statusProducao === 'EM_DIAGRAMACAO') {
+          return { ...v, prazoLayout: novoPrazo, prazoProducao: novoPrazo };
+        } else if (v.statusProducao === 'APROVACAO_CLIENTE') {
+          return { ...v, prazoAprovacaoCliente: novoPrazo, prazoProducao: novoPrazo };
+        } else if (v.statusProducao === 'EM_GRAFICA') {
+          return { ...v, prazoConfeccao: novoPrazo, prazoProducao: novoPrazo };
+        }
+
         return {
           ...v,
           prazoProducao: novoPrazo,
@@ -675,21 +763,31 @@ export default function VendasAlbunsPage() {
       return v;
     });
     salvarVendasLocal(atualizadas);
-    showToast(`Prazo prorrogado em +${diasExtras} dias com sucesso!`);
+    showToast(`Prazo da etapa prorrogado em +${diasExtras} dias com sucesso!`);
   };
 
-  // Abrir modal de edição de responsável e prazo
+  // Abrir modal de edição de responsável e prazos por etapa
   const abrirModalEditarPrazo = (venda: VendaAlbum) => {
     setVendaEditandoPrazo(venda);
     setEditResponsavelNome(venda.responsavelNome || usuarioLogado?.nome || '');
     setEditResponsavelEmail(venda.responsavelEmail || usuarioLogado?.email || '');
-    setEditPrazoProducao(venda.prazoProducao || new Date().toISOString().split('T')[0]);
+    setEditStatusProducao(venda.statusProducao || 'EM_DIAGRAMACAO');
+    setEditPrazoLayout(venda.prazoLayout || (venda.statusProducao === 'EM_DIAGRAMACAO' ? venda.prazoProducao : '') || '');
+    setEditPrazoAprovacao(venda.prazoAprovacaoCliente || (venda.statusProducao === 'APROVACAO_CLIENTE' ? venda.prazoProducao : '') || '');
+    setEditPrazoConfeccao(venda.prazoConfeccao || (venda.statusProducao === 'EM_GRAFICA' ? venda.prazoProducao : '') || '');
+    setEditPrazoProducao(venda.prazoProducao || '');
   };
 
-  // Salvar alterações de responsável e prazo
+  // Salvar alterações de responsável e prazos por etapa
   const handleSalvarEdicaoPrazo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!vendaEditandoPrazo) return;
+
+    let prazoAtivo = '';
+    if (editStatusProducao === 'EM_DIAGRAMACAO') prazoAtivo = editPrazoLayout;
+    else if (editStatusProducao === 'APROVACAO_CLIENTE') prazoAtivo = editPrazoAprovacao;
+    else if (editStatusProducao === 'EM_GRAFICA') prazoAtivo = editPrazoConfeccao;
+    else prazoAtivo = editPrazoLayout || editPrazoAprovacao || editPrazoConfeccao || '';
 
     const atualizadas = vendas.map((v) => {
       if (v.id === vendaEditandoPrazo.id) {
@@ -697,14 +795,18 @@ export default function VendasAlbunsPage() {
           ...v,
           responsavelNome: editResponsavelNome.trim() || undefined,
           responsavelEmail: editResponsavelEmail.trim() || undefined,
-          prazoProducao: editPrazoProducao || undefined,
+          statusProducao: editStatusProducao,
+          prazoLayout: editPrazoLayout || undefined,
+          prazoAprovacaoCliente: editPrazoAprovacao || undefined,
+          prazoConfeccao: editPrazoConfeccao || undefined,
+          prazoProducao: prazoAtivo || undefined,
         };
       }
       return v;
     });
     salvarVendasLocal(atualizadas);
     setVendaEditandoPrazo(null);
-    showToast('Responsável e prazo de produção atualizados com sucesso!');
+    showToast('Prazos por etapa e responsável atualizados com sucesso!');
   };
 
   const abrirModalNovaVenda = () => {
@@ -825,7 +927,10 @@ export default function VendasAlbunsPage() {
       observacoes: formObservacoes.trim(),
       responsavelNome: formResponsavelNome.trim() || usuarioLogado?.nome || 'Equipe de Produção',
       responsavelEmail: formResponsavelEmail.trim() || usuarioLogado?.email || '',
-      prazoProducao: formPrazoProducao,
+      prazoLayout: formPrazoLayout || undefined,
+      prazoAprovacaoCliente: formPrazoAprovacao || undefined,
+      prazoConfeccao: formPrazoConfeccao || undefined,
+      prazoProducao: formPrazoLayout || formPrazoAprovacao || formPrazoConfeccao || undefined,
     };
 
     // Se for uma instituição nova que não existe na lista, cadastrá-la no sistema
@@ -866,8 +971,11 @@ export default function VendasAlbunsPage() {
     setFormCartaoNsu('');
     setFormAbaAtiva('ALBUM');
     const dReset = new Date();
-    dReset.setDate(dReset.getDate() + 30);
-    setFormPrazoProducao(dReset.toISOString().split('T')[0]);
+    dReset.setDate(dReset.getDate() + 15);
+    setFormPrazoLayout(dReset.toISOString().split('T')[0]);
+    setFormPrazoAprovacao('');
+    setFormPrazoConfeccao('');
+    setFormPrazoProducao('');
   };
 
   // Alternar pagamento de parcela no boleto
@@ -898,6 +1006,7 @@ export default function VendasAlbunsPage() {
   const avancarStatusProducao = (vendaId: string) => {
     const ordem: VendaAlbum['statusProducao'][] = [
       'EM_DIAGRAMACAO',
+      'APROVACAO_CLIENTE',
       'EM_GRAFICA',
       'PRONTO_ENTREGA',
       'ENTREGUE',
@@ -917,13 +1026,20 @@ export default function VendasAlbunsPage() {
     });
 
     salvarVendasLocal(atualizadas);
-    showToast('Etapa de produção do álbum avançada!');
+    const vendaAtual = atualizadas.find((v) => v.id === vendaId);
+    if (vendaAtual) {
+      const info = obterEtapaInfo(vendaAtual.statusProducao);
+      showToast(`Álbum avançou para: ${info.nome}!`);
+    } else {
+      showToast('Etapa de produção avançada!');
+    }
   };
 
   // Filtragem completa com busca, modelo, pagamento, status, instituição, período, responsável e prazo
   const vendasFiltradas = vendas.filter((v) => {
     const info = extrairInfoTurma(v);
-    const stPrazo = calcularStatusPrazo(v.prazoProducao, v.statusProducao);
+    const infoEtapa = obterPrazoEtapaAtual(v);
+    const stPrazo = calcularStatusPrazo(infoEtapa.prazo, v.statusProducao, infoEtapa.etapaCurto);
 
     const matchBusca =
       v.alunoNome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -1583,40 +1699,28 @@ export default function VendasAlbunsPage() {
                           )}
                         </td>
 
-                        {/* Status de Produção & Prazos */}
+                        {/* Status de Produção & Prazos por Etapa */}
                         <td className="py-4 px-5">
-                          <div>
-                            {venda.statusProducao === 'EM_DIAGRAMACAO' && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                <Clock className="w-3 h-3 mr-1" /> Em Diagramação
-                              </span>
-                            )}
-                            {venda.statusProducao === 'EM_GRAFICA' && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                                <Layers className="w-3 h-3 mr-1" /> Em Gráfica
-                              </span>
-                            )}
-                            {venda.statusProducao === 'PRONTO_ENTREGA' && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                <CheckCircle2 className="w-3 h-3 mr-1" /> Pronto p/ Entrega
-                              </span>
-                            )}
-                            {venda.statusProducao === 'ENTREGUE' && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle2 className="w-3 h-3 mr-1" /> Entregue
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Prazo e Responsável */}
                           {(() => {
-                            const st = calcularStatusPrazo(venda.prazoProducao, venda.statusProducao);
+                            const infoEtapa = obterPrazoEtapaAtual(venda);
+                            const st = calcularStatusPrazo(infoEtapa.prazo, venda.statusProducao, infoEtapa.etapaCurto);
+                            const etapa = obterEtapaInfo(venda.statusProducao);
+
                             return (
-                              <div className="mt-1.5 space-y-1">
+                              <div className="space-y-1.5">
+                                {/* Etapa Atual de Produção */}
+                                <div className="flex items-center space-x-1.5">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${etapa.corBadge}`}>
+                                    <span className="mr-1">{etapa.icone}</span>
+                                    {etapa.nome}
+                                  </span>
+                                </div>
+
+                                {/* Prazo da Etapa Atual */}
                                 <div className="flex items-center space-x-1">
                                   <span
                                     className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] border ${st.badgeClasse}`}
-                                    title={venda.prazoProducao ? `Data Limite: ${formatarDataBR(venda.prazoProducao)}` : 'Sem prazo definido'}
+                                    title={infoEtapa.prazo ? `Prazo da etapa ${infoEtapa.etapaNome}: ${formatarDataBR(infoEtapa.prazo)}` : 'Prazo em branco (a estipular)'}
                                   >
                                     <CalendarClock className="w-3 h-3 mr-1 shrink-0" />
                                     {st.texto}
@@ -1624,22 +1728,59 @@ export default function VendasAlbunsPage() {
                                   <button
                                     onClick={() => abrirModalEditarPrazo(venda)}
                                     className="p-1 rounded-lg hover:bg-purple-100 text-slate-400 hover:text-purple-700 transition"
-                                    title="Editar responsável e prazo limite"
+                                    title="Editar prazos das etapas ou responsável"
                                   >
                                     <Edit3 className="w-3 h-3" />
                                   </button>
                                 </div>
+
+                                {/* Mini Trilha das 3 Etapas */}
+                                <div className="text-[9px] text-slate-500 flex flex-wrap items-center gap-1 font-mono pt-0.5">
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded border ${
+                                      venda.statusProducao === 'EM_DIAGRAMACAO'
+                                        ? 'ring-1 ring-blue-500 font-bold bg-blue-50 text-blue-800 border-blue-300'
+                                        : venda.prazoLayout
+                                        ? 'bg-slate-50 text-slate-700 border-slate-200'
+                                        : 'bg-slate-100 text-slate-400 border-slate-200'
+                                    }`}
+                                    title="Prazo de Criação de Layout"
+                                  >
+                                    🎨 {venda.prazoLayout ? formatarDataBR(venda.prazoLayout) : 'Layout: Em branco'}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded border ${
+                                      venda.statusProducao === 'APROVACAO_CLIENTE'
+                                        ? 'ring-1 ring-amber-500 font-bold bg-amber-50 text-amber-800 border-amber-300'
+                                        : venda.prazoAprovacaoCliente
+                                        ? 'bg-slate-50 text-slate-700 border-slate-200'
+                                        : 'bg-slate-100 text-slate-400 border-slate-200'
+                                    }`}
+                                    title="Prazo de Aprovação do Cliente"
+                                  >
+                                    👤 {venda.prazoAprovacaoCliente ? formatarDataBR(venda.prazoAprovacaoCliente) : 'Aprov: Em branco'}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded border ${
+                                      venda.statusProducao === 'EM_GRAFICA'
+                                        ? 'ring-1 ring-purple-500 font-bold bg-purple-50 text-purple-800 border-purple-300'
+                                        : venda.prazoConfeccao
+                                        ? 'bg-slate-50 text-slate-700 border-slate-200'
+                                        : 'bg-slate-100 text-slate-400 border-slate-200'
+                                    }`}
+                                    title="Prazo de Confecção do Álbum"
+                                  >
+                                    🏭 {venda.prazoConfeccao ? formatarDataBR(venda.prazoConfeccao) : 'Confec: Em branco'}
+                                  </span>
+                                </div>
+
+                                {/* Usuário Responsável */}
                                 <div className="flex items-center space-x-1 text-[10px] text-slate-500">
                                   <UserCheck className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span className="truncate max-w-[140px] font-semibold text-slate-700">
+                                  <span className="truncate max-w-[150px] font-semibold text-slate-700">
                                     {venda.responsavelNome || 'Não atribuído'}
                                   </span>
                                 </div>
-                                {venda.prazoProducao && (
-                                  <div className="text-[9px] text-slate-400 font-mono">
-                                    Data Limite: {formatarDataBR(venda.prazoProducao)}
-                                  </div>
-                                )}
                               </div>
                             );
                           })()}
@@ -2367,87 +2508,190 @@ export default function VendasAlbunsPage() {
                     </div>
                   )}
 
-                  {/* Seção: Responsável e Prazo Limite de Produção */}
-                  <div className="p-4 bg-purple-50/70 rounded-2xl border border-purple-200/90 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-purple-900 flex items-center">
-                        <UserCheck className="w-4 h-4 mr-1.5 text-purple-600" />
-                        Responsável & Prazo Limite de Produção
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                        Alerta de Atraso Automático
+                  {/* Seção: Responsável e Prazos por Etapa de Produção */}
+                  <div className="p-4.5 bg-purple-50/70 rounded-2xl border border-purple-200/90 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-black text-purple-950 flex items-center">
+                          <UserCheck className="w-4 h-4 mr-1.5 text-purple-600" />
+                          Responsável & Prazos por Etapa de Produção
+                        </span>
+                        <p className="text-[11px] text-purple-800 mt-0.5">
+                          Defina o prazo de cada fase. As etapas posteriores podem ser deixadas em branco e preenchidas conforme o processo avançar.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 self-start sm:self-auto shrink-0">
+                        Alerta de Atraso por Etapa
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Usuário Responsável *
-                        </label>
-                        <select
-                          value={formResponsavelNome}
-                          onChange={(e) => {
-                            const nome = e.target.value;
-                            setFormResponsavelNome(nome);
-                            const achei = usuariosSistema.find((u) => u.nome === nome);
-                            if (achei) setFormResponsavelEmail(achei.email);
-                          }}
-                          className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-purple-200 font-bold"
-                        >
-                          {usuariosSistema.length === 0 && (
-                            <option value={usuarioLogado?.nome || 'Administrador'}>
-                              {usuarioLogado?.nome || 'Administrador'} (Você)
-                            </option>
-                          )}
-                          {usuariosSistema.map((u) => (
-                            <option key={u.id} value={u.nome}>
-                              {u.nome} ({u.perfil})
-                            </option>
-                          ))}
-                          {usuarioLogado && !usuariosSistema.some((u) => u.nome === usuarioLogado.nome) && (
-                            <option value={usuarioLogado.nome}>
-                              {usuarioLogado.nome} (Você)
-                            </option>
-                          )}
-                        </select>
-                      </div>
+                    {/* Usuário Responsável */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Usuário Responsável pelo Processo *
+                      </label>
+                      <select
+                        value={formResponsavelNome}
+                        onChange={(e) => {
+                          const nome = e.target.value;
+                          setFormResponsavelNome(nome);
+                          const achei = usuariosSistema.find((u) => u.nome === nome);
+                          if (achei) setFormResponsavelEmail(achei.email);
+                        }}
+                        className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-purple-200 font-bold focus:ring-2 focus:ring-[#7C3AED]"
+                      >
+                        {usuariosSistema.length === 0 && (
+                          <option value={usuarioLogado?.nome || 'Administrador'}>
+                            {usuarioLogado?.nome || 'Administrador'} (Você)
+                          </option>
+                        )}
+                        {usuariosSistema.map((u) => (
+                          <option key={u.id} value={u.nome}>
+                            {u.nome} ({u.perfil})
+                          </option>
+                        ))}
+                        {usuarioLogado && !usuariosSistema.some((u) => u.nome === usuarioLogado.nome) && (
+                          <option value={usuarioLogado.nome}>
+                            {usuarioLogado.nome} (Você)
+                          </option>
+                        )}
+                      </select>
+                    </div>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Data Limite de Produção / Entrega *
-                        </label>
+                    {/* Grid com as 3 Etapas de Produção */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Etapa 1: Layout */}
+                      <div className="bg-white p-3 rounded-xl border border-blue-200 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-blue-900 flex items-center">
+                            <span className="mr-1">🎨</span> 1. Criação de Layout
+                          </span>
+                          <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                            Etapa Atual
+                          </span>
+                        </div>
                         <input
                           type="date"
-                          required
-                          value={formPrazoProducao}
-                          onChange={(e) => setFormPrazoProducao(e.target.value)}
-                          className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-purple-200 font-mono font-bold"
+                          value={formPrazoLayout}
+                          onChange={(e) => setFormPrazoLayout(e.target.value)}
+                          className="w-full bg-[#F8FAFC] text-slate-900 text-xs rounded-lg p-2 border border-blue-200 font-mono font-bold focus:ring-1 focus:ring-blue-500"
                         />
+                        <div className="flex flex-wrap gap-1">
+                          {[15, 30].map((dias) => (
+                            <button
+                              key={dias}
+                              type="button"
+                              onClick={() => {
+                                const d = new Date();
+                                d.setDate(d.getDate() + dias);
+                                setFormPrazoLayout(d.toISOString().split('T')[0]);
+                              }}
+                              className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-200"
+                            >
+                              +{dias}d
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setFormPrazoLayout('')}
+                            className="px-2 py-0.5 rounded bg-slate-50 hover:bg-slate-100 text-slate-500 text-[10px] font-bold border border-slate-200"
+                            title="Deixar em branco"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Etapa 2: Aprovação do Cliente */}
+                      <div className="bg-white p-3 rounded-xl border border-amber-200 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-amber-900 flex items-center">
+                            <span className="mr-1">👤</span> 2. Aprovação Cliente
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400">
+                            (Opcional)
+                          </span>
+                        </div>
+                        <input
+                          type="date"
+                          value={formPrazoAprovacao}
+                          onChange={(e) => setFormPrazoAprovacao(e.target.value)}
+                          placeholder="Em branco..."
+                          className="w-full bg-[#F8FAFC] text-slate-900 text-xs rounded-lg p-2 border border-amber-200 font-mono font-bold focus:ring-1 focus:ring-amber-500"
+                        />
+                        <div className="flex flex-wrap gap-1">
+                          {[15, 30].map((dias) => (
+                            <button
+                              key={dias}
+                              type="button"
+                              onClick={() => {
+                                const d = new Date();
+                                d.setDate(d.getDate() + dias);
+                                setFormPrazoAprovacao(d.toISOString().split('T')[0]);
+                              }}
+                              className="px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200"
+                            >
+                              +{dias}d
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setFormPrazoAprovacao('')}
+                            className="px-2 py-0.5 rounded bg-slate-50 hover:bg-slate-100 text-slate-500 text-[10px] font-bold border border-slate-200"
+                            title="Deixar em branco"
+                          >
+                            Em branco
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Etapa 3: Confecção do Álbum */}
+                      <div className="bg-white p-3 rounded-xl border border-purple-200 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-purple-900 flex items-center">
+                            <span className="mr-1">🏭</span> 3. Confecção Álbum
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400">
+                            (Opcional)
+                          </span>
+                        </div>
+                        <input
+                          type="date"
+                          value={formPrazoConfeccao}
+                          onChange={(e) => setFormPrazoConfeccao(e.target.value)}
+                          placeholder="Em branco..."
+                          className="w-full bg-[#F8FAFC] text-slate-900 text-xs rounded-lg p-2 border border-purple-200 font-mono font-bold focus:ring-1 focus:ring-purple-500"
+                        />
+                        <div className="flex flex-wrap gap-1">
+                          {[15, 30, 45].map((dias) => (
+                            <button
+                              key={dias}
+                              type="button"
+                              onClick={() => {
+                                const d = new Date();
+                                d.setDate(d.getDate() + dias);
+                                setFormPrazoConfeccao(d.toISOString().split('T')[0]);
+                              }}
+                              className="px-2 py-0.5 rounded bg-purple-50 hover:bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200"
+                            >
+                              +{dias}d
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setFormPrazoConfeccao('')}
+                            className="px-2 py-0.5 rounded bg-slate-50 hover:bg-slate-100 text-slate-500 text-[10px] font-bold border border-slate-200"
+                            title="Deixar em branco"
+                          >
+                            Em branco
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Chips rápidos de prazo */}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <span className="text-[10px] font-bold text-purple-800 mr-1">Atalhos de prazo:</span>
-                      {[15, 30, 45, 60].map((dias) => (
-                        <button
-                          key={dias}
-                          type="button"
-                          onClick={() => {
-                            const d = new Date();
-                            d.setDate(d.getDate() + dias);
-                            setFormPrazoProducao(d.toISOString().split('T')[0]);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-purple-100 text-[10px] font-bold text-purple-800 border border-purple-200 transition shadow-2xs"
-                        >
-                          +{dias} dias
-                        </button>
-                      ))}
+                    <div className="text-[10px] text-purple-900 bg-white/70 p-2.5 rounded-xl border border-purple-200/60 leading-relaxed">
+                      💡 <strong>Prazos por etapa:</strong> Você pode estipular apenas o prazo da etapa atual (ex: <em>Layout - 15 dias</em>) e deixar as seguintes em branco. Quando o status for avançado, o prazo da etapa seguinte poderá ser estipulado ou prorrogado.
                     </div>
-
-                    <p className="text-[10px] text-purple-800 leading-tight">
-                      Caso o álbum não seja entregue até a data estipulada, o sistema emitirá alertas visuais insistentes para o usuário marcado até a conclusão.
-                    </p>
                   </div>
 
                   {/* Observações */}
@@ -2833,24 +3077,30 @@ export default function VendasAlbunsPage() {
                 </div>
               ) : (
                 albunsAtrasados.map((venda) => {
-                  const st = calcularStatusPrazo(venda.prazoProducao, venda.statusProducao);
+                  const infoEtapa = obterPrazoEtapaAtual(venda);
+                  const st = calcularStatusPrazo(infoEtapa.prazo, venda.statusProducao, infoEtapa.etapaCurto);
+                  const etapaInfo = obterEtapaInfo(venda.statusProducao);
 
                   return (
                     <div
                       key={venda.id}
                       className="p-4 rounded-2xl border border-rose-200 bg-rose-50/50 hover:bg-rose-50/80 transition shadow-2xs space-y-3"
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                         <div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono font-bold text-xs text-slate-800">
                               {venda.codigoPedido}
+                            </span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border flex items-center space-x-1 ${etapaInfo.badge}`}>
+                              <span>{etapaInfo.icone}</span>
+                              <span>{etapaInfo.nome}</span>
                             </span>
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
                               {st.texto}
                             </span>
                           </div>
-                          <strong className="text-slate-900 text-sm block mt-0.5">
+                          <strong className="text-slate-900 text-sm block mt-1">
                             {venda.alunoNome}
                           </strong>
                           <span className="text-xs text-slate-600 block">
@@ -2858,12 +3108,34 @@ export default function VendasAlbunsPage() {
                           </span>
                         </div>
 
-                        <div className="text-left sm:text-right">
+                        <div className="text-left sm:text-right shrink-0">
                           <span className="text-[11px] text-slate-500 block">
-                            Prazo Estipulado: <strong className="text-rose-700 font-mono">{formatarDataBR(venda.prazoProducao)}</strong>
+                            Prazo da Etapa: <strong className="text-rose-700 font-mono text-xs">{formatarDataBR(infoEtapa.prazo)}</strong>
                           </span>
                           <span className="text-[11px] text-slate-500 block">
                             Responsável: <strong className="text-slate-800">{venda.responsavelNome || 'Não Atribuído'}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Mini visualização dos prazos das 3 etapas */}
+                      <div className="grid grid-cols-3 gap-1.5 p-2 bg-white/80 rounded-xl border border-rose-100 text-[10px]">
+                        <div className="text-center">
+                          <span className="text-slate-400 block font-bold">1. Layout</span>
+                          <span className={`font-mono font-semibold ${venda.statusProducao === 'EM_DIAGRAMACAO' ? 'text-rose-700 font-bold' : 'text-slate-600'}`}>
+                            {venda.prazoLayout ? formatarDataBR(venda.prazoLayout) : 'Em branco'}
+                          </span>
+                        </div>
+                        <div className="text-center border-x border-slate-100">
+                          <span className="text-slate-400 block font-bold">2. Aprovação</span>
+                          <span className={`font-mono font-semibold ${venda.statusProducao === 'APROVACAO_CLIENTE' ? 'text-rose-700 font-bold' : 'text-slate-600'}`}>
+                            {venda.prazoAprovacaoCliente ? formatarDataBR(venda.prazoAprovacaoCliente) : 'Em branco'}
+                          </span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-slate-400 block font-bold">3. Confecção</span>
+                          <span className={`font-mono font-semibold ${venda.statusProducao === 'EM_GRAFICA' ? 'text-rose-700 font-bold' : 'text-slate-600'}`}>
+                            {venda.prazoConfeccao ? formatarDataBR(venda.prazoConfeccao) : 'Em branco'}
                           </span>
                         </div>
                       </div>
@@ -2875,14 +3147,14 @@ export default function VendasAlbunsPage() {
                           <button
                             onClick={() => handleEstenderPrazo(venda.id, 7)}
                             className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition"
-                            title="Adicionar mais 7 dias ao prazo"
+                            title="Adicionar mais 7 dias ao prazo da etapa atual"
                           >
                             +7 dias
                           </button>
                           <button
                             onClick={() => handleEstenderPrazo(venda.id, 15)}
                             className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition"
-                            title="Adicionar mais 15 dias ao prazo"
+                            title="Adicionar mais 15 dias ao prazo da etapa atual"
                           >
                             +15 dias
                           </button>
@@ -2892,21 +3164,32 @@ export default function VendasAlbunsPage() {
                               abrirModalEditarPrazo(venda);
                             }}
                             className="px-2.5 py-1 rounded-lg bg-white hover:bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200 shadow-2xs transition flex items-center space-x-1"
-                            title="Ajustar data exata ou alterar responsável"
+                            title="Ajustar prazos de cada etapa ou alterar responsável"
                           >
                             <Edit3 className="w-3 h-3" />
-                            <span>Alterar</span>
+                            <span>Prazos</span>
                           </button>
                         </div>
 
-                        <button
-                          onClick={() => handleConcluirProducao(venda.id)}
-                          className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm transition flex items-center space-x-1.5"
-                          title="Finalizar este álbum como entregue e remover alerta"
-                        >
-                          <CheckSquare className="w-3.5 h-3.5" />
-                          <span>Concluir / Entregue</span>
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => avancarStatusProducao(venda.id)}
+                            className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold shadow-sm transition flex items-center space-x-1"
+                            title="Concluir esta etapa e avançar para a próxima fase"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                            <span>Avançar Etapa</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleConcluirProducao(venda.id)}
+                            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm transition flex items-center space-x-1.5"
+                            title="Finalizar este álbum como entregue e remover alerta"
+                          >
+                            <CheckSquare className="w-3.5 h-3.5" />
+                            <span>Entregue</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -2932,11 +3215,11 @@ export default function VendasAlbunsPage() {
       )}
 
       {/* =========================================================================
-          MODAL 5: EDIÇÃO RÁPIDA DE RESPONSÁVEL E PRAZO DE PRODUÇÃO
+          MODAL 5: EDIÇÃO DE ETAPA, RESPONSÁVEL E PRAZOS POR ETAPA
           ========================================================================= */}
       {vendaEditandoPrazo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-[32px] w-full max-w-lg p-6 lg:p-7 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-[32px] w-full max-w-xl max-h-[92vh] overflow-y-auto p-6 lg:p-7 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md">
@@ -2944,7 +3227,7 @@ export default function VendasAlbunsPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-900">
-                    Ajustar Responsável & Prazo Limite
+                    Ajustar Etapa, Responsável & Prazos
                   </h3>
                   <p className="text-xs text-slate-500">
                     {vendaEditandoPrazo.codigoPedido} &bull; {vendaEditandoPrazo.alunoNome}
@@ -2960,6 +3243,37 @@ export default function VendasAlbunsPage() {
             </div>
 
             <form onSubmit={handleSalvarEdicaoPrazo} className="mt-4 space-y-4">
+              {/* Etapa Atual de Produção */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center">
+                  <Layers className="w-3.5 h-3.5 mr-1 text-purple-600" />
+                  Etapa Atual de Produção:
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { id: 'EM_DIAGRAMACAO', rotulo: '1. Criação Layout', icone: '🎨' },
+                    { id: 'APROVACAO_CLIENTE', rotulo: '2. Aprovação', icone: '👤' },
+                    { id: 'EM_GRAFICA', rotulo: '3. Confecção Gráfica', icone: '🏭' },
+                    { id: 'PRONTO_ENTREGA', rotulo: '4. Pronto p/ Entrega', icone: '📦' },
+                    { id: 'ENTREGUE', rotulo: '5. Entregue / Fim', icone: '✅' },
+                  ].map((et) => (
+                    <button
+                      key={et.id}
+                      type="button"
+                      onClick={() => setEditStatusProducao(et.id as any)}
+                      className={`p-2.5 rounded-xl border text-left text-xs font-bold transition flex items-center space-x-2 ${
+                        editStatusProducao === et.id
+                          ? 'ring-2 ring-purple-600 border-purple-500 bg-purple-50 text-purple-950 font-black'
+                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <span className="text-base">{et.icone}</span>
+                      <span className="truncate">{et.rotulo}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Usuário Responsável */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
@@ -2990,37 +3304,155 @@ export default function VendasAlbunsPage() {
                 </select>
               </div>
 
-              {/* Data Limite */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center">
-                  <CalendarClock className="w-3.5 h-3.5 mr-1 text-purple-600" />
-                  Data Limite de Produção / Entrega:
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={editPrazoProducao}
-                  onChange={(e) => setEditPrazoProducao(e.target.value)}
-                  className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl p-3 border border-slate-200 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                />
+              {/* Informação explicativa sobre prazos por etapa */}
+              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-100 text-xs text-purple-900 flex items-start space-x-2">
+                <Sparkles className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Prazos por Etapa:</strong> Defina o prazo da etapa em andamento e deixe as seguintes em branco se preferir estipular quando o álbum avançar.
+                </span>
+              </div>
 
-                {/* Chips rápidos */}
-                <div className="flex items-center space-x-1.5 mt-2">
-                  <span className="text-[10px] font-bold text-slate-400">Atalhos rápidos:</span>
-                  {[15, 30, 45, 60].map((dias) => (
+              {/* 3 Etapas de Prazo */}
+              <div className="space-y-3">
+                {/* 1. Layout */}
+                <div className={`p-3.5 rounded-2xl border transition ${editStatusProducao === 'EM_DIAGRAMACAO' ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-slate-50/50'}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-800 flex items-center">
+                      <span className="mr-1.5">🎨</span>
+                      <span>1. Prazo da Criação de Layout</span>
+                      {editStatusProducao === 'EM_DIAGRAMACAO' && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white">
+                          Etapa Ativa
+                        </span>
+                      )}
+                    </label>
+                  </div>
+                  <input
+                    type="date"
+                    value={editPrazoLayout}
+                    onChange={(e) => setEditPrazoLayout(e.target.value)}
+                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                  />
+                  <div className="flex items-center space-x-1.5 mt-2">
+                    <span className="text-[10px] font-bold text-slate-400">Atalhos:</span>
+                    {[15, 30].map((dias) => (
+                      <button
+                        key={dias}
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + dias);
+                          setEditPrazoLayout(d.toISOString().split('T')[0]);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:bg-purple-100 hover:text-purple-800 text-[10px] font-bold text-slate-600 transition"
+                      >
+                        +{dias}d
+                      </button>
+                    ))}
                     <button
-                      key={dias}
                       type="button"
-                      onClick={() => {
-                        const d = new Date();
-                        d.setDate(d.getDate() + dias);
-                        setEditPrazoProducao(d.toISOString().split('T')[0]);
-                      }}
-                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-purple-100 hover:text-purple-800 text-[10px] font-bold text-slate-600 transition"
+                      onClick={() => setEditPrazoLayout('')}
+                      className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:bg-rose-50 hover:text-rose-700 text-[10px] font-bold text-slate-500 transition"
                     >
-                      +{dias}d
+                      Limpar
                     </button>
-                  ))}
+                  </div>
+                </div>
+
+                {/* 2. Aprovação */}
+                <div className={`p-3.5 rounded-2xl border transition ${editStatusProducao === 'APROVACAO_CLIENTE' ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-slate-50/50'}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-800 flex items-center">
+                      <span className="mr-1.5">👤</span>
+                      <span>2. Prazo de Aprovação do Cliente</span>
+                      {editStatusProducao === 'APROVACAO_CLIENTE' && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-600 text-white">
+                          Etapa Ativa
+                        </span>
+                      )}
+                    </label>
+                    {!editPrazoAprovacao && (
+                      <span className="text-[10px] text-slate-400 font-medium">Em branco</span>
+                    )}
+                  </div>
+                  <input
+                    type="date"
+                    value={editPrazoAprovacao}
+                    onChange={(e) => setEditPrazoAprovacao(e.target.value)}
+                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                  />
+                  <div className="flex items-center space-x-1.5 mt-2">
+                    <span className="text-[10px] font-bold text-slate-400">Atalhos:</span>
+                    {[15, 30].map((dias) => (
+                      <button
+                        key={dias}
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + dias);
+                          setEditPrazoAprovacao(d.toISOString().split('T')[0]);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:bg-purple-100 hover:text-purple-800 text-[10px] font-bold text-slate-600 transition"
+                      >
+                        +{dias}d
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setEditPrazoAprovacao('')}
+                      className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:bg-rose-50 hover:text-rose-700 text-[10px] font-bold text-slate-500 transition"
+                    >
+                      Limpar (em branco)
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Confecção */}
+                <div className={`p-3.5 rounded-2xl border transition ${editStatusProducao === 'EM_GRAFICA' ? 'border-purple-300 bg-purple-50/40' : 'border-slate-200 bg-slate-50/50'}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-800 flex items-center">
+                      <span className="mr-1.5">🏭</span>
+                      <span>3. Prazo de Confecção do Álbum (Gráfica)</span>
+                      {editStatusProducao === 'EM_GRAFICA' && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-600 text-white">
+                          Etapa Ativa
+                        </span>
+                      )}
+                    </label>
+                    {!editPrazoConfeccao && (
+                      <span className="text-[10px] text-slate-400 font-medium">Em branco</span>
+                    )}
+                  </div>
+                  <input
+                    type="date"
+                    value={editPrazoConfeccao}
+                    onChange={(e) => setEditPrazoConfeccao(e.target.value)}
+                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                  />
+                  <div className="flex items-center space-x-1.5 mt-2">
+                    <span className="text-[10px] font-bold text-slate-400">Atalhos:</span>
+                    {[20, 30].map((dias) => (
+                      <button
+                        key={dias}
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + dias);
+                          setEditPrazoConfeccao(d.toISOString().split('T')[0]);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:bg-purple-100 hover:text-purple-800 text-[10px] font-bold text-slate-600 transition"
+                      >
+                        +{dias}d
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setEditPrazoConfeccao('')}
+                      className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 hover:bg-rose-50 hover:text-rose-700 text-[10px] font-bold text-slate-500 transition"
+                    >
+                      Limpar (em branco)
+                    </button>
+                  </div>
                 </div>
               </div>
 

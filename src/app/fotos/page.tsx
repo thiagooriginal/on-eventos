@@ -49,6 +49,8 @@ import {
   Edit3,
   CheckSquare,
   History,
+  Wallet,
+  Banknote,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import {
@@ -108,7 +110,7 @@ export interface VendaAlbum {
   // Soma Total do Kit
   valorTotalKit: number;
   // Pagamento
-  formaPagamento: 'CARTAO' | 'BOLETO' | 'PIX';
+  formaPagamento: 'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO';
   // Cartão
   cartaoQtdParcelas?: number;
   cartaoBandeira?: string;
@@ -388,7 +390,7 @@ export default function VendasAlbunsPage() {
   const [vendas, setVendas] = useState<VendaAlbum[]>(VENDAS_INICIAIS);
   const [busca, setBusca] = useState('');
   const [filtroModelo, setFiltroModelo] = useState<string>('TODOS');
-  const [filtroPagamento, setFiltroPagamento] = useState<'TODOS' | 'CARTAO' | 'BOLETO' | 'PIX'>('TODOS');
+  const [filtroPagamento, setFiltroPagamento] = useState<'TODOS' | 'CARTAO' | 'BOLETO' | 'A_VISTA' | 'PIX' | 'DINHEIRO'>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [filtroInstituicao, setFiltroInstituicao] = useState<string>('TODAS');
   const [filtroPeriodo, setFiltroPeriodo] = useState<string>('TODOS');
@@ -471,7 +473,7 @@ export default function VendasAlbunsPage() {
   ]);
 
   // Pagamento
-  const [formFormaPagamento, setFormFormaPagamento] = useState<'CARTAO' | 'BOLETO' | 'PIX'>('CARTAO');
+  const [formFormaPagamento, setFormFormaPagamento] = useState<'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO'>('CARTAO');
   const [formCartaoParcelas, setFormCartaoParcelas] = useState('10');
   const [formCartaoBandeira, setFormCartaoBandeira] = useState('Mastercard');
   const [formCartaoNsu, setFormCartaoNsu] = useState('');
@@ -1052,7 +1054,10 @@ export default function VendasAlbunsPage() {
       (v.responsavelNome && v.responsavelNome.toLowerCase().includes(busca.toLowerCase()));
 
     const matchModelo = filtroModelo === 'TODOS' || v.modeloAlbum === filtroModelo;
-    const matchPagamento = filtroPagamento === 'TODOS' || v.formaPagamento === filtroPagamento;
+    const matchPagamento =
+      filtroPagamento === 'TODOS' ||
+      (filtroPagamento === 'A_VISTA' && (v.formaPagamento === 'PIX' || v.formaPagamento === 'DINHEIRO')) ||
+      v.formaPagamento === filtroPagamento;
     const matchStatus = filtroStatus === 'TODOS' || v.statusProducao === filtroStatus;
 
     const matchInstituicao =
@@ -1117,6 +1122,15 @@ export default function VendasAlbunsPage() {
   const vendasBaseMetricas = temFiltroAtivo ? vendasFiltradas : vendas;
 
   const totalFaturamento = vendasBaseMetricas.reduce((acc, v) => acc + v.valorTotalKit, 0);
+  const totalAVista = vendasBaseMetricas
+    .filter((v) => v.formaPagamento === 'PIX' || v.formaPagamento === 'DINHEIRO')
+    .reduce((acc, v) => acc + v.valorTotalKit, 0);
+  const totalPix = vendasBaseMetricas
+    .filter((v) => v.formaPagamento === 'PIX')
+    .reduce((acc, v) => acc + v.valorTotalKit, 0);
+  const totalDinheiro = vendasBaseMetricas
+    .filter((v) => v.formaPagamento === 'DINHEIRO')
+    .reduce((acc, v) => acc + v.valorTotalKit, 0);
   const totalCartao = vendasBaseMetricas
     .filter((v) => v.formaPagamento === 'CARTAO')
     .reduce((acc, v) => acc + v.valorTotalKit, 0);
@@ -1124,7 +1138,7 @@ export default function VendasAlbunsPage() {
     .filter((v) => v.formaPagamento === 'BOLETO')
     .reduce((acc, v) => acc + v.valorTotalKit, 0);
   const totalEmProducao = vendasBaseMetricas.filter(
-    (v) => v.statusProducao === 'EM_DIAGRAMACAO' || v.statusProducao === 'EM_GRAFICA'
+    (v) => v.statusProducao === 'EM_DIAGRAMACAO' || v.statusProducao === 'APROVACAO_CLIENTE' || v.statusProducao === 'EM_GRAFICA'
   ).length;
 
   return (
@@ -1225,7 +1239,7 @@ export default function VendasAlbunsPage() {
         {/* =========================================================================
             CARDS DE MÉTRICAS COM RELEVO TÁTIL 3D (REATIVOS AO FILTRO ATIVO)
             ========================================================================= */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
           {/* Card 1: Total Vendido */}
           <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:-translate-y-0.5 transition-all">
             <div className="flex items-center justify-between mb-3">
@@ -1248,7 +1262,28 @@ export default function VendasAlbunsPage() {
             </div>
           </div>
 
-          {/* Card 2: Cartão de Crédito */}
+          {/* Card 2: À Vista (Dinheiro / PIX) */}
+          <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:-translate-y-0.5 transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                À Vista (Dinheiro/PIX)
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
+                <Wallet className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+              R$ {totalAVista.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
+            <div className="mt-2 text-[11px] text-teal-700 font-semibold flex items-center">
+              <Sparkles className="w-3.5 h-3.5 mr-1 text-teal-500" />
+              <span>
+                {vendasBaseMetricas.filter((v) => v.formaPagamento === 'PIX' || v.formaPagamento === 'DINHEIRO').length} liquidadas à vista
+              </span>
+            </div>
+          </div>
+
+          {/* Card 3: Cartão de Crédito */}
           <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:-translate-y-0.5 transition-all">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -1266,7 +1301,7 @@ export default function VendasAlbunsPage() {
             </div>
           </div>
 
-          {/* Card 3: Boleto / Carnê */}
+          {/* Card 4: Boleto / Carnê */}
           <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:-translate-y-0.5 transition-all">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -1284,7 +1319,7 @@ export default function VendasAlbunsPage() {
             </div>
           </div>
 
-          {/* Card 4: Em Produção */}
+          {/* Card 5: Em Produção */}
           <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:-translate-y-0.5 transition-all">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -1298,7 +1333,7 @@ export default function VendasAlbunsPage() {
               {totalEmProducao} <span className="text-sm font-medium text-slate-500">álbuns</span>
             </div>
             <div className="mt-2 text-[11px] text-blue-600 font-semibold">
-              Diagramação & Gráfica
+              Layout, Aprovação & Gráfica
             </div>
           </div>
         </section>
@@ -1506,6 +1541,17 @@ export default function VendasAlbunsPage() {
               Todos
             </button>
             <button
+              onClick={() => setFiltroPagamento('A_VISTA')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 ${
+                filtroPagamento === 'A_VISTA'
+                  ? 'bg-white text-teal-700 shadow-2xs border border-teal-200'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Filtrar por pagamentos à vista (Dinheiro ou PIX)"
+            >
+              <Wallet className="w-3.5 h-3.5 mr-1 text-teal-600" /> Dinheiro/PIX
+            </button>
+            <button
               onClick={() => setFiltroPagamento('CARTAO')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 ${
                 filtroPagamento === 'CARTAO'
@@ -1524,16 +1570,6 @@ export default function VendasAlbunsPage() {
               }`}
             >
               <Barcode className="w-3.5 h-3.5 mr-1" /> Boleto
-            </button>
-            <button
-              onClick={() => setFiltroPagamento('PIX')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                filtroPagamento === 'PIX'
-                  ? 'bg-white text-purple-700 shadow-2xs border border-purple-200'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              PIX
             </button>
           </div>
         </div>
@@ -1697,87 +1733,59 @@ export default function VendasAlbunsPage() {
                               PIX À Vista
                             </span>
                           )}
+
+                          {venda.formaPagamento === 'DINHEIRO' && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                              <Wallet className="w-3.5 h-3.5 mr-1 text-teal-600" />
+                              Dinheiro À Vista
+                            </span>
+                          )}
                         </td>
 
-                        {/* Status de Produção & Prazos por Etapa */}
-                        <td className="py-4 px-5">
+                        {/* Status de Produção & Prazos por Etapa (Visual Limpo e Despoluído) */}
+                        <td className="py-3 px-5">
                           {(() => {
                             const infoEtapa = obterPrazoEtapaAtual(venda);
                             const st = calcularStatusPrazo(infoEtapa.prazo, venda.statusProducao, infoEtapa.etapaCurto);
                             const etapa = obterEtapaInfo(venda.statusProducao);
 
                             return (
-                              <div className="space-y-1.5">
-                                {/* Etapa Atual de Produção */}
+                              <div className="space-y-1.5 min-w-[155px]">
+                                {/* Linha 1: Etapa de Produção Atual com ação rápida de avançar */}
                                 <div className="flex items-center space-x-1.5">
-                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${etapa.corBadge}`}>
-                                    <span className="mr-1">{etapa.icone}</span>
-                                    {etapa.nome}
-                                  </span>
+                                  <button
+                                    onClick={() => avancarStatusProducao(venda.id)}
+                                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-black border ${etapa.corBadge} hover:brightness-95 transition shadow-2xs group cursor-pointer`}
+                                    title={`Etapa atual: ${etapa.nome}. Clique para avançar!`}
+                                  >
+                                    <span>{etapa.icone}</span>
+                                    <span>{etapa.nomeCurto}</span>
+                                    <ChevronRight className="w-3 h-3 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                                  </button>
                                 </div>
 
-                                {/* Prazo da Etapa Atual */}
-                                <div className="flex items-center space-x-1">
+                                {/* Linha 2: Prazo da Etapa Atual com botão de ajuste */}
+                                <div className="flex items-center space-x-1.5">
                                   <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] border ${st.badgeClasse}`}
-                                    title={infoEtapa.prazo ? `Prazo da etapa ${infoEtapa.etapaNome}: ${formatarDataBR(infoEtapa.prazo)}` : 'Prazo em branco (a estipular)'}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold border font-mono ${st.badgeClasse}`}
+                                    title={infoEtapa.prazo ? `Prazo da etapa ${infoEtapa.etapaNome}: ${formatarDataBR(infoEtapa.prazo)}` : 'Prazo desta etapa ainda não definido'}
                                   >
-                                    <CalendarClock className="w-3 h-3 mr-1 shrink-0" />
-                                    {st.texto}
+                                    <Clock className="w-3 h-3 mr-1 shrink-0" />
+                                    {infoEtapa.prazo ? `${formatarDataBR(infoEtapa.prazo)} • ${st.texto.replace(/^.*?: /, '')}` : 'Sem prazo'}
                                   </span>
                                   <button
                                     onClick={() => abrirModalEditarPrazo(venda)}
-                                    className="p-1 rounded-lg hover:bg-purple-100 text-slate-400 hover:text-purple-700 transition"
-                                    title="Editar prazos das etapas ou responsável"
+                                    className="p-1 rounded-lg hover:bg-purple-100 text-slate-400 hover:text-purple-700 transition cursor-pointer"
+                                    title="Editar prazos das 3 etapas ou responsável"
                                   >
                                     <Edit3 className="w-3 h-3" />
                                   </button>
                                 </div>
 
-                                {/* Mini Trilha das 3 Etapas */}
-                                <div className="text-[9px] text-slate-500 flex flex-wrap items-center gap-1 font-mono pt-0.5">
-                                  <span
-                                    className={`px-1.5 py-0.5 rounded border ${
-                                      venda.statusProducao === 'EM_DIAGRAMACAO'
-                                        ? 'ring-1 ring-blue-500 font-bold bg-blue-50 text-blue-800 border-blue-300'
-                                        : venda.prazoLayout
-                                        ? 'bg-slate-50 text-slate-700 border-slate-200'
-                                        : 'bg-slate-100 text-slate-400 border-slate-200'
-                                    }`}
-                                    title="Prazo de Criação de Layout"
-                                  >
-                                    🎨 {venda.prazoLayout ? formatarDataBR(venda.prazoLayout) : 'Layout: Em branco'}
-                                  </span>
-                                  <span
-                                    className={`px-1.5 py-0.5 rounded border ${
-                                      venda.statusProducao === 'APROVACAO_CLIENTE'
-                                        ? 'ring-1 ring-amber-500 font-bold bg-amber-50 text-amber-800 border-amber-300'
-                                        : venda.prazoAprovacaoCliente
-                                        ? 'bg-slate-50 text-slate-700 border-slate-200'
-                                        : 'bg-slate-100 text-slate-400 border-slate-200'
-                                    }`}
-                                    title="Prazo de Aprovação do Cliente"
-                                  >
-                                    👤 {venda.prazoAprovacaoCliente ? formatarDataBR(venda.prazoAprovacaoCliente) : 'Aprov: Em branco'}
-                                  </span>
-                                  <span
-                                    className={`px-1.5 py-0.5 rounded border ${
-                                      venda.statusProducao === 'EM_GRAFICA'
-                                        ? 'ring-1 ring-purple-500 font-bold bg-purple-50 text-purple-800 border-purple-300'
-                                        : venda.prazoConfeccao
-                                        ? 'bg-slate-50 text-slate-700 border-slate-200'
-                                        : 'bg-slate-100 text-slate-400 border-slate-200'
-                                    }`}
-                                    title="Prazo de Confecção do Álbum"
-                                  >
-                                    🏭 {venda.prazoConfeccao ? formatarDataBR(venda.prazoConfeccao) : 'Confec: Em branco'}
-                                  </span>
-                                </div>
-
-                                {/* Usuário Responsável */}
-                                <div className="flex items-center space-x-1 text-[10px] text-slate-500">
+                                {/* Linha 3: Usuário Responsável */}
+                                <div className="flex items-center space-x-1 text-[11px] text-slate-600">
                                   <UserCheck className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span className="truncate max-w-[150px] font-semibold text-slate-700">
+                                  <span className="truncate max-w-[140px] font-medium text-slate-700">
                                     {venda.responsavelNome || 'Não atribuído'}
                                   </span>
                                 </div>
@@ -2380,13 +2388,39 @@ export default function VendasAlbunsPage() {
                   {/* Seleção da Forma de Pagamento */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Forma de Pagamento *</label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setFormFormaPagamento('PIX')}
+                        className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition ${
+                          formFormaPagamento === 'PIX'
+                            ? 'border-purple-500 bg-purple-50 text-purple-900 shadow-sm ring-2 ring-purple-400 font-black'
+                            : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <Sparkles className="w-5 h-5 text-purple-600" />
+                        <span>PIX À Vista</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormFormaPagamento('DINHEIRO')}
+                        className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition ${
+                          formFormaPagamento === 'DINHEIRO'
+                            ? 'border-teal-500 bg-teal-50 text-teal-900 shadow-sm ring-2 ring-teal-400 font-black'
+                            : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <Wallet className="w-5 h-5 text-teal-600" />
+                        <span>Dinheiro À Vista</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => setFormFormaPagamento('CARTAO')}
-                        className={`py-3 px-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition ${
+                        className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition ${
                           formFormaPagamento === 'CARTAO'
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm ring-2 ring-emerald-400'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm ring-2 ring-emerald-400 font-black'
                             : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
                         }`}
                       >
@@ -2397,30 +2431,53 @@ export default function VendasAlbunsPage() {
                       <button
                         type="button"
                         onClick={() => setFormFormaPagamento('BOLETO')}
-                        className={`py-3 px-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition ${
+                        className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition ${
                           formFormaPagamento === 'BOLETO'
-                            ? 'border-amber-500 bg-amber-50 text-amber-800 shadow-sm ring-2 ring-amber-400'
+                            ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-sm ring-2 ring-amber-400 font-black'
                             : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
                         }`}
                       >
                         <Barcode className="w-5 h-5 text-amber-600" />
                         <span>Boleto / Carnê</span>
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFormFormaPagamento('PIX')}
-                        className={`py-3 px-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition ${
-                          formFormaPagamento === 'PIX'
-                            ? 'border-purple-500 bg-purple-50 text-purple-800 shadow-sm ring-2 ring-purple-400'
-                            : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
-                        }`}
-                      >
-                        <Sparkles className="w-5 h-5 text-purple-600" />
-                        <span>PIX À Vista</span>
-                      </button>
                     </div>
                   </div>
+
+                  {/* Detalhes do PIX */}
+                  {formFormaPagamento === 'PIX' && (
+                    <div className="p-4 bg-purple-50/70 rounded-2xl border border-purple-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-purple-900 flex items-center">
+                          <Sparkles className="w-4 h-4 mr-1.5 text-purple-600" />
+                          Pagamento À Vista via PIX:
+                        </span>
+                        <span className="font-mono font-black text-sm text-purple-950">
+                          R$ {somaTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-purple-800">
+                        Chave CNPJ Sicredi: <strong>financeiro@onagenciadeeventos.com.br</strong> &bull; Quitação e baixa imediata no sistema.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Detalhes do Dinheiro */}
+                  {formFormaPagamento === 'DINHEIRO' && (
+                    <div className="p-4 bg-teal-50/70 rounded-2xl border border-teal-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-teal-900 flex items-center">
+                          <Wallet className="w-4 h-4 mr-1.5 text-teal-600" />
+                          Pagamento À Vista em Dinheiro / Espécie:
+                        </span>
+                        <span className="font-mono font-black text-sm text-teal-950">
+                          R$ {somaTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-teal-800">
+                        Valor total recebido em espécie no ato da contratação &bull; Quitação à vista confirmada.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Detalhes do Cartão */}
                   {formFormaPagamento === 'CARTAO' && (

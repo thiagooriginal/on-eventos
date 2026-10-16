@@ -53,6 +53,10 @@ import {
   Banknote,
   Globe,
   UploadCloud,
+  ShieldAlert,
+  ShieldCheck,
+  RotateCcw,
+  Undo2,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import {
@@ -146,9 +150,43 @@ export interface VendaAlbum {
   prazoAprovacaoCliente?: string;  // YYYY-MM-DD (2. Aprovação do Cliente)
   prazoConfeccao?: string;         // YYYY-MM-DD (3. Confecção do Álbum)
   
-  // Prazo geral ou da etapa ativa (retrocompatibilidade)
   prazoProducao?: string;          // YYYY-MM-DD
   concluidoEm?: string;            // Data DD/MM/AAAA em que foi finalizado
+}
+
+export interface RegistroExclusaoAlbum {
+  id: string;
+  vendaId: string;
+  codigoPedido: string;
+  alunoNome: string;
+  alunoCpf: string;
+  alunoTelefone?: string;
+  alunoEmail?: string;
+  turmaNome: string;
+  modeloAlbum: string;
+  valorTotalKit: number;
+  formaPagamento: string;
+  statusProducao: string;
+  dataVenda: string;
+  dataHoraExclusao: string;
+  excluidoPorNome: string;
+  excluidoPorEmail?: string;
+  motivo: string;
+  dadosVenda: VendaAlbum;
+}
+
+export function isClienteFicticio(v: any): boolean {
+  if (!v) return false;
+  const id = (v.id || '').toLowerCase().trim();
+  const codigo = (v.codigoPedido || '').toUpperCase().trim();
+  const nome = (v.alunoNome || '').toLowerCase().trim();
+  const cpf = (v.alunoCpf || '').replace(/\D/g, '');
+
+  if (id === 'venda-001' || id === 'venda-002' || id === 'venda-003') return true;
+  if (codigo === 'ALB-2026-001' || codigo === 'ALB-2026-002' || codigo === 'ALB-2026-003') return true;
+  if (nome.includes('gabriel santos') || nome.includes('amanda oliveira') || nome.includes('leonardo castro')) return true;
+  if (cpf === '12345678900' || cpf === '98765432111' || cpf === '45678912322') return true;
+  return false;
 }
 
 export interface StatusPrazo {
@@ -454,6 +492,14 @@ export default function VendasAlbunsPage() {
   const [vendaSelecionadaCartao, setVendaSelecionadaCartao] = useState<VendaAlbum | null>(null);
   const [copiadoIdx, setCopiadoIdx] = useState<string | null>(null);
 
+  // Auditoria e Registro de Segurança de Exclusões de Álbuns
+  const [registrosExclusoes, setRegistrosExclusoes] = useState<RegistroExclusaoAlbum[]>([]);
+  const [modalExclusaoSeguraAberto, setModalExclusaoSeguraAberto] = useState(false);
+  const [modalAuditoriaAberto, setModalAuditoriaAberto] = useState(false);
+  const [vendaParaExcluir, setVendaParaExcluir] = useState<VendaAlbum | null>(null);
+  const [motivoExclusaoTipo, setMotivoExclusaoTipo] = useState<string>('Desistência formal do formando');
+  const [motivoExclusaoDetalhe, setMotivoExclusaoDetalhe] = useState<string>('');
+
   // Formulário Nova Venda: Configuração do Kit
   const [formAbaAtiva, setFormAbaAtiva] = useState<'ALBUM' | 'BRINDES' | 'PAGAMENTO'>('ALBUM');
   const [formNome, setFormNome] = useState('');
@@ -514,33 +560,31 @@ export default function VendasAlbunsPage() {
   // Carregar vendas centralizadas da nuvem e sincronizar com localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const filtrarFicticios = (lista: any[]) => {
-        const nomesFicticios = [
-          'gabriel santos souza',
-          'amanda oliveira lima',
-          'leonardo castro ferreira',
-        ];
-        const idsFicticios = ['venda-001', 'venda-002', 'venda-003'];
-        return (lista || []).filter(
-          (v: any) =>
-            !idsFicticios.includes(v.id) &&
-            !nomesFicticios.includes((v.alunoNome || '').trim().toLowerCase())
-        );
-      };
+      // 1. Carrega logs de exclusões salvos localmente
+      try {
+        const logsSalvos = localStorage.getItem('on_registro_exclusoes_albuns_v1');
+        if (logsSalvos) {
+          const parsedLogs = JSON.parse(logsSalvos);
+          if (Array.isArray(parsedLogs)) {
+            setRegistrosExclusoes(parsedLogs);
+          }
+        }
+      } catch (e) {}
 
+      // 2. Carrega vendas locais expurgando imediatamente clientes fictícios
       try {
         const salvo = localStorage.getItem('on_vendas_albuns_estado');
         if (salvo) {
           const parsed = JSON.parse(salvo);
           if (Array.isArray(parsed)) {
-            const limpas = filtrarFicticios(parsed);
+            const limpas = parsed.filter((v: any) => !isClienteFicticio(v));
             setVendas(limpas);
             localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
           }
         }
       } catch (e) {}
 
-      // Sincroniza em tempo real com o banco de dados centralizado no servidor
+      // 3. Sincroniza em tempo real com o banco de dados centralizado no servidor
       fetch('/vendas.php')
         .then((res) => {
           if (!res.ok) throw new Error('Falha ao obter vendas');
@@ -548,10 +592,27 @@ export default function VendasAlbunsPage() {
         })
         .then((dadosServidor) => {
           if (Array.isArray(dadosServidor)) {
-            const limpas = filtrarFicticios(dadosServidor);
+            const limpas = dadosServidor.filter((v: any) => !isClienteFicticio(v));
             setVendas(limpas);
             try {
               localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
+            } catch (e) {}
+          }
+        })
+        .catch(() => {});
+
+      // 4. Carrega logs de auditoria do servidor
+      fetch('/vendas.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_deleted_logs' }),
+      })
+        .then((res) => res.json())
+        .then((dados) => {
+          if (dados && Array.isArray(dados.logsExclusoes)) {
+            setRegistrosExclusoes(dados.logsExclusoes);
+            try {
+              localStorage.setItem('on_registro_exclusoes_albuns_v1', JSON.stringify(dados.logsExclusoes));
             } catch (e) {}
           }
         })
@@ -560,32 +621,117 @@ export default function VendasAlbunsPage() {
   }, []);
 
   const salvarVendasLocal = (novas: VendaAlbum[]) => {
-    setVendas(novas);
+    const limpas = novas.filter((v) => !isClienteFicticio(v));
+    setVendas(limpas);
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(novas));
-        // Persiste centralizadamente na nuvem (Hostinger) para todos os computadores e usuários
+        localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
         fetch('/vendas.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'save', vendas: novas }),
+          body: JSON.stringify({ action: 'save', vendas: limpas }),
         }).catch(() => {});
       } catch (e) {}
     }
   };
 
-  const handleExcluirVenda = (vendaId: string) => {
-    if (confirm('Tem certeza que deseja EXCLUIR definitivamente esta venda do sistema?')) {
-      const atualizadas = vendas.filter((v) => v.id !== vendaId);
-      salvarVendasLocal(atualizadas);
-      if (typeof window !== 'undefined') {
+  // Abrir modal de confirmação com auditoria para excluir um álbum
+  const abrirModalExclusaoSegura = (venda: VendaAlbum) => {
+    setVendaParaExcluir(venda);
+    setMotivoExclusaoTipo('Desistência formal do formando');
+    setMotivoExclusaoDetalhe('');
+    setModalExclusaoSeguraAberto(true);
+  };
+
+  // Confirmar exclusão com registro de segurança
+  const handleConfirmarExclusaoSegura = () => {
+    if (!vendaParaExcluir) return;
+
+    const agora = new Date();
+    const dataHoraStr = `${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    const motivoFinal = motivoExclusaoDetalhe.trim()
+      ? `${motivoExclusaoTipo} - ${motivoExclusaoDetalhe.trim()}`
+      : motivoExclusaoTipo;
+
+    const novoLog: RegistroExclusaoAlbum = {
+      id: `log_del_${Date.now()}`,
+      vendaId: vendaParaExcluir.id,
+      codigoPedido: vendaParaExcluir.codigoPedido,
+      alunoNome: vendaParaExcluir.alunoNome,
+      alunoCpf: vendaParaExcluir.alunoCpf,
+      alunoTelefone: vendaParaExcluir.alunoTelefone,
+      alunoEmail: vendaParaExcluir.alunoEmail,
+      turmaNome: vendaParaExcluir.turmaNome,
+      modeloAlbum: vendaParaExcluir.modeloAlbum,
+      valorTotalKit: vendaParaExcluir.valorTotalKit,
+      formaPagamento: vendaParaExcluir.formaPagamento,
+      statusProducao: vendaParaExcluir.statusProducao,
+      dataVenda: vendaParaExcluir.dataVenda,
+      dataHoraExclusao: dataHoraStr,
+      excluidoPorNome: usuarioLogado?.nome || 'Administrador',
+      excluidoPorEmail: usuarioLogado?.email || '',
+      motivo: motivoFinal,
+      dadosVenda: vendaParaExcluir,
+    };
+
+    const novasVendas = vendas.filter((v) => v.id !== vendaParaExcluir.id);
+    const novosLogs = [novoLog, ...registrosExclusoes];
+
+    setVendas(novasVendas);
+    setRegistrosExclusoes(novosLogs);
+    setModalExclusaoSeguraAberto(false);
+    setVendaParaExcluir(null);
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(novasVendas));
+        localStorage.setItem('on_registro_exclusoes_albuns_v1', JSON.stringify(novosLogs));
         fetch('/vendas.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete', id: vendaId }),
+          body: JSON.stringify({
+            action: 'delete_with_log',
+            id: novoLog.vendaId,
+            log: novoLog,
+          }),
         }).catch(() => {});
-      }
-      showToast('Venda excluída com sucesso!');
+      } catch (e) {}
+    }
+
+    showToast(`Álbum de ${novoLog.alunoNome} excluído e registrado no Histórico de Segurança!`);
+  };
+
+  // Restaurar venda excluída de volta para a lista ativa
+  const handleRestaurarVenda = (logId: string) => {
+    const log = registrosExclusoes.find((l) => l.id === logId);
+    if (!log || !log.dadosVenda) return;
+
+    const restaurada = log.dadosVenda;
+    const novasVendas = [restaurada, ...vendas.filter((v) => v.id !== restaurada.id)];
+    const novosLogs = registrosExclusoes.filter((l) => l.id !== logId);
+
+    setVendas(novasVendas);
+    setRegistrosExclusoes(novosLogs);
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(novasVendas));
+        localStorage.setItem('on_registro_exclusoes_albuns_v1', JSON.stringify(novosLogs));
+        fetch('/vendas.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'restore', logId }),
+        }).catch(() => {});
+      } catch (e) {}
+    }
+
+    showToast(`Álbum de ${restaurada.alunoNome} RESTAURADO com sucesso!`);
+  };
+
+  const handleExcluirVenda = (vendaId: string) => {
+    const v = vendas.find((x) => x.id === vendaId);
+    if (v) {
+      abrirModalExclusaoSegura(v);
     }
   };
 
@@ -1117,6 +1263,8 @@ export default function VendasAlbunsPage() {
 
   // Filtragem completa com busca, modelo, pagamento, status, instituição, período, responsável e prazo
   const vendasFiltradas = vendas.filter((v) => {
+    if (isClienteFicticio(v)) return false;
+
     const info = extrairInfoTurma(v);
     const infoEtapa = obterPrazoEtapaAtual(v);
     const stPrazo = calcularStatusPrazo(infoEtapa.prazo, v.statusProducao, infoEtapa.etapaCurto);
@@ -1196,13 +1344,14 @@ export default function VendasAlbunsPage() {
     filtroPrazo !== 'TODOS' ||
     busca.trim() !== '';
 
-  // Métricas reativas: calculam pelo período/filtro ativo OU pelo consolidado total geral
-  const vendasBaseMetricas =
+  // Métricas reativas: calculam pelo período/filtro ativo OU pelo consolidado total geral (apenas vendas reais)
+  const vendasBaseMetricas = (
     visaoMetricas === 'TOTAL_GERAL'
       ? vendas
       : temFiltroAtivo
       ? vendasFiltradas
-      : vendas;
+      : vendas
+  ).filter((v) => !isClienteFicticio(v));
 
   const totalFaturamento = vendasBaseMetricas.reduce((acc, v) => acc + v.valorTotalKit, 0);
   const totalAVista = vendasBaseMetricas
@@ -1251,7 +1400,7 @@ export default function VendasAlbunsPage() {
                   Vendas de Álbuns & Kits Fotográficos
                 </h1>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200">
-                  {vendas.length} pedidos
+                  {vendas.filter((v) => !isClienteFicticio(v)).length} pedidos
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -1261,6 +1410,20 @@ export default function VendasAlbunsPage() {
           </div>
 
           <div className="flex items-center space-x-2.5">
+            <button
+              onClick={() => setModalAuditoriaAberto(true)}
+              className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-black shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
+              title="Ver Histórico de Álbuns Excluídos e Registro de Segurança"
+            >
+              <ShieldCheck className="w-4 h-4 text-purple-600" />
+              <span>Registro de Segurança</span>
+              {registrosExclusoes.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-purple-600 text-white text-[10px] font-black ml-1">
+                  {registrosExclusoes.length}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setModalHomologacaoSicrediAberto(true)}
               className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
@@ -1940,20 +2103,22 @@ export default function VendasAlbunsPage() {
                           {venda.formaPagamento === 'BOLETO' && (
                             <button
                               onClick={() => setVendaSelecionadaBoletos(venda)}
-                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-200 transition shadow-2xs"
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
                               title="Visualizar Carnê de Boletos Sicredi"
                             >
-                              <Barcode className="w-3.5 h-3.5 inline mr-1" /> Boletos
+                              <Barcode className="w-3.5 h-3.5 inline mr-1 text-amber-700" />
+                              <span>Boletos</span>
                             </button>
                           )}
 
                           {venda.formaPagamento === 'CARTAO' && (
                             <button
                               onClick={() => setVendaSelecionadaCartao(venda)}
-                              className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-200 transition shadow-2xs"
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
                               title="Ver Comprovante da Transação no Cartão"
                             >
-                              <CreditCard className="w-3.5 h-3.5 inline mr-1" /> Comprovante
+                              <CreditCard className="w-3.5 h-3.5 inline mr-1 text-emerald-700" />
+                              <span>Comprovante</span>
                             </button>
                           )}
 
@@ -1961,7 +2126,7 @@ export default function VendasAlbunsPage() {
                             <>
                               <button
                                 onClick={() => handleConcluirProducao(venda.id)}
-                                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition shadow-2xs hover:translate-y-[-1px]"
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition shadow-2xs hover:translate-y-[-1px] inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
                                 title="Concluir processo de produção e entregar álbum"
                               >
                                 <CheckSquare className="w-3.5 h-3.5 inline mr-1" />
@@ -1969,7 +2134,7 @@ export default function VendasAlbunsPage() {
                               </button>
                               <button
                                 onClick={() => avancarStatusProducao(venda.id)}
-                                className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11px] border border-slate-200 transition shadow-2xs hover:translate-y-[-1px]"
+                                className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-900 font-bold text-[11px] border border-purple-200 transition shadow-2xs hover:translate-y-[-1px] inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
                                 title="Avançar etapa de produção do álbum"
                               >
                                 <span>Avançar</span>
@@ -1988,18 +2153,19 @@ export default function VendasAlbunsPage() {
                             )},%20seu%20Kit%20com%20${encodeURIComponent(venda.modeloAlbum)}%20está%20com%20status:%20${venda.statusProducao}.`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white inline-flex items-center justify-center transition shadow-2xs"
+                            className="p-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white inline-flex items-center justify-center transition shadow-2xs cursor-pointer hover:scale-105"
                             title="Enviar status no WhatsApp"
                           >
                             <Phone className="w-3.5 h-3.5" />
                           </a>
 
                           <button
-                            onClick={() => handleExcluirVenda(venda.id)}
-                            className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-800 border border-rose-200 inline-flex items-center justify-center transition shadow-2xs cursor-pointer"
-                            title="Excluir Venda Definitivamente (Gestor)"
+                            onClick={() => abrirModalExclusaoSegura(venda)}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-900 border border-rose-300 font-bold text-[11px] transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
+                            title="Excluir Álbum com Registro de Segurança e Auditoria"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Excluir</span>
                           </button>
                         </td>
                       </tr>
@@ -4001,7 +4167,7 @@ ON AGENCIA DE EVENTOS LTDA`;
                 </span>
                 <button
                   onClick={() => setModalHomologacaoSicrediAberto(false)}
-                  className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition"
+                  className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
                 >
                   Fechar Janela
                 </button>
@@ -4010,6 +4176,262 @@ ON AGENCIA DE EVENTOS LTDA`;
           </div>
         );
       })()}
+
+      {/* MODAL: CONFIRMAÇÃO DE EXCLUSÃO SEGURA COM AUDITORIA */}
+      {modalExclusaoSeguraAberto && vendaParaExcluir && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-rose-100 space-y-5 my-8">
+            {/* Cabeçalho */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 shadow-inner">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                    Exclusão com Registro de Segurança
+                  </h3>
+                  <p className="text-xs text-rose-600 font-semibold flex items-center mt-0.5">
+                    <span>Operação monitorada e registrada para conformidade</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setModalExclusaoSeguraAberto(false);
+                  setVendaParaExcluir(null);
+                }}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Aviso */}
+            <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 text-xs text-rose-900 space-y-1">
+              <p className="font-bold flex items-center">
+                <AlertTriangle className="w-4 h-4 mr-1.5 text-rose-600 shrink-0" />
+                Atenção: Esta ação removerá o álbum da listagem ativa.
+              </p>
+              <p className="text-rose-800 leading-relaxed">
+                Para manter o registro por segurança, todos os dados da venda, parcelas e histórico serão arquivados no <strong>Histórico de Auditoria</strong> com data, hora e assinatura do seu usuário. Você poderá restaurá-lo a qualquer momento.
+              </p>
+            </div>
+
+            {/* Dados do Álbum a Excluir */}
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 text-xs space-y-2">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                <span className="text-slate-500 font-medium">Formando:</span>
+                <span className="text-slate-900 font-bold text-sm">{vendaParaExcluir.alunoNome}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-slate-600 pt-1">
+                <div>
+                  <span className="text-slate-400">CPF:</span>{' '}
+                  <span className="font-mono font-medium text-slate-800">{vendaParaExcluir.alunoCpf || 'Não informado'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Pedido:</span>{' '}
+                  <span className="font-mono font-bold text-purple-700">{vendaParaExcluir.codigoPedido}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Turma:</span>{' '}
+                  <span className="font-medium text-slate-800">{vendaParaExcluir.turmaNome}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Valor Total:</span>{' '}
+                  <span className="font-bold text-emerald-700">
+                    R$ {vendaParaExcluir.valorTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Pagamento:</span>{' '}
+                  <span className="font-bold text-slate-800">{vendaParaExcluir.formaPagamento}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Status atual:</span>{' '}
+                  <span className="font-bold text-slate-800">{vendaParaExcluir.statusProducao}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Seleção do Motivo */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Motivo da Exclusão <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={motivoExclusaoTipo}
+                  onChange={(e) => setMotivoExclusaoTipo(e.target.value)}
+                  className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+                >
+                  <option value="Desistência formal do formando">Desistência formal do formando</option>
+                  <option value="Cancelamento de contrato / rescisão">Cancelamento de contrato / rescisão</option>
+                  <option value="Duplicidade ou erro de digitação no cadastro">Duplicidade ou erro de digitação no cadastro</option>
+                  <option value="Inadimplência definitiva sem entrega">Inadimplência definitiva sem entrega</option>
+                  <option value="Substituição por outro pacote / upgrade">Substituição por outro pacote / upgrade</option>
+                  <option value="Outro motivo (especificar abaixo)">Outro motivo (especificar abaixo)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Observações / Detalhamento do Motivo
+                </label>
+                <textarea
+                  value={motivoExclusaoDetalhe}
+                  onChange={(e) => setMotivoExclusaoDetalhe(e.target.value)}
+                  placeholder="Ex: Formando solicitou cancelamento via protocolo WhatsApp #1042..."
+                  rows={2}
+                  className="w-full text-xs px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+                />
+              </div>
+
+              <div className="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                Registrado por: <strong>{usuarioLogado?.nome || 'Administrador'}</strong> ({usuarioLogado?.email || 'admin@sistema'})
+              </div>
+            </div>
+
+            {/* Botões de Ação */}
+            <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalExclusaoSeguraAberto(false);
+                  setVendaParaExcluir(null);
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarExclusaoSegura}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-md hover:shadow-lg transition inline-flex items-center space-x-2 cursor-pointer"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                <span>Confirmar Exclusão com Registro</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: HISTÓRICO DE AUDITORIA E RESTAURAÇÃO DE ÁLBUNS EXCLUÍDOS */}
+      {modalAuditoriaAberto && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 my-8 max-h-[90vh] flex flex-col">
+            {/* Cabeçalho */}
+            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 shadow-inner">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                      Histórico de Segurança & Auditoria de Exclusões
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200">
+                      {registrosExclusoes.length} registros
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Registro permanente e auditado de álbuns excluídos. Cada registro preserva a assinatura do gestor e pode ser restaurado.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalAuditoriaAberto(false)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Conteúdo da Tabela / Lista */}
+            <div className="flex-1 overflow-y-auto pr-1">
+              {registrosExclusoes.length === 0 ? (
+                <div className="py-14 text-center space-y-3">
+                  <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <ShieldCheck className="w-8 h-8" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700">Nenhum álbum foi excluído</p>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Todas as vendas e pedidos cadastrados estão íntegros e na listagem ativa do sistema.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {registrosExclusoes.map((log) => (
+                    <div
+                      key={log.id}
+                      className="bg-slate-50 hover:bg-slate-100/80 rounded-2xl p-4 border border-slate-200 transition space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                        <div className="flex items-center space-x-2">
+                          <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-mono font-bold text-xs">
+                            {log.codigoPedido}
+                          </span>
+                          <span className="font-bold text-slate-900 text-sm">{log.alunoNome}</span>
+                          <span className="text-xs text-slate-400">({log.turmaNome})</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[11px] text-slate-500 font-mono bg-white px-2 py-1 rounded-lg border border-slate-200">
+                            🕒 Excluído em: {log.dataHoraExclusao}
+                          </span>
+                          <button
+                            onClick={() => handleRestaurarVenda(log.id)}
+                            className="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs hover:shadow transition inline-flex items-center space-x-1 cursor-pointer"
+                            title="Restaurar este álbum de volta à lista ativa"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Restaurar Álbum</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <span className="text-slate-400">Valor / Pagamento:</span>{' '}
+                          <span className="font-bold text-slate-800">
+                            R$ {log.valorTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>{' '}
+                          <span className="text-[11px] text-slate-500">({log.formaPagamento})</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">Excluído por:</span>{' '}
+                          <span className="font-semibold text-slate-800">{log.excluidoPorNome}</span>
+                          {log.excluidoPorEmail && (
+                            <span className="text-[10px] text-slate-400 block truncate">{log.excluidoPorEmail}</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-slate-400">Motivo registrado:</span>{' '}
+                          <span className="font-semibold text-rose-700 block truncate" title={log.motivo}>
+                            {log.motivo}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé do Modal */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>Auditoria vinculada ao sistema ON Eventos</span>
+              <button
+                onClick={() => setModalAuditoriaAberto(false)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

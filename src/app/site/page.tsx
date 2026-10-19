@@ -229,24 +229,15 @@ export default function SiteInstitucionalPage() {
             </a>
           </nav>
 
-          {/* BOTÕES NO TOPO: DESKTOP COM BOTÕES COMPLETOS, MOBILE APENAS HAMBÚRGUER LIMPO */}
+          {/* BOTÕES NO TOPO: ÁREA FORMANDO E INSTAGRAM */}
           <div className="flex items-center space-x-3">
-            {/* BOTÃO DE ACESSO AO SISTEMA (DESKTOP) */}
-            <a
-              href="/login/index.html"
-              className="hidden sm:inline-flex items-center px-4 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-500 hover:to-fuchsia-500 text-white shadow-[0_3px_0_0_#3824B0,0_8px_16px_rgba(147,51,234,0.3)] hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition-all"
-            >
-              <Lock className="w-3.5 h-3.5 mr-1.5" />
-              <span>Acesso Sistema</span>
-            </a>
-
             {/* ÁREA FORMANDO (DESKTOP) */}
             <a
-              href="/app-aluno/index.html"
-              className="hidden sm:inline-flex items-center px-4 py-2.5 rounded-2xl text-xs font-bold uppercase tracking-wider bg-slate-900 border border-purple-500/50 hover:bg-purple-950/80 text-purple-200 hover:text-white shadow-[0_3px_0_0_rgba(147,51,234,0.3)] hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition-all"
+              href="/app-aluno"
+              className="hidden sm:inline-flex items-center px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:brightness-110 text-white shadow-[0_3px_0_0_#3824B0,0_8px_16px_rgba(147,51,234,0.35)] hover:translate-y-[-1px] active:translate-y-[1px] active:shadow-none transition-all"
             >
-              <GraduationCap className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
-              Área Formando
+              <GraduationCap className="w-4 h-4 mr-2 text-purple-200" />
+              <span>Área do Formando</span>
             </a>
 
             {/* INSTAGRAM OFICIAL DESKTOP */}
@@ -289,23 +280,15 @@ export default function SiteInstitucionalPage() {
             menuAberto ? 'opacity-100 block' : 'opacity-0 pointer-events-none hidden'
           }`}
         >
-          {/* BOTÕES DE ACESSO RÁPIDO AO SISTEMA E FORMANDO */}
-          <div className="grid grid-cols-1 gap-2.5 pb-4 border-b border-purple-900/40">
+          {/* BOTÃO DE ACESSO AO PORTAL DO FORMANDO */}
+          <div className="pb-4 border-b border-purple-900/40">
             <a
-              href="/login/index.html"
+              href="/app-aluno"
               onClick={() => setMenuAberto(false)}
               className="w-full text-center py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center shadow-xl shadow-purple-600/40"
             >
-              <Lock className="w-4 h-4 mr-2" />
-              ACESSAR SISTEMA INTERNO
-            </a>
-            <a
-              href="/app-aluno/index.html"
-              onClick={() => setMenuAberto(false)}
-              className="w-full text-center py-3 rounded-xl bg-slate-900 border border-purple-700/60 text-purple-200 text-xs font-bold uppercase tracking-wider hover:bg-purple-950 flex items-center justify-center"
-            >
-              <GraduationCap className="w-4 h-4 mr-2 text-purple-400" />
-              PORTAL DO FORMANDO (ALUNO)
+              <GraduationCap className="w-4 h-4 mr-2 text-purple-200" />
+              PORTAL DO FORMANDO (ÁREA DO ALUNO)
             </a>
           </div>
 
@@ -1426,10 +1409,10 @@ export default function SiteInstitucionalPage() {
               <Phone className="w-4 h-4 mr-1" /> (11) 95136-4159
             </a>
             <a
-              href="/login/index.html"
+              href="/admin"
               className="text-purple-300 hover:text-white flex items-center font-semibold transition"
             >
-              <Lock className="w-3.5 h-3.5 mr-1 text-purple-400" /> Login Colaborador
+              <Lock className="w-3.5 h-3.5 mr-1 text-purple-400" /> Acesso Colaborador (/admin)
             </a>
           </div>
         </div>

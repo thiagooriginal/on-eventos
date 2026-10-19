@@ -1,7 +1,7 @@
 'use client';
 
-import AppAlunoPage from './app-aluno/page';
+import SiteInstitucionalPage from './site/page';
 
 export default function RootHomePage() {
-  return <AppAlunoPage />;
+  return <SiteInstitucionalPage />;
 }

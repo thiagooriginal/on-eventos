@@ -137,6 +137,11 @@ function registrarParcelaSicrediApi($config, $accessToken, $vendaAlvo, $parcelaA
         }
     }
 
+    // Se o vencimento for no passado, o Sicredi rejeita. Ajusta para a data de hoje:
+    if ($vencimento < date('Y-m-d')) {
+        $vencimento = date('Y-m-d');
+    }
+
     $cpfNumeros = preg_replace('/\D/', '', $vendaAlvo['alunoCpf'] ?? '');
     $valorParcela = floatval($parcelaAlvo['valor'] ?? 0);
     $pNum = intval($parcelaAlvo['numero'] ?? 1);

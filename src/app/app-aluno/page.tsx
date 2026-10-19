@@ -24,7 +24,8 @@ import {
   Phone,
   QrCode,
   CreditCard,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 
 interface ParcelaBoleto {
@@ -275,18 +276,12 @@ export default function AppAlunoPage() {
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setMostrarSeletor(!mostrarSeletor)}
-                className="text-[11px] font-bold text-purple-200 hover:text-white flex items-center bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/15 shadow-2xs hover:bg-white/20 transition cursor-pointer"
+                className="text-[11px] font-bold text-purple-200 hover:text-white flex items-center bg-white/10 px-3 py-1.5 rounded-xl border border-white/15 shadow-2xs hover:bg-white/20 transition cursor-pointer"
                 title="Trocar aluno ou buscar por CPF"
               >
                 <Search className="w-3 h-3 mr-1" />
                 <span>Localizar CPF</span>
               </button>
-              <Link
-                href="/fotos"
-                className="text-[10px] font-bold text-purple-200 hover:text-white flex items-center bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/15 shadow-2xs hover:bg-white/20 transition"
-              >
-                <ArrowLeft className="w-3 h-3 mr-1" /> Painel
-              </Link>
             </div>
           </div>
 
@@ -678,6 +673,18 @@ export default function AppAlunoPage() {
                   <Phone className="w-3.5 h-3.5" />
                   <span>WhatsApp</span>
                 </a>
+              </div>
+
+              {/* Rodapé Seguro com Link Discreto para Admin */}
+              <div className="pt-3 pb-1 text-center border-t border-slate-100/80">
+                <Link
+                  href="/admin"
+                  className="text-[11px] text-slate-400 hover:text-purple-700 font-semibold inline-flex items-center space-x-1.5 transition py-1 px-3 rounded-xl hover:bg-purple-50"
+                  title="Área exclusiva para colaboradores e administradores"
+                >
+                  <Lock className="w-3 h-3 text-slate-400" />
+                  <span>Acesso Restrito da Equipe</span>
+                </Link>
               </div>
             </>
           )}

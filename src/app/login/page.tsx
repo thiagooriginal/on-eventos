@@ -112,8 +112,8 @@ export default function LoginPage() {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('on_usuario_logado', JSON.stringify(sessaoSegura));
-        // Redireciona com segurança para a central do sistema
-        window.location.href = '/sistema/index.html';
+        // Redireciona com segurança para o portal administrativo
+        window.location.href = '/admin';
       }
     } catch (err: any) {
       setErro(err.message || 'Erro ao realizar login.');

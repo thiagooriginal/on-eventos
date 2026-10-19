@@ -3339,15 +3339,22 @@ export default function VendasAlbunsPage() {
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => handleRegistrarBoletosApi(vendaSelecionadaBoletos.id)}
-                  disabled={registrandoApi}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:brightness-110 text-white font-extrabold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 transition"
-                  title="Registrar automaticamente todas as parcelas deste carnê na API do Sicredi gerando Pix e Linha Digitável registrados"
-                >
-                  <Zap className={`w-3.5 h-3.5 ${registrandoApi ? 'animate-spin' : ''}`} />
-                  <span>{registrandoApi ? 'Registrando no Sicredi...' : '⚡ Registrar na API Sicredi'}</span>
-                </button>
+                {vendaSelecionadaBoletos.parcelasBoletos?.some((p) => !p.registradoSicredi) ? (
+                  <button
+                    onClick={() => handleRegistrarBoletosApi(vendaSelecionadaBoletos.id)}
+                    disabled={registrandoApi}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:brightness-110 text-white font-extrabold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 transition"
+                    title="Registrar parcelas pendentes deste carnê na API do Sicredi"
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${registrandoApi ? 'animate-spin' : ''}`} />
+                    <span>{registrandoApi ? 'Registrando no Sicredi...' : '⚡ Registrar Pendentes na API'}</span>
+                  </button>
+                ) : (
+                  <div className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs shadow-2xs flex items-center space-x-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>✓ Boletos 100% Registrados no Sicredi</span>
+                  </div>
+                )}
                 <button
                   onClick={sincronizarBaixasSicredi}
                   className="px-3.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition"

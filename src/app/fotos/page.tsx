@@ -628,6 +628,30 @@ export default function VendasAlbunsPage() {
           }
         })
         .catch(() => {});
+
+      // 5. Sincroniza baixas automáticas em tempo real com a API Sicredi
+      const syncBaixasSicredi = () => {
+        fetch('/sicredi_api.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'sincronizar_baixas' }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.sucesso && Array.isArray(d.vendas)) {
+              const limpas = d.vendas.filter((v: any) => !isClienteFicticio(v));
+              setVendas(limpas);
+              try {
+                localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
+              } catch (e) {}
+            }
+          })
+          .catch(() => {});
+      };
+
+      syncBaixasSicredi();
+      const intervalId = setInterval(syncBaixasSicredi, 40000);
+      return () => clearInterval(intervalId);
     }
   }, []);
 
@@ -1072,22 +1096,33 @@ export default function VendasAlbunsPage() {
   };
 
   // Registrar Todas as Parcelas da Venda via API Sicredi Cobrança Online
-  const handleRegistrarBoletosApi = async (vendaId: string) => {
+  const handleRegistrarBoletosApi = async (vendaId: string, vendaObj?: VendaAlbum) => {
     setRegistrandoApi(true);
     try {
       const res = await fetch('/sicredi_api.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'emitir_todas_parcelas_venda', vendaId }),
+        body: JSON.stringify({
+          action: 'emitir_todas_parcelas_venda',
+          vendaId,
+          venda: vendaObj || vendas.find((v) => v.id === vendaId),
+        }),
       });
       const data = await res.json();
       if (data.sucesso && data.venda) {
-        const atualizadas = vendas.map((v) => (v.id === vendaId ? data.venda : v));
-        setVendas(atualizadas);
+        setVendas((prev) => {
+          const existe = prev.some((v) => v.id === vendaId);
+          const atualizadas = existe
+            ? prev.map((v) => (v.id === vendaId ? data.venda : v))
+            : [data.venda, ...prev];
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(atualizadas));
+            } catch (e) {}
+          }
+          return atualizadas;
+        });
         setVendaSelecionadaBoletos(data.venda);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(atualizadas));
-        }
         showToast(`🎉 ${data.mensagem}`);
       } else {
         showToast(`⚠️ ${data.erro || 'Falha ao registrar parcelas na API do Sicredi.'}`);
@@ -1149,6 +1184,38 @@ export default function VendasAlbunsPage() {
       showToast(`⚠️ Erro de rede: ${e.message}`);
     } finally {
       setTestandoConexaoApi(false);
+    }
+  };
+
+  // Sincronizar Baixas e Liquidações Automáticas no Sicredi
+  const sincronizarBaixasSicredi = async () => {
+    try {
+      const res = await fetch('/sicredi_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sincronizar_baixas' }),
+      });
+      const data = await res.json();
+      if (data.sucesso && Array.isArray(data.vendas)) {
+        const limpas = data.vendas.filter((v: any) => !isClienteFicticio(v));
+        setVendas(limpas);
+        if (vendaSelecionadaBoletos) {
+          const atual = limpas.find((v: any) => v.id === vendaSelecionadaBoletos.id);
+          if (atual) setVendaSelecionadaBoletos(atual);
+        }
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
+          } catch (e) {}
+        }
+        if (data.baixasEfetuadas > 0) {
+          showToast(`🎉 ${data.baixasEfetuadas} parcela(s) baixada(s) automaticamente pelo Sicredi!`);
+        } else {
+          showToast('Status sincronizado com o Sicredi!');
+        }
+      }
+    } catch (e) {
+      showToast('Status verificado no Sicredi.');
     }
   };
 
@@ -1279,6 +1346,12 @@ export default function VendasAlbunsPage() {
     salvarVendasLocal(atualizadas);
     setModalNovaVendaAberto(false);
     showToast(`Venda ${novoCodigo} (${instFinal}) cadastrada com sucesso!`);
+
+    // Se for boleto, registra imediatamente na API do Sicredi na mesma hora
+    if (formFormaPagamento === 'BOLETO' && nova.parcelasBoletos && nova.parcelasBoletos.length > 0) {
+      showToast(`⚡ Venda ${novoCodigo} criada! Registrando parcelas na API Sicredi automaticamente...`);
+      handleRegistrarBoletosApi(nova.id, nova);
+    }
 
     // Reset
     setFormNome('');
@@ -2112,13 +2185,25 @@ export default function VendasAlbunsPage() {
                             <div>
                               <button
                                 onClick={() => setVendaSelecionadaBoletos(venda)}
-                                className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition shadow-2xs cursor-pointer"
+                                className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer ${
+                                  parcelasPagas === totalParcelasBoleto && totalParcelasBoleto > 0
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
+                                    : parcelasPagas > 0
+                                    ? 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                                }`}
                               >
-                                <Barcode className="w-3.5 h-3.5 mr-1 text-amber-600" />
-                                Carnê {venda.boletoQtdParcelas}x ({parcelasPagas}/{totalParcelasBoleto} pagas)
+                                {parcelasPagas === totalParcelasBoleto && totalParcelasBoleto > 0 ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                                ) : (
+                                  <Barcode className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                                )}
+                                {parcelasPagas === totalParcelasBoleto && totalParcelasBoleto > 0
+                                  ? `✓ Quitado (${parcelasPagas}/${totalParcelasBoleto})`
+                                  : `Carnê ${venda.boletoQtdParcelas}x (${parcelasPagas}/${totalParcelasBoleto} pagas)`}
                               </button>
                               <span className="text-[10px] text-slate-500 block mt-1">
-                                Banco Sicredi &bull; Clique para ver boletos
+                                Banco Sicredi &bull; {parcelasPagas === totalParcelasBoleto && totalParcelasBoleto > 0 ? 'Liquidado integralmente' : 'Clique para ver boletos'}
                               </span>
                             </div>
                           )}
@@ -3264,6 +3349,14 @@ export default function VendasAlbunsPage() {
                   <span>{registrandoApi ? 'Registrando no Sicredi...' : '⚡ Registrar na API Sicredi'}</span>
                 </button>
                 <button
+                  onClick={sincronizarBaixasSicredi}
+                  className="px-3.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition"
+                  title="Consultar na API do Sicredi se algum boleto ou Pix já foi pago e atualizar a baixa automaticamente"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
+                  <span>🔄 Atualizar Status Sicredi</span>
+                </button>
+                <button
                   onClick={() => {
                     window.print();
                   }}
@@ -3350,12 +3443,17 @@ export default function VendasAlbunsPage() {
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
                               isPaga
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
                             }`}
                           >
-                            {isPaga ? 'Liquidado' : 'Aguardando Pagamento'}
+                            {isPaga ? '✓ Liquidado / Pago' : 'Aguardando Pagamento'}
                           </span>
+                          {isPaga && parcela.dataPagamento && (
+                            <span className="text-[10px] text-emerald-700 font-medium block mt-0.5">
+                              Pago em {parcela.dataPagamento}
+                            </span>
+                          )}
                         </div>
 
                         {/* Botão de Dar Baixa / Alternar */}
@@ -3372,50 +3470,65 @@ export default function VendasAlbunsPage() {
                       </div>
                     </div>
 
-                    {/* Linha Digitável e PIX */}
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                      {/* Linha Digitável */}
-                      <div className="bg-[#F8FAFC] p-2.5 rounded-xl border border-slate-200/70 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-slate-500 block uppercase">Linha Digitável:</span>
-                          <code className="text-[11px] font-mono text-slate-800 truncate block select-all">
-                            {parcela.linhaDigitavel}
-                          </code>
+                    {/* Quando Liquidado: Banner de Confirmação */}
+                    {isPaga ? (
+                      <div className="mt-3 p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5">
+                        <div className="flex items-center space-x-2 text-emerald-900 font-bold">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Pagamento liquidado com sucesso no Banco Sicredi!</span>
                         </div>
-                        <button
-                          onClick={() => copiarTexto(parcela.linhaDigitavel, `linha-${parcela.numero}`)}
-                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 shrink-0"
-                          title="Copiar Linha Digitável"
-                        >
-                          {copiadoIdx === `linha-${parcela.numero}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                        {parcela.dataPagamento && (
+                          <span className="text-[11px] font-semibold text-emerald-700">
+                            Data de quitação: {parcela.dataPagamento}
+                          </span>
+                        )}
                       </div>
+                    ) : (
+                      /* Linha Digitável e PIX quando PENDENTE */
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                        {/* Linha Digitável */}
+                        <div className="bg-[#F8FAFC] p-2.5 rounded-xl border border-slate-200/70 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-bold text-slate-500 block uppercase">Linha Digitável:</span>
+                            <code className="text-[11px] font-mono text-slate-800 truncate block select-all">
+                              {parcela.linhaDigitavel}
+                            </code>
+                          </div>
+                          <button
+                            onClick={() => copiarTexto(parcela.linhaDigitavel, `linha-${parcela.numero}`)}
+                            className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 shrink-0"
+                            title="Copiar Linha Digitável"
+                          >
+                            {copiadoIdx === `linha-${parcela.numero}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
 
-                      {/* PIX Copia e Cola */}
-                      <div className="bg-[#FAF5FF] p-2.5 rounded-xl border border-purple-200/70 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-purple-700 block uppercase">PIX Copia e Cola:</span>
-                          <code className="text-[11px] font-mono text-purple-900 truncate block select-all">
-                            {parcela.codigoPix}
-                          </code>
+                        {/* PIX Copia e Cola */}
+                        <div className="bg-[#FAF5FF] p-2.5 rounded-xl border border-purple-200/70 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-bold text-purple-700 block uppercase">PIX Copia e Cola:</span>
+                            <code className="text-[11px] font-mono text-purple-900 truncate block select-all">
+                              {parcela.codigoPix}
+                            </code>
+                          </div>
+                          <button
+                            onClick={() => copiarTexto(parcela.codigoPix, `pix-${parcela.numero}`)}
+                            className="p-1.5 rounded-lg bg-white border border-purple-200 text-purple-700 hover:text-purple-900 shrink-0"
+                            title="Copiar Código PIX"
+                          >
+                            {copiadoIdx === `pix-${parcela.numero}` ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
                         </div>
-                        <button
-                          onClick={() => copiarTexto(parcela.codigoPix, `pix-${parcela.numero}`)}
-                          className="p-1.5 rounded-lg bg-white border border-purple-200 text-purple-700 hover:text-purple-900 shrink-0"
-                          title="Copiar Código PIX"
-                        >
-                          {copiadoIdx === `pix-${parcela.numero}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}

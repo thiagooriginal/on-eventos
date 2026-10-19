@@ -355,6 +355,7 @@ if ($action === 'emitir_parcela_api') {
 // 5. Emitir e Registrar TODAS as parcelas pendentes da venda de uma só vez!
 if ($action === 'emitir_todas_parcelas_venda') {
     $vendaId = $payload['vendaId'] ?? '';
+    $vendaPayload = $payload['venda'] ?? null;
 
     $vendas = file_exists($vendasFile) ? json_decode(file_get_contents($vendasFile), true) : [];
     if (!is_array($vendas)) $vendas = [];
@@ -367,6 +368,13 @@ if ($action === 'emitir_todas_parcelas_venda') {
             $vendaAlvo = $v;
             break;
         }
+    }
+
+    // Se ainda não estava gravado em disco mas foi enviado na requisição, insere imediatamente
+    if (!$vendaAlvo && $vendaPayload && is_array($vendaPayload)) {
+        $vendaAlvo = $vendaPayload;
+        array_unshift($vendas, $vendaAlvo);
+        $vendaIndex = 0;
     }
 
     if (!$vendaAlvo) {
@@ -410,6 +418,87 @@ if ($action === 'emitir_todas_parcelas_venda') {
         'erros' => $erros,
         'mensagem' => "{$sucessos} parcela(s) registrada(s) com sucesso na API do Sicredi!",
         'venda' => $vendas[$vendaIndex]
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 6. Consultar e Sincronizar Baixas Automáticas no Sicredi
+if ($action === 'sincronizar_baixas') {
+    $vendas = file_exists($vendasFile) ? json_decode(file_get_contents($vendasFile), true) : [];
+    if (!is_array($vendas)) $vendas = [];
+
+    $tokenRes = obterAccessTokenSicredi($config, $tokenCacheFile);
+    if (!$tokenRes['sucesso']) {
+        echo json_encode(['sucesso' => false, 'erro' => $tokenRes['erro']], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $accessToken = $tokenRes['access_token'];
+    $urls = getSicrediBaseUrl($config['ambiente'] ?? 'producao');
+    $cobrancaUrl = $urls['cobranca'];
+    $beneficiario = $config['beneficiario'] ?? '04220';
+
+    $baixasEfetuadas = 0;
+    $modificado = false;
+
+    foreach ($vendas as $vi => $venda) {
+        if (!empty($venda['parcelasBoletos']) && is_array($venda['parcelasBoletos'])) {
+            foreach ($venda['parcelasBoletos'] as $pi => $parcela) {
+                // Checar apenas parcelas que têm nossoNumero e ainda estão PENDENTE
+                if (($parcela['status'] ?? 'PENDENTE') === 'PENDENTE' && !empty($parcela['nossoNumero'])) {
+                    $nossoNumero = $parcela['nossoNumero'];
+                    $consultaUrl = "{$cobrancaUrl}?codigoBeneficiario={$beneficiario}&nossoNumero={$nossoNumero}";
+
+                    $ch = curl_init();
+                    curl_setopt_array($ch, [
+                        CURLOPT_URL => $consultaUrl,
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_HTTPHEADER => [
+                            'Content-Type: application/json',
+                            'Authorization: Bearer ' . $accessToken,
+                            'x-api-key: ' . $config['x_api_key'],
+                            'cooperativa: ' . ($config['cooperativa'] ?? '0726'),
+                            'posto: ' . ($config['posto'] ?? '86')
+                        ],
+                        CURLOPT_TIMEOUT => 15,
+                        CURLOPT_SSL_VERIFYPEER => true
+                    ]);
+
+                    $resp = curl_exec($ch);
+                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+
+                    if ($httpCode >= 200 && $httpCode < 300) {
+                        $dadosBoleto = json_decode($resp, true);
+                        $item = (is_array($dadosBoleto) && isset($dadosBoleto[0])) ? $dadosBoleto[0] : $dadosBoleto;
+                        $situacao = strtoupper(trim($item['situacao'] ?? ''));
+                        // Situações que indicam pagamento/liquidação:
+                        if (
+                            strpos($situacao, 'LIQUIDADO') !== false ||
+                            strpos($situacao, 'PAGO') !== false ||
+                            strpos($situacao, 'BAIXADO') !== false
+                        ) {
+                            $vendas[$vi]['parcelasBoletos'][$pi]['status'] = 'PAGO';
+                            $vendas[$vi]['parcelasBoletos'][$pi]['dataPagamento'] = $item['dataLiquidacao'] ?? $item['dataPagamento'] ?? date('d/m/Y H:i');
+                            $vendas[$vi]['parcelasBoletos'][$pi]['situacaoSicredi'] = $situacao;
+                            $baixasEfetuadas++;
+                            $modificado = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if ($modificado) {
+        file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    }
+
+    echo json_encode([
+        'sucesso' => true,
+        'baixasEfetuadas' => $baixasEfetuadas,
+        'mensagem' => $baixasEfetuadas > 0 ? "{$baixasEfetuadas} parcela(s) baixada(s) automaticamente pelo Sicredi!" : 'Todas as parcelas estão atualizadas.',
+        'vendas' => $vendas
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }

@@ -2190,21 +2190,20 @@ export default function VendasAlbunsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                  <th className="py-4 px-5">Pedido</th>
-                  <th className="py-4 px-5">Formando / Turma</th>
-                  <th className="py-4 px-5">Modelo do Álbum</th>
-                  <th className="py-4 px-5">Brindes do Kit</th>
-                  <th className="py-4 px-5">Soma Total do Kit</th>
-                  <th className="py-4 px-5">Forma de Pagamento</th>
-                  <th className="py-4 px-5">Produção</th>
-                  <th className="py-4 px-5 text-right">Ações</th>
+                <tr className="bg-slate-50/90 border-b border-slate-200 text-slate-700 font-extrabold uppercase tracking-wider text-[11px]">
+                  <th className="py-3 px-4 w-28">Pedido</th>
+                  <th className="py-3 px-4 min-w-[220px]">Formando / Turma</th>
+                  <th className="py-3 px-4 min-w-[180px]">Kit & Brindes</th>
+                  <th className="py-3 px-4 w-32">Total do Kit</th>
+                  <th className="py-3 px-4 min-w-[170px]">Pagamento</th>
+                  <th className="py-3 px-4 min-w-[170px]">Produção</th>
+                  <th className="py-3 px-4 text-right min-w-[180px]">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {vendasFiltradas.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-16 text-center">
+                    <td colSpan={7} className="py-16 text-center">
                       <div className="max-w-md mx-auto space-y-3">
                         <div className="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto shadow-sm">
                           <Camera className="w-7 h-7" />
@@ -2230,34 +2229,34 @@ export default function VendasAlbunsPage() {
                     const brindesAtivos = venda.brindes?.filter((b) => b.selecionado) || [];
 
                     return (
-                      <tr key={venda.id} className="hover:bg-slate-50/60 transition">
-                        {/* Pedido */}
-                        <td className="py-4 px-5">
-                          <span className="font-mono font-bold text-slate-900 block">
+                      <tr key={venda.id} className="hover:bg-slate-50/70 transition border-b border-slate-100 align-top">
+                        {/* 1. Pedido */}
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <span className="font-mono font-black text-slate-900 block text-xs tracking-tight">
                             {venda.codigoPedido}
                           </span>
-                          <span className="text-[10px] text-slate-400">{venda.dataVenda}</span>
+                          <span className="text-[10px] text-slate-400 font-medium block mt-0.5">{venda.dataVenda}</span>
                         </td>
 
-                        {/* Formando / Turma */}
-                        <td className="py-4 px-5">
-                          <strong className="text-slate-900 block text-xs">{venda.alunoNome}</strong>
-                          <div className="flex flex-wrap items-center gap-1.5 my-1">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                              🏛️ {extrairInfoTurma(venda).instituicao}
-                            </span>
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                              📅 {extrairInfoTurma(venda).periodo}
-                            </span>
+                        {/* 2. Formando & Turma (Organizado sem repetição e sem quebra de CPF) */}
+                        <td className="py-3.5 px-4 min-w-[220px]">
+                          <strong className="text-slate-900 block text-xs font-bold leading-tight truncate max-w-[220px]" title={venda.alunoNome}>
+                            {venda.alunoNome}
+                          </strong>
+                          <div className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 mt-1 max-w-full truncate">
+                            <span>🏛️ {extrairInfoTurma(venda).instituicao}</span>
+                            <span>&bull;</span>
+                            <span>{extrairInfoTurma(venda).periodo}</span>
                           </div>
-                          <span className="text-[11px] text-slate-500 block">{venda.turmaNome}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">CPF: {venda.alunoCpf}</span>
+                          <div className="text-[10px] text-slate-400 font-mono whitespace-nowrap mt-1">
+                            CPF: {venda.alunoCpf}
+                          </div>
                         </td>
 
-                        {/* Modelo de Álbum */}
-                        <td className="py-4 px-5">
+                        {/* 3. Kit & Brindes */}
+                        <td className="py-3.5 px-4 min-w-[180px]">
                           <span
-                            className={`inline-block px-3 py-1 rounded-xl text-xs font-bold border ${
+                            className={`inline-block px-2.5 py-1 rounded-xl text-xs font-bold border ${
                               venda.modeloAlbum === 'Album premium'
                                 ? 'bg-purple-50 text-purple-800 border-purple-200'
                                 : venda.modeloAlbum === 'Album Preto'
@@ -2269,60 +2268,55 @@ export default function VendasAlbunsPage() {
                           >
                             {venda.modeloAlbum}
                           </span>
-                          <span className="text-[11px] font-mono text-slate-600 block mt-1">
-                            R$ {venda.valorAlbum.toFixed(2)}
-                          </span>
-                        </td>
-
-                        {/* Brindes do Kit */}
-                        <td className="py-4 px-5 max-w-[220px]">
-                          {brindesAtivos.length === 0 ? (
-                            <span className="text-slate-400 italic text-[11px]">Nenhum brinde incluso</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
+                          {brindesAtivos.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 mt-1.5 max-w-[200px]">
                               {brindesAtivos.map((b) => (
                                 <span
                                   key={b.id || b.nome}
-                                  className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200"
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
                                 >
-                                  <Gift className="w-2.5 h-2.5 mr-1 text-purple-500" />
-                                  {b.nome}
-                                  {b.valorAdicional > 0 && ` (+R$ ${b.valorAdicional})`}
+                                  +{b.nome}
                                 </span>
                               ))}
                             </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 block mt-1 italic">Sem brindes</span>
                           )}
                         </td>
 
-                        {/* Soma Total do Kit */}
-                        <td className="py-4 px-5">
+                        {/* 4. Total do Kit */}
+                        <td className="py-3.5 px-4 whitespace-nowrap w-32">
                           <span className="font-mono font-black text-slate-950 text-sm block">
                             R$ {venda.valorTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
-                          <span className="text-[10px] text-emerald-700 font-semibold block">
-                            Total do Kit
+                          <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
+                            Kit Completo
                           </span>
                         </td>
 
-                        {/* Forma de Pagamento */}
-                        <td className="py-4 px-5">
+                        {/* 5. Forma de Pagamento com Botão de Correção Imediata */}
+                        <td className="py-3.5 px-4 whitespace-nowrap min-w-[170px]">
                           {venda.formaPagamento === 'CARTAO' && (
-                            <div>
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CreditCard className="w-3.5 h-3.5 mr-1" />
-                                Cartão {venda.cartaoQtdParcelas}x de R${' '}
-                                {(venda.valorTotalKit / (venda.cartaoQtdParcelas || 1)).toFixed(2)}
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                <CreditCard className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                                Cartão {venda.cartaoQtdParcelas}x
                               </span>
-                              <div className="text-[10px] text-slate-500 mt-1 flex items-center space-x-1">
-                                <span>{venda.cartaoBandeira}</span>
-                                <span>&bull;</span>
-                                <span className="font-mono">{venda.cartaoNsu}</span>
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                {venda.cartaoBandeira} &bull; {venda.cartaoNsu}
                               </div>
+                              <button
+                                onClick={() => abrirModalEditarPagamento(venda)}
+                                className="text-[10px] font-bold text-amber-700 hover:text-amber-900 flex items-center space-x-1 hover:underline cursor-pointer"
+                              >
+                                <Edit3 className="w-2.5 h-2.5 text-amber-600" />
+                                <span>Corrigir pagamento</span>
+                              </button>
                             </div>
                           )}
 
                           {venda.formaPagamento === 'BOLETO' && (
-                            <div>
+                            <div className="space-y-1">
                               <button
                                 onClick={() => abrirCarneBoletos(venda)}
                                 className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer ${
@@ -2338,161 +2332,154 @@ export default function VendasAlbunsPage() {
                                 ) : (
                                   <Barcode className="w-3.5 h-3.5 mr-1 text-amber-600" />
                                 )}
-                                {parcelasPagas === totalParcelasBoleto && totalParcelasBoleto > 0
-                                  ? `✓ Quitado (${parcelasPagas}/${totalParcelasBoleto})`
-                                  : `Carnê ${venda.boletoQtdParcelas}x (${parcelasPagas}/${totalParcelasBoleto} pagas)`}
+                                <span>
+                                  {parcelasPagas === totalParcelasBoleto && totalParcelasBoleto > 0
+                                    ? `Quitado (${parcelasPagas}/${totalParcelasBoleto})`
+                                    : `Carnê ${venda.boletoQtdParcelas || totalParcelasBoleto}x (${parcelasPagas}/${totalParcelasBoleto})`}
+                                </span>
                               </button>
-                              <span className="text-[10px] text-slate-500 block mt-1">
-                                Banco Sicredi &bull; {parcelasPagas === totalParcelasBoleto && totalParcelasBoleto > 0 ? 'Liquidado integralmente' : 'Clique para ver boletos'}
-                              </span>
+                              <div className="text-[10px] text-slate-500">Banco Sicredi</div>
+                              <button
+                                onClick={() => abrirModalEditarPagamento(venda)}
+                                className="text-[10px] font-bold text-amber-700 hover:text-amber-900 flex items-center space-x-1 hover:underline cursor-pointer"
+                              >
+                                <Edit3 className="w-2.5 h-2.5 text-amber-600" />
+                                <span>Corrigir pagamento</span>
+                              </button>
                             </div>
                           )}
 
                           {venda.formaPagamento === 'PIX' && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                              <Sparkles className="w-3.5 h-3.5 mr-1" />
-                              PIX À Vista
-                            </span>
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                <Sparkles className="w-3.5 h-3.5 mr-1 text-purple-600" />
+                                PIX À Vista
+                              </span>
+                              <div>
+                                <button
+                                  onClick={() => abrirModalEditarPagamento(venda)}
+                                  className="text-[10px] font-bold text-amber-700 hover:text-amber-900 flex items-center space-x-1 hover:underline cursor-pointer"
+                                >
+                                  <Edit3 className="w-2.5 h-2.5 text-amber-600" />
+                                  <span>Corrigir pagamento</span>
+                                </button>
+                              </div>
+                            </div>
                           )}
 
                           {venda.formaPagamento === 'DINHEIRO' && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200">
-                              <Wallet className="w-3.5 h-3.5 mr-1 text-teal-600" />
-                              Dinheiro À Vista
-                            </span>
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                                <Wallet className="w-3.5 h-3.5 mr-1 text-teal-600" />
+                                Dinheiro À Vista
+                              </span>
+                              <div>
+                                <button
+                                  onClick={() => abrirModalEditarPagamento(venda)}
+                                  className="text-[10px] font-bold text-amber-700 hover:text-amber-900 flex items-center space-x-1 hover:underline cursor-pointer"
+                                >
+                                  <Edit3 className="w-2.5 h-2.5 text-amber-600" />
+                                  <span>Corrigir pagamento</span>
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </td>
 
-                        {/* Status de Produção & Prazos por Etapa (Visual Limpo e Despoluído) */}
-                        <td className="py-3 px-5">
+                        {/* 6. Produção & Prazos */}
+                        <td className="py-3.5 px-4 min-w-[170px]">
                           {(() => {
                             const infoEtapa = obterPrazoEtapaAtual(venda);
                             const st = calcularStatusPrazo(infoEtapa.prazo, venda.statusProducao, infoEtapa.etapaCurto);
                             const etapa = obterEtapaInfo(venda.statusProducao);
 
                             return (
-                              <div className="space-y-1.5 min-w-[155px]">
-                                {/* Linha 1: Etapa de Produção Atual com ação rápida de avançar */}
-                                <div className="flex items-center space-x-1.5">
-                                  <button
-                                    onClick={() => avancarStatusProducao(venda.id)}
-                                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-black border ${etapa.corBadge} hover:brightness-95 transition shadow-2xs group cursor-pointer`}
-                                    title={`Etapa atual: ${etapa.nome}. Clique para avançar!`}
-                                  >
-                                    <span>{etapa.icone}</span>
-                                    <span>{etapa.nomeCurto}</span>
-                                    <ChevronRight className="w-3 h-3 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-                                  </button>
+                              <div className="space-y-1">
+                                <button
+                                  onClick={() => avancarStatusProducao(venda.id)}
+                                  className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-black border ${etapa.corBadge} hover:brightness-95 transition shadow-2xs group cursor-pointer`}
+                                  title={`Etapa atual: ${etapa.nome}. Clique para avançar!`}
+                                >
+                                  <span>{etapa.icone}</span>
+                                  <span>{etapa.nomeCurto}</span>
+                                  <ChevronRight className="w-3 h-3 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                                </button>
+                                <div className="text-[10px] font-mono text-slate-600 flex items-center space-x-1">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  <span>{infoEtapa.prazo ? formatarDataBR(infoEtapa.prazo) : 'Sem prazo'}</span>
                                 </div>
-
-                                {/* Linha 2: Prazo da Etapa Atual com botão de ajuste */}
-                                <div className="flex items-center space-x-1.5">
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold border font-mono ${st.badgeClasse}`}
-                                    title={infoEtapa.prazo ? `Prazo da etapa ${infoEtapa.etapaNome}: ${formatarDataBR(infoEtapa.prazo)}` : 'Prazo desta etapa ainda não definido'}
-                                  >
-                                    <Clock className="w-3 h-3 mr-1 shrink-0" />
-                                    {infoEtapa.prazo ? `${formatarDataBR(infoEtapa.prazo)} • ${st.texto.replace(/^.*?: /, '')}` : 'Sem prazo'}
-                                  </span>
-                                  <button
-                                    onClick={() => abrirModalEditarPrazo(venda)}
-                                    className="p-1 rounded-lg hover:bg-purple-100 text-slate-400 hover:text-purple-700 transition cursor-pointer"
-                                    title="Editar prazos das 3 etapas ou responsável"
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                  </button>
-                                </div>
-
-                                {/* Linha 3: Usuário Responsável */}
-                                <div className="flex items-center space-x-1 text-[11px] text-slate-600">
-                                  <UserCheck className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span className="truncate max-w-[140px] font-medium text-slate-700">
-                                    {venda.responsavelNome || 'Não atribuído'}
-                                  </span>
+                                <div className="text-[10px] text-slate-500 truncate max-w-[130px]">
+                                  👤 {venda.responsavelNome || 'Equipe'}
                                 </div>
                               </div>
                             );
                           })()}
                         </td>
 
-                        {/* Ações */}
-                        <td className="py-4 px-5 text-right space-x-1.5 whitespace-nowrap">
-                          {venda.formaPagamento === 'BOLETO' && (
+                        {/* 7. Ações Organizadas e Alinhadas */}
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap min-w-[180px]">
+                          <div className="inline-flex items-center space-x-1.5">
+                            {venda.formaPagamento === 'BOLETO' && (
+                              <button
+                                onClick={() => abrirCarneBoletos(venda)}
+                                className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
+                                title="Visualizar Carnê de Boletos Sicredi"
+                              >
+                                <Barcode className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Boletos</span>
+                              </button>
+                            )}
+
+                            {venda.formaPagamento === 'CARTAO' && (
+                              <button
+                                onClick={() => setVendaSelecionadaCartao(venda)}
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs border border-emerald-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
+                                title="Ver Comprovante do Cartão"
+                              >
+                                <CreditCard className="w-3.5 h-3.5 text-emerald-700" />
+                                <span>Recibo</span>
+                              </button>
+                            )}
+
                             <button
-                              onClick={() => abrirCarneBoletos(venda)}
-                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
-                              title="Visualizar Carnê de Boletos Sicredi"
+                              onClick={() => abrirModalEditarPagamento(venda)}
+                              className="p-2 rounded-xl bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 border border-slate-200 hover:border-amber-300 transition shadow-2xs inline-flex items-center justify-center cursor-pointer"
+                              title="Corrigir forma de pagamento ou parcelas"
                             >
-                              <Barcode className="w-3.5 h-3.5 inline mr-1 text-amber-700" />
-                              <span>Boletos</span>
+                              <Edit3 className="w-3.5 h-3.5 text-amber-700" />
                             </button>
-                          )}
 
-                          {venda.formaPagamento === 'CARTAO' && (
-                            <button
-                              onClick={() => setVendaSelecionadaCartao(venda)}
-                              className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
-                              title="Ver Comprovante da Transação no Cartão"
-                            >
-                              <CreditCard className="w-3.5 h-3.5 inline mr-1 text-emerald-700" />
-                              <span>Comprovante</span>
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => abrirModalEditarPagamento(venda)}
-                            className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 font-bold text-[11px] border border-slate-200 hover:border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
-                            title="Corrigir forma de pagamento ou quantidade de parcelas"
-                          >
-                            <Edit3 className="w-3.5 h-3.5 inline mr-1 text-amber-700" />
-                            <span>Pagamento</span>
-                          </button>
-
-                          {venda.statusProducao !== 'ENTREGUE' ? (
-                            <>
+                            {venda.statusProducao !== 'ENTREGUE' && (
                               <button
                                 onClick={() => handleConcluirProducao(venda.id)}
-                                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition shadow-2xs hover:translate-y-[-1px] inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs inline-flex items-center space-x-1 transition cursor-pointer"
                                 title="Concluir processo de produção e entregar álbum"
                               >
-                                <CheckSquare className="w-3.5 h-3.5 inline mr-1" />
+                                <CheckSquare className="w-3.5 h-3.5" />
                                 <span>Concluir</span>
                               </button>
-                              <button
-                                onClick={() => avancarStatusProducao(venda.id)}
-                                className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-900 font-bold text-[11px] border border-purple-200 transition shadow-2xs hover:translate-y-[-1px] inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
-                                title="Avançar etapa de produção do álbum"
-                              >
-                                <span>Avançar</span>
-                                <ChevronRight className="w-3.5 h-3.5 inline ml-0.5" />
-                              </button>
-                            </>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-500 font-bold text-[11px] border border-slate-200">
-                              ✓ Concluído
-                            </span>
-                          )}
+                            )}
 
-                          <a
-                            href={`https://wa.me/55${venda.alunoTelefone.replace(/\D/g, '')}?text=Olá%20${encodeURIComponent(
-                              venda.alunoNome
-                            )},%20seu%20Kit%20com%20${encodeURIComponent(venda.modeloAlbum)}%20está%20com%20status:%20${venda.statusProducao}.`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white inline-flex items-center justify-center transition shadow-2xs cursor-pointer hover:scale-105"
-                            title="Enviar status no WhatsApp"
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                          </a>
+                            <a
+                              href={`https://wa.me/55${venda.alunoTelefone.replace(/\D/g, '')}?text=Olá%20${encodeURIComponent(
+                                venda.alunoNome
+                              )},%20seu%20Kit%20com%20${encodeURIComponent(venda.modeloAlbum)}%20está%20com%20status:%20${venda.statusProducao}.`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition shadow-2xs inline-flex items-center justify-center cursor-pointer"
+                              title="Enviar no WhatsApp"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                            </a>
 
-                          <button
-                            onClick={() => abrirModalExclusaoSegura(venda)}
-                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-900 border border-rose-300 font-bold text-[11px] transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
-                            title="Excluir Álbum com Registro de Segurança e Auditoria"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Excluir</span>
-                          </button>
+                            <button
+                              onClick={() => abrirModalExclusaoSegura(venda)}
+                              className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition shadow-2xs inline-flex items-center justify-center cursor-pointer"
+                              title="Excluir Álbum com Segurança"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -3464,12 +3451,22 @@ export default function VendasAlbunsPage() {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setVendaSelecionadaBoletos(null)}
-                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => abrirModalEditarPagamento(vendaSelecionadaBoletos)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-sm flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
+                  title="Corrigir a forma de pagamento (Boleto, Cartão, Pix, Dinheiro) ou a quantidade de parcelas"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Corrigir Pagamento</span>
+                </button>
+                <button
+                  onClick={() => setVendaSelecionadaBoletos(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Informações Resumidas do Kit no Carnê */}

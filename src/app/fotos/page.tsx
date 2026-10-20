@@ -60,6 +60,7 @@ import {
   Zap,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import ReconhecimentoFacialModal from '@/components/ReconhecimentoFacialModal';
 import {
   getInstituicoes,
   getCursos,
@@ -507,6 +508,7 @@ export default function VendasAlbunsPage() {
   const [registrosExclusoes, setRegistrosExclusoes] = useState<RegistroExclusaoAlbum[]>([]);
   const [modalExclusaoSeguraAberto, setModalExclusaoSeguraAberto] = useState(false);
   const [modalAuditoriaAberto, setModalAuditoriaAberto] = useState(false);
+  const [modalIaFacialAberto, setModalIaFacialAberto] = useState(false);
   const [vendaParaExcluir, setVendaParaExcluir] = useState<VendaAlbum | null>(null);
   const [motivoExclusaoTipo, setMotivoExclusaoTipo] = useState<string>('Desistência formal do formando');
   const [motivoExclusaoDetalhe, setMotivoExclusaoDetalhe] = useState<string>('');
@@ -1601,7 +1603,19 @@ export default function VendasAlbunsPage() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setModalIaFacialAberto(true)}
+              className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-100 hover:from-purple-100 hover:to-indigo-100 text-purple-900 border border-purple-300 text-xs font-black shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
+              title="Separar fotos por reconhecimento facial usando IA da AWS Rekognition"
+            >
+              <Sparkles className="w-4 h-4 text-purple-700 animate-pulse" />
+              <span>IA Facial</span>
+              <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[10px] font-black uppercase tracking-wider ml-1 shadow-2xs">
+                AWS
+              </span>
+            </button>
+
             <button
               onClick={() => setModalAuditoriaAberto(true)}
               className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-black shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
@@ -4707,6 +4721,13 @@ ON AGENCIA DE EVENTOS LTDA`;
           </div>
         </div>
       )}
+
+      {/* Modal de Reconhecimento Facial com IA (AWS Rekognition) */}
+      <ReconhecimentoFacialModal
+        aberto={modalIaFacialAberto}
+        onFechar={() => setModalIaFacialAberto(false)}
+        alunosCadastrados={vendas.map((v) => ({ nome: v.alunoNome, cpf: v.alunoCpf }))}
+      />
     </div>
   );
 }

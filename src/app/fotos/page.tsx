@@ -513,6 +513,17 @@ export default function VendasAlbunsPage() {
   const [motivoExclusaoTipo, setMotivoExclusaoTipo] = useState<string>('Desistência formal do formando');
   const [motivoExclusaoDetalhe, setMotivoExclusaoDetalhe] = useState<string>('');
 
+  // Estados para Modal de Edição / Correção de Pagamento
+  const [modalEditarPagamentoAberto, setModalEditarPagamentoAberto] = useState(false);
+  const [vendaParaEditarPagamento, setVendaParaEditarPagamento] = useState<VendaAlbum | null>(null);
+  const [editFormaPagamento, setEditFormaPagamento] = useState<'BOLETO' | 'CARTAO' | 'PIX' | 'DINHEIRO'>('BOLETO');
+  const [editValorTotalKit, setEditValorTotalKit] = useState<string>('0');
+  const [editBoletoParcelas, setEditBoletoParcelas] = useState<number>(6);
+  const [editPrimeiroVencimento, setEditPrimeiroVencimento] = useState<string>('');
+  const [editCartaoParcelas, setEditCartaoParcelas] = useState<number>(1);
+  const [editCartaoBandeira, setEditCartaoBandeira] = useState<string>('Mastercard');
+  const [editCartaoNsu, setEditCartaoNsu] = useState<string>('');
+
   // Formulário Nova Venda: Configuração do Kit
   const [formAbaAtiva, setFormAbaAtiva] = useState<'ALBUM' | 'BRINDES' | 'PAGAMENTO'>('ALBUM');
   const [formNome, setFormNome] = useState('');
@@ -1291,6 +1302,94 @@ export default function VendasAlbunsPage() {
     }
 
     return parcelas;
+  };
+
+  // Abrir Modal de Edição / Correção de Pagamento
+  const abrirModalEditarPagamento = (venda: VendaAlbum) => {
+    setVendaParaEditarPagamento(venda);
+    setEditFormaPagamento(venda.formaPagamento);
+    setEditValorTotalKit(venda.valorTotalKit.toString());
+    setEditBoletoParcelas(venda.boletoQtdParcelas || venda.parcelasBoletos?.length || 6);
+
+    const primeiroVenc = venda.parcelasBoletos?.[0]?.vencimento;
+    let dataVencIso = '';
+    if (primeiroVenc && primeiroVenc.includes('/')) {
+      const partes = primeiroVenc.split('/');
+      if (partes.length === 3) {
+        dataVencIso = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+      }
+    }
+    if (!dataVencIso) {
+      const d = new Date();
+      d.setDate(d.getDate() + 30);
+      dataVencIso = d.toISOString().split('T')[0];
+    }
+    setEditPrimeiroVencimento(dataVencIso);
+
+    setEditCartaoParcelas(venda.cartaoQtdParcelas || 1);
+    setEditCartaoBandeira(venda.cartaoBandeira || 'Mastercard');
+    setEditCartaoNsu(venda.cartaoNsu || '');
+    setModalEditarPagamentoAberto(true);
+  };
+
+  // Salvar Correção de Pagamento
+  const handleSalvarEdicaoPagamento = async () => {
+    if (!vendaParaEditarPagamento) return;
+
+    const valorNum = parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit;
+    const vendaId = vendaParaEditarPagamento.id;
+
+    let parcelasNovas: ParcelaBoleto[] | undefined = undefined;
+    if (editFormaPagamento === 'BOLETO') {
+      parcelasNovas = gerarParcelasBoletos(valorNum, editBoletoParcelas, editPrimeiroVencimento);
+    }
+
+    const vendaAtualizada: VendaAlbum = {
+      ...vendaParaEditarPagamento,
+      valorTotalKit: valorNum,
+      formaPagamento: editFormaPagamento,
+      boletoQtdParcelas: editFormaPagamento === 'BOLETO' ? editBoletoParcelas : undefined,
+      parcelasBoletos: parcelasNovas,
+      cartaoQtdParcelas: editFormaPagamento === 'CARTAO' ? editCartaoParcelas : undefined,
+      cartaoBandeira: editFormaPagamento === 'CARTAO' ? editCartaoBandeira : undefined,
+      cartaoNsu: editFormaPagamento === 'CARTAO' ? (editCartaoNsu.trim() || `NSU-${Date.now().toString().slice(-6)}`) : undefined,
+      cartaoStatus: editFormaPagamento === 'CARTAO' ? 'Aprovado / Liquidado' : undefined,
+    };
+
+    const novasVendas = vendas.map((v) => (v.id === vendaId ? vendaAtualizada : v));
+    salvarVendasLocal(novasVendas);
+
+    // Se o modal de boletos estava aberto para essa venda
+    if (vendaSelecionadaBoletos && vendaSelecionadaBoletos.id === vendaId) {
+      if (editFormaPagamento === 'BOLETO') {
+        setVendaSelecionadaBoletos(vendaAtualizada);
+      } else {
+        setVendaSelecionadaBoletos(null);
+        if (editFormaPagamento === 'CARTAO') {
+          setVendaSelecionadaCartao(vendaAtualizada);
+        }
+      }
+    }
+
+    // Se o modal de cartão estava aberto para essa venda
+    if (vendaSelecionadaCartao && vendaSelecionadaCartao.id === vendaId) {
+      if (editFormaPagamento === 'CARTAO') {
+        setVendaSelecionadaCartao(vendaAtualizada);
+      } else {
+        setVendaSelecionadaCartao(null);
+        if (editFormaPagamento === 'BOLETO') {
+          setVendaSelecionadaBoletos(vendaAtualizada);
+        }
+      }
+    }
+
+    // Se a nova forma for boleto, registrar automaticamente na API Sicredi
+    if (editFormaPagamento === 'BOLETO' && parcelasNovas && parcelasNovas.length > 0) {
+      handleRegistrarBoletosApi(vendaAtualizada.id, vendaAtualizada);
+    }
+
+    setModalEditarPagamentoAberto(false);
+    showToast(`✓ Pagamento do pedido ${vendaAtualizada.codigoPedido} atualizado com sucesso!`);
   };
 
   // Submeter Criação de Nova Venda do Kit
@@ -2339,6 +2438,15 @@ export default function VendasAlbunsPage() {
                               <span>Comprovante</span>
                             </button>
                           )}
+
+                          <button
+                            onClick={() => abrirModalEditarPagamento(venda)}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 font-bold text-[11px] border border-slate-200 hover:border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer hover:scale-102"
+                            title="Corrigir forma de pagamento ou quantidade de parcelas"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 inline mr-1 text-amber-700" />
+                            <span>Pagamento</span>
+                          </button>
 
                           {venda.statusProducao !== 'ENTREGUE' ? (
                             <>
@@ -3393,6 +3501,14 @@ export default function VendasAlbunsPage() {
                   <span>🔄 Atualizar Status Sicredi</span>
                 </button>
                 <button
+                  onClick={() => abrirModalEditarPagamento(vendaSelecionadaBoletos)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
+                  title="Corrigir a forma de pagamento (Boleto, Cartão, Pix, Dinheiro) ou a quantidade de parcelas"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Corrigir Pagamento</span>
+                </button>
+                <button
                   onClick={() => {
                     window.print();
                   }}
@@ -3643,6 +3759,14 @@ export default function VendasAlbunsPage() {
             >
               <Printer className="w-4 h-4" />
               <span>Imprimir Recibo de Venda</span>
+            </button>
+
+            <button
+              onClick={() => abrirModalEditarPagamento(vendaSelecionadaCartao)}
+              className="w-full mt-2.5 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs flex items-center justify-center space-x-1.5 transition cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+              <span>Corrigir Forma de Pagamento ou Parcelas</span>
             </button>
           </div>
         </div>
@@ -4716,6 +4840,270 @@ ON AGENCIA DE EVENTOS LTDA`;
                 className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: CORRIGIR FORMA OU QUANTIDADE DE PAGAMENTO
+          ========================================================================= */}
+      {modalEditarPagamentoAberto && vendaParaEditarPagamento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-[32px] w-full max-w-lg p-6 lg:p-7 shadow-2xl border border-slate-100 animate-in fade-in duration-150 my-6">
+            {/* Topo */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-md font-black">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Corrigir Pagamento</h3>
+                  <p className="text-xs text-slate-500">
+                    Pedido: <strong>{vendaParaEditarPagamento.codigoPedido}</strong> • {vendaParaEditarPagamento.alunoNome}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalEditarPagamentoAberto(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Informações Atuais */}
+            <div className="my-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-slate-500 block text-[11px]">Kit Contratado:</span>
+                <strong className="text-slate-900">{vendaParaEditarPagamento.modeloAlbum}</strong>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-500 block text-[11px]">Total do Kit:</span>
+                <span className="text-sm font-black font-mono text-purple-700">
+                  R$ {vendaParaEditarPagamento.valorTotalKit.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Formulário de Correção */}
+            <div className="space-y-4">
+              {/* Seleção da Forma de Pagamento */}
+              <div>
+                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                  Escolha a Nova Forma de Pagamento:
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'BOLETO', label: 'Boleto', sub: 'Sicredi', icone: Barcode, cor: 'border-amber-300 bg-amber-50 text-amber-900' },
+                    { id: 'CARTAO', label: 'Cartão', sub: 'Crédito', icone: CreditCard, cor: 'border-emerald-300 bg-emerald-50 text-emerald-900' },
+                    { id: 'PIX', label: 'PIX', sub: 'À Vista', icone: Sparkles, cor: 'border-purple-300 bg-purple-50 text-purple-900' },
+                    { id: 'DINHEIRO', label: 'Dinheiro', sub: 'À Vista', icone: Wallet, cor: 'border-teal-300 bg-teal-50 text-teal-900' },
+                  ].map((item) => {
+                    const Icone = item.icone;
+                    const ativo = editFormaPagamento === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setEditFormaPagamento(item.id as any)}
+                        className={`p-3 rounded-2xl border text-center transition flex flex-col items-center justify-center cursor-pointer ${
+                          ativo
+                            ? 'ring-2 ring-purple-600 font-black shadow-sm ' + item.cor
+                            : 'border-slate-200 hover:border-slate-300 bg-white text-slate-600'
+                        }`}
+                      >
+                        <Icone className="w-5 h-5 mb-1" />
+                        <span className="text-xs block font-bold leading-tight">{item.label}</span>
+                        <span className="text-[10px] opacity-75">{item.sub}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* OPÇÕES QUANDO BOLETO */}
+              {editFormaPagamento === 'BOLETO' && (
+                <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                      Configuração das Parcelas de Boleto:
+                    </span>
+                    <span className="text-[11px] font-mono font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-lg">
+                      {editBoletoParcelas}x de R${' '}
+                      {(
+                        (parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit) /
+                        editBoletoParcelas
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                        Quantidade de Parcelas:
+                      </label>
+                      <select
+                        value={editBoletoParcelas}
+                        onChange={(e) => setEditBoletoParcelas(parseInt(e.target.value) || 1)}
+                        className="w-full bg-white text-slate-900 border border-amber-300 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24].map((n) => {
+                          const valParcela = (
+                            (parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit) /
+                            n
+                          ).toFixed(2);
+                          return (
+                            <option key={n} value={n}>
+                              {n}x de R$ {valParcela}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                        1º Vencimento:
+                      </label>
+                      <input
+                        type="date"
+                        value={editPrimeiroVencimento}
+                        onChange={(e) => setEditPrimeiroVencimento(e.target.value)}
+                        className="w-full bg-white text-slate-900 border border-amber-300 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    ⚡ Ao confirmar, o sistema recalcula o carnê inteiro com os novos valores e registra as parcelas na API do Sicredi.
+                  </p>
+                </div>
+              )}
+
+              {/* OPÇÕES QUANDO CARTÃO */}
+              {editFormaPagamento === 'CARTAO' && (
+                <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-emerald-950 uppercase tracking-wide">
+                      Parcelamento no Cartão de Crédito:
+                    </span>
+                    <span className="text-[11px] font-mono font-black text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded-lg">
+                      {editCartaoParcelas}x de R${' '}
+                      {(
+                        (parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit) /
+                        editCartaoParcelas
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                        Parcelas do Cartão:
+                      </label>
+                      <select
+                        value={editCartaoParcelas}
+                        onChange={(e) => setEditCartaoParcelas(parseInt(e.target.value) || 1)}
+                        className="w-full bg-white text-slate-900 border border-emerald-300 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                          <option key={n} value={n}>
+                            {n === 1 ? '1x À vista' : `${n}x no Cartão`} (R${' '}
+                            {(
+                              (parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit) /
+                              n
+                            ).toFixed(2)}
+                            )
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                        Bandeira:
+                      </label>
+                      <select
+                        value={editCartaoBandeira}
+                        onChange={(e) => setEditCartaoBandeira(e.target.value)}
+                        className="w-full bg-white text-slate-900 border border-emerald-300 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="Mastercard">Mastercard</option>
+                        <option value="Visa">Visa</option>
+                        <option value="Elo">Elo</option>
+                        <option value="Hipercard">Hipercard</option>
+                        <option value="American Express">American Express</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                      Código NSU / Autorização Maquininha:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: NSU-481920"
+                      value={editCartaoNsu}
+                      onChange={(e) => setEditCartaoNsu(e.target.value)}
+                      className="w-full bg-white text-slate-900 border border-emerald-300 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* OPÇÕES QUANDO PIX OU DINHEIRO */}
+              {editFormaPagamento === 'PIX' && (
+                <div className="p-4 bg-purple-50/70 rounded-2xl border border-purple-200 text-xs text-purple-900">
+                  <div className="flex items-center space-x-2 font-bold mb-1">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <span>Pagamento À Vista no PIX</span>
+                  </div>
+                  <p className="text-[11px] text-purple-800">
+                    Ao salvar, o pedido será marcado como liquidado à vista via chave PIX no valor de{' '}
+                    <strong>
+                      R$ {(parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit).toFixed(2)}
+                    </strong>
+                    .
+                  </p>
+                </div>
+              )}
+
+              {editFormaPagamento === 'DINHEIRO' && (
+                <div className="p-4 bg-teal-50/70 rounded-2xl border border-teal-200 text-xs text-teal-900">
+                  <div className="flex items-center space-x-2 font-bold mb-1">
+                    <Wallet className="w-4 h-4 text-teal-600" />
+                    <span>Pagamento À Vista em Dinheiro</span>
+                  </div>
+                  <p className="text-[11px] text-teal-800">
+                    O valor de{' '}
+                    <strong>
+                      R$ {(parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit).toFixed(2)}
+                    </strong>{' '}
+                    será registrado como quitado diretamente no caixa da agência.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé com botões de ação */}
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end space-x-2.5">
+              <button
+                type="button"
+                onClick={() => setModalEditarPagamentoAberto(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSalvarEdicaoPagamento}
+                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-md transition flex items-center space-x-1.5 cursor-pointer hover:scale-102"
+              >
+                <Check className="w-4 h-4" />
+                <span>Salvar Alterações do Pagamento</span>
               </button>
             </div>
           </div>

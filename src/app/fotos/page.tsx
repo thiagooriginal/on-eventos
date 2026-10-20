@@ -3465,16 +3465,6 @@ export default function VendasAlbunsPage() {
                             </span>
                           )}
                         </div>
-
-                        {/* Botão de Dar Baixa Manual apenas quando ainda não estiver liquidada */}
-                        {!isPaga && (
-                          <button
-                            onClick={() => alternarStatusParcela(vendaSelecionadaBoletos.id, parcela.numero)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700"
-                          >
-                            Confirmar Pagamento
-                          </button>
-                        )}
                       </div>
                     </div>
 

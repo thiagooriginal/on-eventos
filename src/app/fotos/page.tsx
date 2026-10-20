@@ -114,6 +114,14 @@ export interface ParcelaBoleto {
   txid?: string;
   registradoSicredi?: boolean;
   dataRegistroSicredi?: string;
+  dataPagamento?: string;
+  dataCredito?: string;
+  formaBaixa?: string;
+  localBaixa?: string;
+  contaBaixa?: string;
+  valorPago?: number;
+  descontoAplicado?: number;
+  observacoesBaixa?: string;
 }
 
 export interface VendaAlbum {
@@ -523,6 +531,35 @@ export default function VendasAlbunsPage() {
   const [editCartaoParcelas, setEditCartaoParcelas] = useState<number>(1);
   const [editCartaoBandeira, setEditCartaoBandeira] = useState<string>('Mastercard');
   const [editCartaoNsu, setEditCartaoNsu] = useState<string>('');
+
+  // Estados para Modal de Quitação Manual de Parcelas (Image 4)
+  const [modalQuitarParcelaAberto, setModalQuitarParcelaAberto] = useState(false);
+  const [quitacaoVenda, setQuitacaoVenda] = useState<VendaAlbum | null>(null);
+  const [quitacaoParcela, setQuitacaoParcela] = useState<ParcelaBoleto | null>(null);
+  const [quitacaoLocalPag, setQuitacaoLocalPag] = useState<string>('PIX Direto');
+  const [quitacaoFormaPag, setQuitacaoFormaPag] = useState<string>('PIX Direto');
+  const [quitacaoConta, setQuitacaoConta] = useState<string>('Sicredi C/C');
+  const [quitacaoNotas, setQuitacaoNotas] = useState<string>('');
+  const [quitacaoDataPag, setQuitacaoDataPag] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [quitacaoDataCredito, setQuitacaoDataCredito] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [quitacaoDesconto, setQuitacaoDesconto] = useState<number>(0);
+  const [quitacaoValorPago, setQuitacaoValorPago] = useState<number>(0);
+
+  // Estados para Modal de Ajuste de Parcelas em Lote / Renegociação (Image 3)
+  const [modalRenegociarParcelasAberto, setModalRenegociarParcelasAberto] = useState(false);
+  const [renegociarVenda, setRenegociarVenda] = useState<VendaAlbum | null>(null);
+  const [renegociarCheckValores, setRenegociarCheckValores] = useState(false);
+  const [renegociarTipoAjuste, setRenegociarTipoAjuste] = useState<
+    'SELECIONE' | 'ACRESCIMO_PORC' | 'ACRESCIMO_VAL' | 'DECRESCIMO_PORC' | 'DECRESCIMO_VAL' | 'NOVO_VALOR' | 'REDIVIDIR_SALDO'
+  >('SELECIONE');
+  const [renegociarValorAjuste, setRenegociarValorAjuste] = useState<number>(0);
+  const [renegociarCheckDatas, setRenegociarCheckDatas] = useState(false);
+  const [renegociarNovaDataPrimeira, setRenegociarNovaDataPrimeira] = useState<string>('');
+  const [renegociarCheckQtdParcelas, setRenegociarCheckQtdParcelas] = useState(false);
+  const [renegociarNovaQtdParcelas, setRenegociarNovaQtdParcelas] = useState<number>(6);
+
+  // Menu de Opções no Carnê (Image 2)
+  const [menuOpcoesCarneAberto, setMenuOpcoesCarneAberto] = useState(false);
 
   // Formulário Nova Venda: Configuração do Kit
   const [formAbaAtiva, setFormAbaAtiva] = useState<'ALBUM' | 'BRINDES' | 'PAGAMENTO'>('ALBUM');
@@ -1390,6 +1427,182 @@ export default function VendasAlbunsPage() {
 
     setModalEditarPagamentoAberto(false);
     showToast(`✓ Pagamento do pedido ${vendaAtualizada.codigoPedido} atualizado com sucesso!`);
+  };
+
+  // Abrir Modal de Quitação Manual de Parcela (Image 4)
+  const abrirModalQuitacaoManual = (venda: VendaAlbum, parcela: ParcelaBoleto) => {
+    setQuitacaoVenda(venda);
+    setQuitacaoParcela(parcela);
+    setQuitacaoLocalPag('PIX Direto');
+    setQuitacaoFormaPag('PIX Direto');
+    setQuitacaoConta('Sicredi C/C');
+    setQuitacaoNotas('');
+    const hoje = new Date().toISOString().split('T')[0];
+    setQuitacaoDataPag(hoje);
+    setQuitacaoDataCredito(hoje);
+    setQuitacaoDesconto(0);
+    setQuitacaoValorPago(parcela.valor);
+    setModalQuitarParcelaAberto(true);
+  };
+
+  const usarDataVencimento = () => {
+    if (!quitacaoParcela) return;
+    const parts = quitacaoParcela.vencimento.split('/');
+    if (parts.length === 3) {
+      const iso = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      setQuitacaoDataPag(iso);
+      setQuitacaoDataCredito(iso);
+    }
+  };
+
+  const handleDescontoChange = (desc: number) => {
+    setQuitacaoDesconto(desc);
+    if (quitacaoParcela) {
+      const novoValor = Math.max(0, quitacaoParcela.valor - desc);
+      setQuitacaoValorPago(Number(novoValor.toFixed(2)));
+    }
+  };
+
+  const handleConfirmarQuitacaoManual = () => {
+    if (!quitacaoVenda || !quitacaoParcela) return;
+
+    const dParts = quitacaoDataPag.split('-');
+    const dataPagFormatada = dParts.length === 3 ? `${dParts[2]}/${dParts[1]}/${dParts[0]}` : quitacaoDataPag;
+
+    const atualizadas = vendas.map((v) => {
+      if (v.id === quitacaoVenda.id && v.parcelasBoletos) {
+        const novasParcelas = v.parcelasBoletos.map((p) => {
+          if (p.numero === quitacaoParcela.numero) {
+            return {
+              ...p,
+              status: 'PAGO' as const,
+              dataPagamento: dataPagFormatada,
+              dataCredito: quitacaoDataCredito,
+              formaBaixa: quitacaoFormaPag,
+              localBaixa: quitacaoLocalPag,
+              contaBaixa: quitacaoConta,
+              valorPago: quitacaoValorPago,
+              descontoAplicado: quitacaoDesconto,
+              observacoesBaixa: quitacaoNotas,
+            };
+          }
+          return p;
+        });
+        return { ...v, parcelasBoletos: novasParcelas };
+      }
+      return v;
+    });
+
+    salvarVendasLocal(atualizadas);
+    const atualizada = atualizadas.find((v) => v.id === quitacaoVenda.id);
+    if (atualizada) setVendaSelecionadaBoletos(atualizada);
+
+    setModalQuitarParcelaAberto(false);
+    showToast(`🎉 Parcela ${quitacaoParcela.numero} quitada com sucesso via ${quitacaoFormaPag}!`);
+  };
+
+  // Abrir Modal de Renegociação / Ajuste de Parcelas em Lote (Image 3)
+  const abrirModalRenegociacao = (venda: VendaAlbum) => {
+    setRenegociarVenda(venda);
+    setRenegociarCheckValores(false);
+    setRenegociarTipoAjuste('SELECIONE');
+    setRenegociarValorAjuste(0);
+    setRenegociarCheckDatas(false);
+
+    const parcelasNaoPagas = venda.parcelasBoletos?.filter((p) => p.status !== 'PAGO') || [];
+    if (parcelasNaoPagas.length > 0) {
+      const prim = parcelasNaoPagas[0];
+      const parts = prim.vencimento.split('/');
+      if (parts.length === 3) {
+        setRenegociarNovaDataPrimeira(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`);
+      } else {
+        setRenegociarNovaDataPrimeira(new Date().toISOString().split('T')[0]);
+      }
+    } else {
+      setRenegociarNovaDataPrimeira(new Date().toISOString().split('T')[0]);
+    }
+
+    setRenegociarCheckQtdParcelas(false);
+    setRenegociarNovaQtdParcelas(parcelasNaoPagas.length || 1);
+    setModalRenegociarParcelasAberto(true);
+  };
+
+  // Confirmar Renegociação / Ajuste em Lote
+  const handleConfirmarRenegociacao = () => {
+    if (!renegociarVenda) return;
+
+    const parcelasAtuais = renegociarVenda.parcelasBoletos || [];
+    const parcelasPagas = parcelasAtuais.filter((p) => p.status === 'PAGO');
+    const parcelasNaoPagas = parcelasAtuais.filter((p) => p.status !== 'PAGO');
+
+    if (parcelasNaoPagas.length === 0) {
+      showToast('⚠️ Todas as parcelas deste carnê já foram quitadas! Não há parcelas pendentes para ajustar.');
+      return;
+    }
+
+    const qtdNovas = renegociarCheckQtdParcelas && renegociarNovaQtdParcelas > 0 ? renegociarNovaQtdParcelas : parcelasNaoPagas.length;
+    const saldoOriginalRestante = parcelasNaoPagas.reduce((acc, p) => acc + p.valor, 0);
+
+    let saldoAjustado = saldoOriginalRestante;
+    if (renegociarCheckValores) {
+      if (renegociarTipoAjuste === 'ACRESCIMO_PORC') saldoAjustado *= (1 + renegociarValorAjuste / 100);
+      else if (renegociarTipoAjuste === 'ACRESCIMO_VAL') saldoAjustado += (renegociarValorAjuste * parcelasNaoPagas.length);
+      else if (renegociarTipoAjuste === 'DECRESCIMO_PORC') saldoAjustado = Math.max(1, saldoAjustado * (1 - renegociarValorAjuste / 100));
+      else if (renegociarTipoAjuste === 'DECRESCIMO_VAL') saldoAjustado = Math.max(1, saldoAjustado - (renegociarValorAjuste * parcelasNaoPagas.length));
+      else if (renegociarTipoAjuste === 'NOVO_VALOR') saldoAjustado = renegociarValorAjuste * qtdNovas;
+    }
+
+    const valorBaseParcela = Math.floor((saldoAjustado / qtdNovas) * 100) / 100;
+    const centavosAjuste = Number((saldoAjustado - (valorBaseParcela * qtdNovas)).toFixed(2));
+
+    const baseDate = renegociarCheckDatas && renegociarNovaDataPrimeira
+      ? new Date(renegociarNovaDataPrimeira + 'T12:00:00')
+      : new Date();
+
+    const startNum = parcelasPagas.length + 1;
+    const novasAjustadas: ParcelaBoleto[] = [];
+
+    for (let i = 0; i < qtdNovas; i++) {
+      const d = new Date(baseDate);
+      d.setMonth(d.getMonth() + i);
+      const vencStr = d.toLocaleDateString('pt-BR');
+      const val = i === qtdNovas - 1 ? Number((valorBaseParcela + centavosAjuste).toFixed(2)) : valorBaseParcela;
+      const numParcela = startNum + i;
+
+      const dig1 = Math.floor(10000 + Math.random() * 90000);
+      const dig2 = Math.floor(10000 + Math.random() * 90000);
+      const linha = `74891.12003 ${dig1}.234508 ${dig2}.67890${numParcela} ${numParcela} 98760000${Math.floor(val * 100)}`;
+      const pix = `00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef12345678520400005303986540${val.toFixed(2).length}${val.toFixed(2)}5802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304${dig1.toString().slice(0, 4)}`;
+
+      novasAjustadas.push({
+        numero: numParcela,
+        vencimento: vencStr,
+        valor: val,
+        status: 'PENDENTE',
+        linhaDigitavel: linha,
+        codigoPix: pix,
+        registradoSicredi: false,
+      });
+    }
+
+    const todasParcelas = [...parcelasPagas, ...novasAjustadas];
+    const novoValorTotalKit = todasParcelas.reduce((acc, p) => acc + (p.status === 'PAGO' ? (p.valorPago ?? p.valor) : p.valor), 0);
+
+    const vendaAtualizada: VendaAlbum = {
+      ...renegociarVenda,
+      valorTotalKit: Number(novoValorTotalKit.toFixed(2)),
+      boletoQtdParcelas: todasParcelas.length,
+      parcelasBoletos: todasParcelas,
+    };
+
+    const atualizadas = vendas.map((v) => (v.id === renegociarVenda.id ? vendaAtualizada : v));
+    salvarVendasLocal(atualizadas);
+    setVendaSelecionadaBoletos(vendaAtualizada);
+    setModalRenegociarParcelasAberto(false);
+    showToast(`🎉 ${qtdNovas} parcelas renegociadas com sucesso! Saldo ajustado.`);
+
+    // Registrar novas parcelas no Sicredi
+    handleRegistrarBoletosApi(vendaAtualizada.id, vendaAtualizada);
   };
 
   // Submeter Criação de Nova Venda do Kit
@@ -3453,6 +3666,15 @@ export default function VendasAlbunsPage() {
               </div>
               <div className="flex items-center space-x-2">
                 <button
+                  type="button"
+                  onClick={() => abrirModalRenegociacao(vendaSelecionadaBoletos)}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-sm flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
+                  title="Ajuste de parcelas em lote / renegociação de vencimento ou valores por atraso"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Renegociar Parcelas</span>
+                </button>
+                <button
                   onClick={() => abrirModalEditarPagamento(vendaSelecionadaBoletos)}
                   className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-sm flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
                   title="Corrigir a forma de pagamento (Boleto, Cartão, Pix, Dinheiro) ou a quantidade de parcelas"
@@ -3497,6 +3719,74 @@ export default function VendasAlbunsPage() {
                   <RotateCcw className="w-3.5 h-3.5 text-purple-600" />
                   <span>🔄 Atualizar Status Sicredi</span>
                 </button>
+
+                {/* Botão de Renegociação Direto */}
+                <button
+                  type="button"
+                  onClick={() => abrirModalRenegociacao(vendaSelecionadaBoletos)}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
+                  title="Ajuste em lote das parcelas não pagas (alterar vencimentos, redividir ou aplicar acréscimo/desconto)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Renegociar Parcelas</span>
+                </button>
+
+                {/* Menu de Opções idêntico ao Print do Usuário (Image 2) */}
+                <div className="relative inline-block">
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpcoesCarneAberto(!menuOpcoesCarneAberto)}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition"
+                    title="Menu de Opções de Parcelamento"
+                  >
+                    <span>Opções de Parcelas ▾</span>
+                  </button>
+                  {menuOpcoesCarneAberto && (
+                    <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 text-slate-800 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpcoesCarneAberto(false);
+                          abrirModalEditarPagamento(vendaSelecionadaBoletos);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700 font-semibold cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Gerar Parcelas</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpcoesCarneAberto(false);
+                          const primeiraPendente = vendaSelecionadaBoletos.parcelasBoletos?.find(
+                            (p) => p.status !== 'PAGO'
+                          );
+                          if (primeiraPendente) {
+                            abrirModalQuitacaoManual(vendaSelecionadaBoletos, primeiraPendente);
+                          } else {
+                            showToast('Todas as parcelas deste carnê já foram quitadas!');
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700 font-semibold cursor-pointer"
+                      >
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Quitar Parcelas</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpcoesCarneAberto(false);
+                          abrirModalRenegociacao(vendaSelecionadaBoletos);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center space-x-2 text-slate-700 font-semibold cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Renegociar Parcelas</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   onClick={() => abrirModalEditarPagamento(vendaSelecionadaBoletos)}
                   className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
@@ -3586,27 +3876,53 @@ export default function VendasAlbunsPage() {
                           >
                             {isPaga ? '✓ Liquidado / Pago' : 'Aguardando Pagamento'}
                           </span>
-                          {isPaga && parcela.dataPagamento && (
-                            <span className="text-[10px] text-emerald-700 font-medium block mt-0.5">
-                              Pago em {parcela.dataPagamento}
-                            </span>
-                          )}
                         </div>
+
+                        {!isPaga && (
+                          <button
+                            type="button"
+                            onClick={() => abrirModalQuitacaoManual(vendaSelecionadaBoletos, parcela)}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs flex items-center space-x-1 cursor-pointer transition hover:scale-102"
+                            title="Quitação manual da parcela via PIX, dinheiro ou transferência"
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span>Quitar Parcela</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {/* Quando Liquidado: Banner de Confirmação */}
+                    {/* Quando Liquidado: Banner de Confirmação e Detalhes da Quitação */}
                     {isPaga ? (
                       <div className="mt-3 p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5">
-                        <div className="flex items-center space-x-2 text-emerald-900 font-bold">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>Pagamento liquidado com sucesso no Banco Sicredi!</span>
+                        <div>
+                          <div className="flex items-center space-x-2 text-emerald-900 font-bold">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Pagamento liquidado com sucesso!</span>
+                            {parcela.formaBaixa && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 font-black">
+                                via {parcela.formaBaixa}
+                              </span>
+                            )}
+                          </div>
+                          {parcela.observacoesBaixa && (
+                            <p className="text-[11px] text-emerald-700 italic mt-0.5">
+                              Obs: {parcela.observacoesBaixa}
+                            </p>
+                          )}
                         </div>
-                        {parcela.dataPagamento && (
-                          <span className="text-[11px] font-semibold text-emerald-700">
-                            Data de quitação: {parcela.dataPagamento}
-                          </span>
-                        )}
+                        <div className="text-right">
+                          {parcela.dataPagamento && (
+                            <span className="text-[11px] font-semibold text-emerald-700 block">
+                              Data de quitação: {parcela.dataPagamento}
+                            </span>
+                          )}
+                          {parcela.valorPago !== undefined && (
+                            <span className="text-[11px] text-emerald-800 font-bold block">
+                              Valor recebido: R$ {parcela.valorPago.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       /* Linha Digitável e PIX quando PENDENTE */
@@ -5101,6 +5417,459 @@ ON AGENCIA DE EVENTOS LTDA`;
               >
                 <Check className="w-4 h-4" />
                 <span>Salvar Alterações do Pagamento</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: QUITAÇÃO MANUAL DE PARCELAS - CONFIRME OS DADOS (IMAGE 4)
+          ========================================================================= */}
+      {modalQuitarParcelaAberto && quitacaoVenda && quitacaoParcela && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-[24px] w-full max-w-3xl p-6 lg:p-7 shadow-2xl border border-slate-200 animate-in fade-in duration-150 my-6">
+            {/* Topo / Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Quitação manual de parcelas - confirme os dados - {quitacaoParcela.numero} de{' '}
+                  {quitacaoVenda.parcelasBoletos?.length || quitacaoVenda.boletoQtdParcelas || 1}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Formando: <strong>{quitacaoVenda.alunoNome}</strong> • Pedido {quitacaoVenda.codigoPedido}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalQuitarParcelaAberto(false)}
+                className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Conteúdo em 2 colunas com divisor vertical */}
+            <div className="py-6 grid grid-cols-1 md:grid-cols-2 gap-8 border-b border-slate-100">
+              {/* Coluna Esquerda: Dados da parcela e dropdowns de pagamento */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-700 font-bold block text-xs">Nº da Parcela:</span>
+                    <span className="text-slate-800 font-medium text-sm mt-0.5 block">
+                      {quitacaoParcela.numero}/
+                      {quitacaoVenda.parcelasBoletos?.length || quitacaoVenda.boletoQtdParcelas || 1}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-700 font-bold block text-xs">Data Venc.:</span>
+                    <span className="text-slate-800 font-medium text-sm mt-0.5 block">
+                      {quitacaoParcela.vencimento}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-slate-700 font-bold block text-xs">Valor Original:</span>
+                    <span className="text-slate-800 font-medium text-sm mt-0.5 block">
+                      R$ {quitacaoParcela.valor.toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-700 font-bold block text-xs">Valor Atualizado:</span>
+                    <span className="text-slate-800 font-medium text-sm mt-0.5 block border-b border-dotted border-slate-400 pb-0.5 inline-block">
+                      R$ {quitacaoParcela.valor.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Local Pag. */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Local Pag.</label>
+                  <select
+                    value={quitacaoLocalPag}
+                    onChange={(e) => setQuitacaoLocalPag(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg bg-amber-50/60 border-l-4 border-l-amber-500 border-amber-200 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    <option value="Balcão / Caixa Físico">Balcão / Caixa Físico</option>
+                    <option value="PIX Direto">PIX Direto (Conta Empresa)</option>
+                    <option value="Escritório">Escritório Central</option>
+                    <option value="Cobrança Bancária">Cobrança Bancária</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+
+                {/* Forma Pag. */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Forma Pag.</label>
+                  <select
+                    value={quitacaoFormaPag}
+                    onChange={(e) => setQuitacaoFormaPag(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg bg-amber-50/60 border-l-4 border-l-amber-500 border-amber-200 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    <option value="PIX Direto">PIX Direto</option>
+                    <option value="Dinheiro em Espécie">Dinheiro em Espécie</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Transferência / TED">Transferência / TED</option>
+                    <option value="Depósito Bancário">Depósito Bancário</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+
+                {/* Conta */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Conta</label>
+                  <select
+                    value={quitacaoConta}
+                    onChange={(e) => setQuitacaoConta(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg bg-amber-50/60 border-l-4 border-l-amber-500 border-amber-200 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none cursor-pointer"
+                  >
+                    <option value="Sicredi C/C">Sicredi C/C (Conta Principal)</option>
+                    <option value="Caixa Interno">Caixa Interno (Balcão)</option>
+                    <option value="Banco Inter">Banco Inter (Secundário)</option>
+                  </select>
+                </div>
+
+                {/* Notas */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Notas</label>
+                  <input
+                    type="text"
+                    value={quitacaoNotas}
+                    onChange={(e) => setQuitacaoNotas(e.target.value)}
+                    placeholder="Ex: Comprovante de PIX enviado no WhatsApp..."
+                    className="w-full px-3.5 py-2 rounded-lg bg-amber-50/60 border-l-4 border-l-amber-500 border-amber-200 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Coluna Direita: Datas, Desconto e Valor Pago */}
+              <div className="space-y-4 md:border-l md:border-slate-200 md:pl-8">
+                {/* Data Pag. */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700">Data Pag.</label>
+                    <button
+                      type="button"
+                      onClick={usarDataVencimento}
+                      className="text-blue-600 hover:text-blue-800 text-xs font-medium cursor-pointer underline"
+                    >
+                      usar a data do vencimento
+                    </button>
+                  </div>
+                  <input
+                    type="date"
+                    value={quitacaoDataPag}
+                    onChange={(e) => {
+                      setQuitacaoDataPag(e.target.value);
+                      setQuitacaoDataCredito(e.target.value);
+                    }}
+                    className="w-full px-3.5 py-2 rounded-lg bg-amber-50/60 border-l-4 border-l-amber-500 border-amber-200 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                  />
+                </div>
+
+                {/* Data de Crédito */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Data de Crédito</label>
+                  <input
+                    type="date"
+                    value={quitacaoDataCredito}
+                    onChange={(e) => setQuitacaoDataCredito(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg bg-amber-50/60 border-l-4 border-l-amber-500 border-amber-200 text-slate-800 text-sm font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                  />
+                </div>
+
+                {/* Desconto */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700">Desconto (R$)</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById('input-desconto-quitacao');
+                        input?.focus();
+                      }}
+                      className="text-blue-600 hover:text-blue-800 text-xs font-medium cursor-pointer underline"
+                    >
+                      conceder desconto
+                    </button>
+                  </div>
+                  <input
+                    id="input-desconto-quitacao"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={quitacaoDesconto || ''}
+                    onChange={(e) => handleDescontoChange(parseFloat(e.target.value) || 0)}
+                    placeholder="0,00"
+                    className="w-full px-3.5 py-2 rounded-lg bg-slate-100 border border-slate-300 text-slate-800 text-sm font-semibold focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                  />
+                </div>
+
+                {/* Valor Pago */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Valor Pago (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={quitacaoValorPago || ''}
+                    onChange={(e) => setQuitacaoValorPago(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3.5 py-2 rounded-lg bg-amber-50/60 border-l-4 border-l-amber-500 border-amber-200 text-slate-900 text-base font-black focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                  />
+                </div>
+
+                {/* Resumo do Pagamento */}
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 space-y-1">
+                  <div className="flex justify-between font-bold">
+                    <span>Valor Final Quitado:</span>
+                    <span>R$ {quitacaoValorPago.toFixed(2)}</span>
+                  </div>
+                  {quitacaoDesconto > 0 && (
+                    <div className="flex justify-between text-emerald-700 text-[11px]">
+                      <span>Desconto concedido:</span>
+                      <span>- R$ {quitacaoDesconto.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Rodapé com Botão Registrar Pagamento (Image 4) */}
+            <div className="pt-4 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setModalQuitarParcelaAberto(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarQuitacaoManual}
+                className="px-6 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-sm shadow-md transition flex items-center space-x-2 cursor-pointer hover:scale-102"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Registrar Pagamento</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: AJUSTE DE PARCELAS EM LOTE / RENEGOCIAÇÃO (IMAGE 3)
+          ========================================================================= */}
+      {modalRenegociarParcelasAberto && renegociarVenda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-[24px] w-full max-w-xl p-6 lg:p-7 shadow-2xl border border-slate-200 animate-in fade-in duration-150 my-6">
+            {/* Topo / Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Ajuste de parcelas em lote
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Formando: <strong>{renegociarVenda.alunoNome}</strong> • Pedido {renegociarVenda.codigoPedido}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalRenegociarParcelasAberto(false)}
+                className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Caixa de Atenção / Warning (Idêntica ao Print Image 3) */}
+            <div className="my-4 p-4 rounded-xl bg-red-50/80 border border-red-200 text-xs text-red-900 space-y-1.5">
+              <div className="flex items-center space-x-1.5 text-red-800 font-black text-sm">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>Atenção!</span>
+              </div>
+              <p className="text-red-800/90 leading-relaxed text-[11px]">
+                Só serão ajustadas as parcelas <strong>ATIVAS ainda NÃO PAGAS</strong> e, as do tipo &quot;cota única&quot; não serão alteradas.
+                Caso o cliente já tenha o boleto impresso em mãos, poderão ocorrer divergências nos valores.
+                Todas as chaves PIX geradas serão canceladas para as parcelas alteradas.
+              </p>
+            </div>
+
+            <div className="space-y-4 my-5 text-sm">
+              {/* Opção 1: Ajuste de Valores */}
+              <div className="space-y-2">
+                <label className="flex items-center space-x-2.5 font-bold text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={renegociarCheckValores}
+                    onChange={(e) => setRenegociarCheckValores(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span>Ajuste de Valores</span>
+                </label>
+
+                {renegociarCheckValores && (
+                  <div className="ml-6 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <select
+                      value={renegociarTipoAjuste}
+                      onChange={(e: any) => setRenegociarTipoAjuste(e.target.value)}
+                      className="px-3.5 py-2 rounded-lg bg-blue-50/70 border border-blue-300 text-slate-800 text-xs font-semibold focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                    >
+                      <option value="SELECIONE">(Selecione)</option>
+                      <option value="ACRESCIMO_PORC">Acréscimo (%)</option>
+                      <option value="ACRESCIMO_VAL">Acréscimo (R$)</option>
+                      <option value="DECRESCIMO_PORC">Decréscimo (%)</option>
+                      <option value="DECRESCIMO_VAL">Decréscimo (R$)</option>
+                      <option value="NOVO_VALOR">Novo Valor (R$)</option>
+                      <option value="REDIVIDIR_SALDO">Rateio entre Parcelas Restantes</option>
+                    </select>
+
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      value={renegociarValorAjuste || ''}
+                      onChange={(e) => setRenegociarValorAjuste(parseFloat(e.target.value) || 0)}
+                      className="px-3.5 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Opção 2: Ajuste de Datas (Prorrogação de Vencimento por Atraso) */}
+              <div className="space-y-2">
+                <label className="flex items-center space-x-2.5 font-bold text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={renegociarCheckDatas}
+                    onChange={(e) => setRenegociarCheckDatas(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span>Ajuste de Datas (Prorrogação de Vencimento)</span>
+                </label>
+
+                {renegociarCheckDatas && (
+                  <div className="ml-6 space-y-1 pt-1">
+                    <span className="text-[11px] text-slate-600 block">
+                      Novo vencimento da 1ª parcela não paga:
+                    </span>
+                    <input
+                      type="date"
+                      value={renegociarNovaDataPrimeira}
+                      onChange={(e) => setRenegociarNovaDataPrimeira(e.target.value)}
+                      className="w-full sm:w-64 px-3.5 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 block">
+                      As parcelas restantes seguirão mensalmente a partir desta data.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Opção 3: Troca de Parcelamento caso o cliente atrase (Redividir saldo restante) */}
+              <div className="space-y-2">
+                <label className="flex items-center space-x-2.5 font-bold text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={renegociarCheckQtdParcelas}
+                    onChange={(e) => setRenegociarCheckQtdParcelas(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span>Troca de Parcelamento / Redividir Saldo por Atraso</span>
+                </label>
+
+                {renegociarCheckQtdParcelas && (
+                  <div className="ml-6 space-y-1.5 pt-1">
+                    <span className="text-[11px] text-slate-600 block">
+                      Nova quantidade de parcelas para o saldo não pago:
+                    </span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="36"
+                      value={renegociarNovaQtdParcelas}
+                      onChange={(e) => setRenegociarNovaQtdParcelas(parseInt(e.target.value) || 1)}
+                      className="w-32 px-3.5 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 block">
+                      Ex: Se o cliente atrasou e quer estender o saldo restante em mais meses.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Resumo da Simulação da Renegociação */}
+              {(() => {
+                const parcelasPagas = renegociarVenda.parcelasBoletos?.filter((p) => p.status === 'PAGO') || [];
+                const parcelasNaoPagas = renegociarVenda.parcelasBoletos?.filter((p) => p.status !== 'PAGO') || [];
+                const saldoRestante = parcelasNaoPagas.reduce((acc, p) => acc + p.valor, 0);
+
+                let saldoAjustado = saldoRestante;
+                if (renegociarCheckValores) {
+                  if (renegociarTipoAjuste === 'ACRESCIMO_PORC') saldoAjustado *= 1 + renegociarValorAjuste / 100;
+                  else if (renegociarTipoAjuste === 'ACRESCIMO_VAL')
+                    saldoAjustado += renegociarValorAjuste * parcelasNaoPagas.length;
+                  else if (renegociarTipoAjuste === 'DECRESCIMO_PORC')
+                    saldoAjustado = Math.max(1, saldoAjustado * (1 - renegociarValorAjuste / 100));
+                  else if (renegociarTipoAjuste === 'DECRESCIMO_VAL')
+                    saldoAjustado = Math.max(1, saldoAjustado - renegociarValorAjuste * parcelasNaoPagas.length);
+                  else if (renegociarTipoAjuste === 'NOVO_VALOR')
+                    saldoAjustado =
+                      renegociarValorAjuste *
+                      (renegociarCheckQtdParcelas ? renegociarNovaQtdParcelas : parcelasNaoPagas.length);
+                }
+
+                const qtdFinal =
+                  renegociarCheckQtdParcelas && renegociarNovaQtdParcelas > 0
+                    ? renegociarNovaQtdParcelas
+                    : parcelasNaoPagas.length;
+                const valorAprox = qtdFinal > 0 ? saldoAjustado / qtdFinal : 0;
+
+                return (
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-1.5">
+                    <div className="flex justify-between">
+                      <span>Parcelas já quitadas:</span>
+                      <strong className="text-emerald-700">
+                        {parcelasPagas.length} pagas (permanecem intactas)
+                      </strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Parcelas ativas não pagas:</span>
+                      <strong>{parcelasNaoPagas.length} parcelas</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Saldo original não pago:</span>
+                      <strong>R$ {saldoRestante.toFixed(2)}</strong>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-slate-200 font-bold text-slate-900 text-xs">
+                      <span>Simulação do novo parcelamento:</span>
+                      <span className="text-blue-700 font-black">
+                        {qtdFinal}x de R$ {valorAprox.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Rodapé com Botões Cancelar e Ajustar Parcelas (Idêntico ao Print Image 3) */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setModalRenegociarParcelasAberto(false)}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarRenegociacao}
+                className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition cursor-pointer hover:scale-102"
+              >
+                Ajustar Parcelas
               </button>
             </div>
           </div>

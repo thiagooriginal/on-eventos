@@ -1,0 +1,17 @@
+{
+    "ativo": true,
+    "status": "conectado",
+    "provedor": "evolution",
+    "apiUrl": "https://api.oneventos.com.br",
+    "apiKey": "on_whatsapp_secret_key_2026",
+    "instancia": "on-eventos-oficial",
+    "numeroConectado": "(11) 98765-4321",
+    "nomeAgencia": "ON Agência de Eventos",
+    "lembreteAutomaticoAtivo": true,
+    "mensagemApenasEnvio": true,
+    "rodapeAviso": "_(Mensagem automática do sistema de cobrança da ON Eventos • Canal exclusivo de avisos, não recebe respostas)_",
+    "metaPhoneNumberId": "",
+    "metaAccessToken": "",
+    "zapiInstanceId": "",
+    "zapiToken": ""
+}

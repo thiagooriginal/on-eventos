@@ -58,6 +58,7 @@ import {
   RotateCcw,
   Undo2,
   Zap,
+  Send,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import ReconhecimentoFacialModal from '@/components/ReconhecimentoFacialModal';
@@ -122,6 +123,10 @@ export interface ParcelaBoleto {
   valorPago?: number;
   descontoAplicado?: number;
   observacoesBaixa?: string;
+  // Campos de Disparo e Lembrete WhatsApp
+  ultimoEnvioZap?: string;
+  lembrete1DiaEnviado?: boolean;
+  lembrete1DiaData?: string;
 }
 
 export interface VendaAlbum {
@@ -561,6 +566,22 @@ export default function VendasAlbunsPage() {
   // Menu de Opções no Carnê (Image 2)
   const [menuOpcoesCarneAberto, setMenuOpcoesCarneAberto] = useState(false);
 
+  // Estados para Integração WhatsApp da Agência & Lembretes Automáticos
+  const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
+  const [whatsAppConectado, setWhatsAppConectado] = useState(true);
+  const [whatsAppNumero, setWhatsAppNumero] = useState('(11) 98765-4321');
+  const [whatsAppProvedor, setWhatsAppProvedor] = useState('evolution');
+  const [whatsAppApiUrl, setWhatsAppApiUrl] = useState('https://api.oneventos.com.br');
+  const [whatsAppApiKey, setWhatsAppApiKey] = useState('on_whatsapp_secret_key_2026');
+  const [whatsAppInstancia, setWhatsAppInstancia] = useState('on-eventos-oficial');
+  const [whatsAppLembreteAtivo, setWhatsAppLembreteAtivo] = useState(true);
+  const [whatsAppRodape, setWhatsAppRodape] = useState(
+    '_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_'
+  );
+  const [enviandoZap, setEnviandoZap] = useState<string | null>(null);
+  const [executandoLembretesZap, setExecutandoLembretesZap] = useState(false);
+  const [ultimoScanLembretes, setUltimoScanLembretes] = useState<string>('');
+
   // Formulário Nova Venda: Configuração do Kit
   const [formAbaAtiva, setFormAbaAtiva] = useState<'ALBUM' | 'BRINDES' | 'PAGAMENTO'>('ALBUM');
   const [formNome, setFormNome] = useState('');
@@ -716,6 +737,26 @@ export default function VendasAlbunsPage() {
           })
           .catch(() => {});
       };
+
+      // 6. Carrega configurações do WhatsApp da Agência
+      fetch('/whatsapp_api.php?action=get_config')
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.sucesso && d.config) {
+            setWhatsAppConectado(d.config.status === 'conectado');
+            if (d.config.numeroConectado) setWhatsAppNumero(d.config.numeroConectado);
+            if (d.config.provedor) setWhatsAppProvedor(d.config.provedor);
+            if (d.config.apiUrl) setWhatsAppApiUrl(d.config.apiUrl);
+            if (d.config.apiKey) setWhatsAppApiKey(d.config.apiKey);
+            if (d.config.instancia) setWhatsAppInstancia(d.config.instancia);
+            if (typeof d.config.lembreteAutomaticoAtivo === 'boolean') {
+              setWhatsAppLembreteAtivo(d.config.lembreteAutomaticoAtivo);
+            }
+            if (d.config.rodapeAviso) setWhatsAppRodape(d.config.rodapeAviso);
+            if (d.config.ultimoScanLembretes) setUltimoScanLembretes(d.config.ultimoScanLembretes);
+          }
+        })
+        .catch(() => {});
 
       syncBaixasSicredi();
       const intervalId = setInterval(syncBaixasSicredi, 40000);
@@ -1605,6 +1646,163 @@ export default function VendasAlbunsPage() {
     handleRegistrarBoletosApi(vendaAtualizada.id, vendaAtualizada);
   };
 
+  // Enviar Carnê Completo diretamente pelo WhatsApp da Agência (sem abrir o app do zap)
+  const handleEnviarCarneWhatsApp = async (venda: VendaAlbum) => {
+    if (!venda.alunoTelefone) {
+      showToast('⚠️ O formando não possui telefone cadastrado.');
+      return;
+    }
+    setEnviandoZap('carne');
+    showToast(`📤 Enviando carnê diretamente via WhatsApp da agência para ${venda.alunoNome}...`);
+
+    try {
+      const res = await fetch('/whatsapp_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'enviar_carne',
+          vendaId: venda.id,
+          telefone: venda.alunoTelefone,
+          alunoNome: venda.alunoNome,
+          codigoPedido: venda.codigoPedido,
+          modeloAlbum: venda.modeloAlbum,
+          valorTotal: venda.valorTotalKit,
+          parcelas: venda.parcelasBoletos || [],
+        }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        showToast(`🎉 Carnê enviado com sucesso pelo WhatsApp da agência para ${venda.alunoNome}!`);
+      } else {
+        showToast(`⚠️ ${data.erro || 'Falha ao enviar carnê via WhatsApp.'}`);
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Erro de conexão com o WhatsApp da agência: ${e.message}`);
+    } finally {
+      setEnviandoZap(null);
+    }
+  };
+
+  // Enviar Boleto de Parcela Individual diretamente pelo WhatsApp da Agência
+  const handleEnviarParcelaWhatsApp = async (venda: VendaAlbum, parcela: ParcelaBoleto) => {
+    if (!venda.alunoTelefone) {
+      showToast('⚠️ O formando não possui telefone cadastrado.');
+      return;
+    }
+    const chaveEnvio = `parcela-${parcela.numero}`;
+    setEnviandoZap(chaveEnvio);
+    showToast(`📤 Enviando Parcela #${parcela.numero} via WhatsApp da agência para ${venda.alunoNome}...`);
+
+    try {
+      const res = await fetch('/whatsapp_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'enviar_boleto',
+          vendaId: venda.id,
+          parcelaNumero: parcela.numero,
+          telefone: venda.alunoTelefone,
+          alunoNome: venda.alunoNome,
+          codigoPedido: venda.codigoPedido,
+          modeloAlbum: venda.modeloAlbum,
+          vencimento: parcela.vencimento,
+          valor: parcela.valor,
+          linhaDigitavel: parcela.linhaDigitavel,
+          codigoPix: parcela.codigoPix,
+          totalParcelas: venda.parcelasBoletos?.length || 1,
+        }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        const agora = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const atualizadas = vendas.map((v) => {
+          if (v.id === venda.id && v.parcelasBoletos) {
+            const novasP = v.parcelasBoletos.map((p) => (p.numero === parcela.numero ? { ...p, ultimoEnvioZap: agora } : p));
+            return { ...v, parcelasBoletos: novasP };
+          }
+          return v;
+        });
+        salvarVendasLocal(atualizadas);
+        const atualizada = atualizadas.find((v) => v.id === venda.id);
+        if (atualizada) setVendaSelecionadaBoletos(atualizada);
+
+        showToast(`🎉 Parcela #${parcela.numero} enviada no WhatsApp de ${venda.alunoNome}!`);
+      } else {
+        showToast(`⚠️ ${data.erro || 'Falha ao enviar parcela via WhatsApp.'}`);
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Erro: ${e.message}`);
+    } finally {
+      setEnviandoZap(null);
+    }
+  };
+
+  // Executar Lembretes de Vencimento de 1 Dia (Automação de Vencimento)
+  const handleExecutarLembretesAmanha = async () => {
+    setExecutandoLembretesZap(true);
+    showToast('🔔 Verificando parcelas que vencem amanhã e disparando lembretes...');
+
+    try {
+      const res = await fetch('/whatsapp_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enviar_lembretes_vencimento' }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        fetch('/vendas.php')
+          .then((r) => r.json())
+          .then((limpas) => {
+            if (Array.isArray(limpas)) {
+              setVendas(limpas.filter((v: any) => !isClienteFicticio(v)));
+            }
+          })
+          .catch(() => {});
+
+        showToast(`🎉 ${data.mensagem}`);
+      } else {
+        showToast(`⚠️ ${data.erro || 'Falha ao executar lembretes.'}`);
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Erro: ${e.message}`);
+    } finally {
+      setExecutandoLembretesZap(false);
+    }
+  };
+
+  // Salvar Configuração do WhatsApp da Agência
+  const handleSalvarConfigWhatsApp = async () => {
+    try {
+      const res = await fetch('/whatsapp_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_config',
+          config: {
+            ativo: true,
+            status: whatsAppConectado ? 'conectado' : 'desconectado',
+            numeroConectado: whatsAppNumero,
+            provedor: whatsAppProvedor,
+            apiUrl: whatsAppApiUrl,
+            apiKey: whatsAppApiKey,
+            instancia: whatsAppInstancia,
+            lembreteAutomaticoAtivo: whatsAppLembreteAtivo,
+            rodapeAviso: whatsAppRodape,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        showToast('✓ Configurações do WhatsApp da agência salvas com sucesso!');
+        setModalWhatsAppAberto(false);
+      } else {
+        showToast(`⚠️ ${data.erro || 'Erro ao salvar configurações.'}`);
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Erro: ${e.message}`);
+    }
+  };
+
   // Submeter Criação de Nova Venda do Kit
   const handleSubmitNovaVenda = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1940,6 +2138,16 @@ export default function VendasAlbunsPage() {
                   {registrosExclusoes.length}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => setModalWhatsAppAberto(true)}
+              className="inline-flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black shadow-sm transition hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
+              title="Central WhatsApp da Agência: Conexão e Lembretes Automáticos de Vencimento"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <Phone className="w-4 h-4 text-emerald-700" />
+              <span>WhatsApp Agência</span>
             </button>
 
             <button
@@ -2608,20 +2816,39 @@ export default function VendasAlbunsPage() {
 
                             return (
                               <div className="space-y-1">
-                                <button
-                                  onClick={() => avancarStatusProducao(venda.id)}
-                                  className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-black border ${etapa.corBadge} hover:brightness-95 transition shadow-2xs group cursor-pointer`}
-                                  title={`Etapa atual: ${etapa.nome}. Clique para avançar!`}
-                                >
-                                  <span>{etapa.icone}</span>
-                                  <span>{etapa.nomeCurto}</span>
-                                  <ChevronRight className="w-3 h-3 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-                                </button>
-                                <div className="text-[10px] font-mono text-slate-600 flex items-center space-x-1">
-                                  <Clock className="w-3 h-3 text-slate-400" />
-                                  <span>{infoEtapa.prazo ? formatarDataBR(infoEtapa.prazo) : 'Sem prazo'}</span>
+                                <div className="flex items-center space-x-1.5">
+                                  <button
+                                    onClick={() => avancarStatusProducao(venda.id)}
+                                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-xs font-black border ${etapa.corBadge} hover:brightness-95 transition shadow-2xs group cursor-pointer`}
+                                    title={`Etapa atual: ${etapa.nome}. Clique para avançar!`}
+                                  >
+                                    <span>{etapa.icone}</span>
+                                    <span>{etapa.nomeCurto}</span>
+                                    <ChevronRight className="w-3 h-3 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => abrirModalEdicaoPrazo(venda)}
+                                    className="p-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition shadow-2xs cursor-pointer hover:scale-105"
+                                    title="Corrigir prazos de produção e responsável deste pedido"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
-                                <div className="text-[10px] text-slate-500 truncate max-w-[130px]">
+                                <div
+                                  onClick={() => abrirModalEdicaoPrazo(venda)}
+                                  className="text-[10px] font-mono text-slate-600 flex items-center space-x-1 hover:text-purple-700 cursor-pointer group"
+                                  title="Clique para corrigir o prazo de produção"
+                                >
+                                  <Clock className="w-3 h-3 text-slate-400 group-hover:text-purple-600" />
+                                  <span>{infoEtapa.prazo ? formatarDataBR(infoEtapa.prazo) : 'Sem prazo'}</span>
+                                  <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-purple-600 transition-opacity ml-0.5" />
+                                </div>
+                                <div
+                                  onClick={() => abrirModalEdicaoPrazo(venda)}
+                                  className="text-[10px] text-slate-500 truncate max-w-[130px] hover:text-purple-700 cursor-pointer"
+                                  title="Clique para alterar o responsável"
+                                >
                                   👤 {venda.responsavelNome || 'Equipe'}
                                 </div>
                               </div>
@@ -3804,22 +4031,25 @@ export default function VendasAlbunsPage() {
                   <Printer className="w-3.5 h-3.5" />
                   <span>Imprimir Carnê</span>
                 </button>
-                <a
-                  href={`https://wa.me/55${vendaSelecionadaBoletos.alunoTelefone.replace(
-                    /\D/g,
-                    ''
-                  )}?text=Olá%20${encodeURIComponent(
-                    vendaSelecionadaBoletos.alunoNome
-                  )},%20seguem%20os%20dados%20do%20seu%20carnê%20de%20boletos%20do%20Kit%20(${encodeURIComponent(
-                    vendaSelecionadaBoletos.modeloAlbum
-                  )}%20-%20${encodeURIComponent(vendaSelecionadaBoletos.codigoPedido)}).`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs flex items-center space-x-1.5"
+                <button
+                  type="button"
+                  onClick={() => handleEnviarCarneWhatsApp(vendaSelecionadaBoletos)}
+                  disabled={enviandoZap === 'carne'}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
+                  title="Enviar carnê completo diretamente pelo WhatsApp da agência para o telefone do formando"
                 >
                   <Phone className="w-3.5 h-3.5" />
-                  <span>Enviar no WhatsApp</span>
-                </a>
+                  <span>{enviandoZap === 'carne' ? 'Enviando pelo Zap...' : 'Enviar Carnê no Zap'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalWhatsAppAberto(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs shadow-2xs flex items-center space-x-1 cursor-pointer transition"
+                  title="Gerenciar conexão do WhatsApp da agência e lembretes de vencimento"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>Zap Agência</span>
+                </button>
               </div>
             </div>
 
@@ -3850,9 +4080,23 @@ export default function VendasAlbunsPage() {
                           <strong className="text-slate-900 text-xs block">
                             Parcela {parcela.numero} de {vendaSelecionadaBoletos.parcelasBoletos?.length}
                           </strong>
-                          <span className="text-[11px] text-slate-500">
-                            Vencimento: <strong>{parcela.vencimento}</strong>
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="text-[11px] text-slate-500">
+                              Vencimento: <strong>{parcela.vencimento}</strong>
+                            </span>
+                            {parcela.ultimoEnvioZap && (
+                              <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 inline-flex items-center space-x-1">
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                <span>Zap enviado {parcela.ultimoEnvioZap}</span>
+                              </span>
+                            )}
+                            {parcela.lembrete1DiaEnviado && (
+                              <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 inline-flex items-center space-x-1">
+                                <Clock className="w-3 h-3 text-blue-600" />
+                                <span>Lembrete 1 dia enviado ({parcela.lembrete1DiaData})</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -3879,15 +4123,29 @@ export default function VendasAlbunsPage() {
                         </div>
 
                         {!isPaga && (
-                          <button
-                            type="button"
-                            onClick={() => abrirModalQuitacaoManual(vendaSelecionadaBoletos, parcela)}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs flex items-center space-x-1 cursor-pointer transition hover:scale-102"
-                            title="Quitação manual da parcela via PIX, dinheiro ou transferência"
-                          >
-                            <DollarSign className="w-3.5 h-3.5" />
-                            <span>Quitar Parcela</span>
-                          </button>
+                          <div className="flex items-center space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleEnviarParcelaWhatsApp(vendaSelecionadaBoletos, parcela)}
+                              disabled={enviandoZap === `parcela-${parcela.numero}`}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs shadow-2xs flex items-center space-x-1 cursor-pointer transition hover:scale-102"
+                              title="Enviar boleto, linha digitável e código PIX desta parcela diretamente para o WhatsApp do formando"
+                            >
+                              <Send className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>
+                                {enviandoZap === `parcela-${parcela.numero}` ? 'Enviando...' : 'Enviar no Zap'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => abrirModalQuitacaoManual(vendaSelecionadaBoletos, parcela)}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs flex items-center space-x-1 cursor-pointer transition hover:scale-102"
+                              title="Quitação manual da parcela via PIX, dinheiro ou transferência"
+                            >
+                              <DollarSign className="w-3.5 h-3.5" />
+                              <span>Quitar Parcela</span>
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -5871,6 +6129,214 @@ ON AGENCIA DE EVENTOS LTDA`;
               >
                 Ajustar Parcelas
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: WHATSAPP DA AGÊNCIA & LEMBRETES AUTOMÁTICOS DE VENCIMENTO
+          ========================================================================= */}
+      {modalWhatsAppAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-[28px] w-full max-w-2xl p-6 lg:p-7 shadow-2xl border border-slate-200 animate-in fade-in duration-150 my-6">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md">
+                  <Phone className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-black text-slate-900">
+                      WhatsApp da Agência & Lembretes
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center space-x-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                      <span>Conectado</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Disparo direto de boletos e lembretes automáticos de vencimento (1 dia antes)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalWhatsAppAberto(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Corpo */}
+            <div className="space-y-5 my-5 text-xs text-slate-700">
+              {/* Card 1: Automação do Lembrete de 1 Dia */}
+              <div className="p-4.5 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 text-blue-900 font-black text-sm">
+                    <Clock className="w-4 h-4 text-blue-600" />
+                    <span>Lembrete de Vencimento de 1 Dia Antes</span>
+                  </div>
+                  <label className="flex items-center space-x-2 cursor-pointer font-bold text-blue-950">
+                    <input
+                      type="checkbox"
+                      checked={whatsAppLembreteAtivo}
+                      onChange={(e) => setWhatsAppLembreteAtivo(e.target.checked)}
+                      className="w-4 h-4 rounded text-blue-600 border-blue-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span>Ativo</span>
+                  </label>
+                </div>
+
+                <p className="text-blue-900/90 text-xs leading-relaxed">
+                  Quando faltar <strong>exatamente 1 dia para vencer a parcela</strong>, o sistema dispara uma mensagem amigável no WhatsApp do formando contendo a linha digitável e o código PIX Copia e Cola.
+                </p>
+
+                <div className="p-3 bg-white/80 rounded-xl border border-blue-100 text-[11px] text-slate-600 font-mono space-y-1">
+                  <strong className="text-blue-900 block font-sans text-xs">Exemplo da mensagem enviada:</strong>
+                  <p>Olá, Formando! Passando para lembrar que a Parcela 3/12 da sua Formatura vence amanhã (22/10/2026) no valor de R$ 124,50.</p>
+                  <p>📄 Linha Digitável: 74891.12003 ...</p>
+                  <p>💠 PIX Copia e Cola: 00020126 ...</p>
+                  <p className="italic text-slate-500">{whatsAppRodape}</p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-blue-200/80">
+                  <div className="text-[11px] text-blue-800">
+                    {ultimoScanLembretes ? (
+                      <span>Último scan executado: <strong>{ultimoScanLembretes}</strong></span>
+                    ) : (
+                      <span>Scan diário automático ativo às <strong>08:00</strong></span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleExecutarLembretesAmanha}
+                    disabled={executandoLembretesZap}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black text-xs shadow-xs transition flex items-center space-x-1.5 cursor-pointer hover:scale-102 shrink-0"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{executandoLembretesZap ? 'Verificando e Enviando...' : 'Disparar Lembretes de Amanhã Agora'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 2: Regra de Somente Envio (Sem Respostas / Sem Agente) */}
+              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-900 text-xs flex items-start space-x-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-bold">Canal Exclusivo para Notificações e Cobrança</strong>
+                  <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
+                    Este número de WhatsApp é configurado apenas para envio de avisos e boletos. Não possui chatbot ou agentes de resposta automática. As mensagens incluem o rodapé informativo alertando os alunos.
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 3: Configurações Técnicas de Conexão */}
+              <div className="p-4.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900 text-xs uppercase tracking-wider block">
+                    Configuração da Conexão da Agência
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    🟢 Ativo para Disparos
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Número do WhatsApp Conectado:
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsAppNumero}
+                      onChange={(e) => setWhatsAppNumero(e.target.value)}
+                      placeholder="(11) 98765-4321"
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Provedor / Tipo de Integração:
+                    </label>
+                    <select
+                      value={whatsAppProvedor}
+                      onChange={(e) => setWhatsAppProvedor(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value="evolution">Evolution API (Node / VPS / Hostinger)</option>
+                      <option value="zapi">Z-API WhatsApp</option>
+                      <option value="meta">Meta WhatsApp Cloud API (Oficial)</option>
+                      <option value="custom">Gateway Direto ON Eventos</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      URL da API / Endpoint:
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsAppApiUrl}
+                      onChange={(e) => setWhatsAppApiUrl(e.target.value)}
+                      placeholder="https://api.oneventos.com.br"
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Nome da Instância:
+                    </label>
+                    <input
+                      type="text"
+                      value={whatsAppInstancia}
+                      onChange={(e) => setWhatsAppInstancia(e.target.value)}
+                      placeholder="on-eventos-oficial"
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Rodapé Informativo das Mensagens:
+                  </label>
+                  <input
+                    type="text"
+                    value={whatsAppRodape}
+                    onChange={(e) => setWhatsAppRodape(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">
+                Disparos em segundo plano sem abrir o app local do usuário.
+              </span>
+              <div className="flex items-center space-x-2.5">
+                <button
+                  type="button"
+                  onClick={() => setModalWhatsAppAberto(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSalvarConfigWhatsApp}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition cursor-pointer hover:scale-102 flex items-center space-x-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Salvar Configurações</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

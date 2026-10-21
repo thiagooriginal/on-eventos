@@ -1131,6 +1131,7 @@ export default function VendasAlbunsPage() {
     setEditPrazoConfeccao(venda.prazoConfeccao || (venda.statusProducao === 'EM_GRAFICA' ? venda.prazoProducao : '') || '');
     setEditPrazoProducao(venda.prazoProducao || '');
   };
+  const abrirModalEdicaoPrazo = abrirModalEditarPrazo;
 
   // Salvar alterações de responsável e prazos por etapa
   const handleSalvarEdicaoPrazo = (e: React.FormEvent) => {
@@ -2828,15 +2829,21 @@ export default function VendasAlbunsPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => abrirModalEdicaoPrazo(venda)}
-                                    className="p-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition shadow-2xs cursor-pointer hover:scale-105"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      abrirModalEditarPrazo(venda);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition shadow-2xs cursor-pointer hover:scale-110 active:scale-95"
                                     title="Corrigir prazos de produção e responsável deste pedido"
                                   >
                                     <Edit3 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                                 <div
-                                  onClick={() => abrirModalEdicaoPrazo(venda)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    abrirModalEditarPrazo(venda);
+                                  }}
                                   className="text-[10px] font-mono text-slate-600 flex items-center space-x-1 hover:text-purple-700 cursor-pointer group"
                                   title="Clique para corrigir o prazo de produção"
                                 >
@@ -2845,7 +2852,10 @@ export default function VendasAlbunsPage() {
                                   <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-purple-600 transition-opacity ml-0.5" />
                                 </div>
                                 <div
-                                  onClick={() => abrirModalEdicaoPrazo(venda)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    abrirModalEditarPrazo(venda);
+                                  }}
                                   className="text-[10px] text-slate-500 truncate max-w-[130px] hover:text-purple-700 cursor-pointer"
                                   title="Clique para alterar o responsável"
                                 >

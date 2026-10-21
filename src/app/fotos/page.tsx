@@ -568,12 +568,12 @@ export default function VendasAlbunsPage() {
 
   // Estados para Integração WhatsApp da Agência & Lembretes Automáticos
   const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
-  const [whatsAppConectado, setWhatsAppConectado] = useState(true);
-  const [whatsAppNumero, setWhatsAppNumero] = useState('(11) 98765-4321');
+  const [whatsAppConectado, setWhatsAppConectado] = useState(false);
+  const [whatsAppNumero, setWhatsAppNumero] = useState('');
   const [whatsAppProvedor, setWhatsAppProvedor] = useState('evolution');
-  const [whatsAppApiUrl, setWhatsAppApiUrl] = useState('https://api.oneventos.com.br');
-  const [whatsAppApiKey, setWhatsAppApiKey] = useState('on_whatsapp_secret_key_2026');
-  const [whatsAppInstancia, setWhatsAppInstancia] = useState('on-eventos-oficial');
+  const [whatsAppApiUrl, setWhatsAppApiUrl] = useState('https://assistente-zap-evolution-api.cla6w1.easypanel.host');
+  const [whatsAppApiKey, setWhatsAppApiKey] = useState('429683C4C977415CAAFCCE10F7D57E11');
+  const [whatsAppInstancia, setWhatsAppInstancia] = useState('on-cobranca');
   const [whatsAppLembreteAtivo, setWhatsAppLembreteAtivo] = useState(true);
   const [whatsAppRodape, setWhatsAppRodape] = useState(
     '_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_'
@@ -581,6 +581,10 @@ export default function VendasAlbunsPage() {
   const [enviandoZap, setEnviandoZap] = useState<string | null>(null);
   const [executandoLembretesZap, setExecutandoLembretesZap] = useState(false);
   const [ultimoScanLembretes, setUltimoScanLembretes] = useState<string>('');
+  const [qrCodeBase64, setQrCodeBase64] = useState<string>('');
+  const [carregandoQrCode, setCarregandoQrCode] = useState<boolean>(false);
+  const [telefoneTesteZap, setTelefoneTesteZap] = useState<string>('');
+  const [testandoZap, setTestandoZap] = useState<boolean>(false);
 
   // Formulário Nova Venda: Configuração do Kit
   const [formAbaAtiva, setFormAbaAtiva] = useState<'ALBUM' | 'BRINDES' | 'PAGAMENTO'>('ALBUM');
@@ -1801,6 +1805,72 @@ export default function VendasAlbunsPage() {
       }
     } catch (e: any) {
       showToast(`⚠️ Erro: ${e.message}`);
+    }
+  };
+
+  // Buscar QR Code atual da Evolution API
+  const handleCarregarQrCode = async () => {
+    setCarregandoQrCode(true);
+    try {
+      const res = await fetch('/whatsapp_api.php?action=get_qrcode');
+      const data = await res.json();
+      if (data.sucesso && data.base64) {
+        setQrCodeBase64(data.base64);
+        showToast('QR Code atualizado! Aponte a câmera do WhatsApp.');
+      } else {
+        showToast('⚠️ QR Code ainda não disponível ou a instância já está conectada!');
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Falha ao carregar QR Code: ${e.message}`);
+    } finally {
+      setCarregandoQrCode(false);
+    }
+  };
+
+  // Verificar status de conexão da instância
+  const handleVerificarConexaoWhatsApp = async () => {
+    try {
+      const res = await fetch('/whatsapp_api.php?action=verificar_conexao');
+      const data = await res.json();
+      if (data.conectado) {
+        setWhatsAppConectado(true);
+        showToast('🎉 Parabéns! WhatsApp da agência conectado com sucesso na instância on-cobranca!');
+      } else {
+        setWhatsAppConectado(false);
+        showToast(`Status: ${data.estado || 'aguardando'}. Aponte a câmera do WhatsApp para o QR Code.`);
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Erro ao verificar conexão: ${e.message}`);
+    }
+  };
+
+  // Disparar Mensagem de Teste em Tempo Real
+  const handleDispararTesteZap = async () => {
+    if (!telefoneTesteZap.trim()) {
+      showToast('Digite um número de telefone para teste (ex: 11999998888).');
+      return;
+    }
+    setTestandoZap(true);
+    showToast(`📤 Disparando teste para ${telefoneTesteZap}...`);
+    try {
+      const res = await fetch('/whatsapp_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'testar_conexao',
+          telefone: telefoneTesteZap,
+        }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        showToast('🎉 Mensagem de teste enviada com sucesso no seu WhatsApp!');
+      } else {
+        showToast(`⚠️ ${data.erro || 'Falha no disparo de teste.'}`);
+      }
+    } catch (e: any) {
+      showToast(`⚠️ Erro: ${e.message}`);
+    } finally {
+      setTestandoZap(false);
     }
   };
 
@@ -6239,6 +6309,112 @@ ON AGENCIA DE EVENTOS LTDA`;
                   <strong className="block font-bold">Canal Exclusivo para Notificações e Cobrança</strong>
                   <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
                     Este número de WhatsApp é configurado apenas para envio de avisos e boletos. Não possui chatbot ou agentes de resposta automática. As mensagens incluem o rodapé informativo alertando os alunos.
+                  </span>
+                </div>
+              </div>
+
+              {/* Card Conectar via QR Code da Evolution API */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-base">📲</span>
+                    <strong className="text-slate-900 font-black text-sm">
+                      Conexão do WhatsApp da Agência (Instância: <code className="text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded text-xs">{whatsAppInstancia}</code>)
+                    </strong>
+                  </div>
+                  <span
+                    className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+                      whatsAppConectado
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-amber-100 text-amber-800 border-amber-300 animate-pulse'
+                    }`}
+                  >
+                    {whatsAppConectado ? '🟢 Conectado' : '🟡 Aguardando QR Code'}
+                  </span>
+                </div>
+
+                {!whatsAppConectado ? (
+                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-xl border border-emerald-100 shadow-2xs">
+                    <div className="w-44 h-44 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center p-1 relative shrink-0">
+                      <img
+                        src={qrCodeBase64 ? (qrCodeBase64.startsWith('data:') ? qrCodeBase64 : `data:image/png;base64,${qrCodeBase64}`) : '/whatsapp_qrcode.png'}
+                        alt="QR Code WhatsApp"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div className="space-y-2 text-xs text-slate-600 flex-1">
+                      <p className="font-bold text-slate-800">
+                        1. Abra o WhatsApp no celular oficial da agência.
+                      </p>
+                      <p>
+                        2. Vá em <strong>Aparelhos Conectados</strong> &gt; <strong>Conectar um aparelho</strong>.
+                      </p>
+                      <p>
+                        3. Aponte a câmera para o QR Code ao lado.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={handleCarregarQrCode}
+                          disabled={carregandoQrCode}
+                          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer flex items-center space-x-1"
+                        >
+                          <RotateCcw className={`w-3.5 h-3.5 ${carregandoQrCode ? 'animate-spin' : ''}`} />
+                          <span>{carregandoQrCode ? 'Atualizando...' : 'Atualizar QR Code'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleVerificarConexaoWhatsApp}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition shadow-xs cursor-pointer flex items-center space-x-1"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Já Escaneei / Verificar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white rounded-xl border border-emerald-200 flex items-center justify-between">
+                    <div className="flex items-center space-x-2 text-xs text-emerald-900">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>WhatsApp conectado e pronto para enviar mensagens pelo número da agência!</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleVerificarConexaoWhatsApp}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-xs transition cursor-pointer"
+                    >
+                      Checar Status
+                    </button>
+                  </div>
+                )}
+
+                {/* Teste de Disparo Real */}
+                <div className="pt-3 border-t border-emerald-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex-1">
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      🧪 Testar Disparo Real no Celular:
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={telefoneTesteZap}
+                        onChange={(e) => setTelefoneTesteZap(e.target.value)}
+                        placeholder="Ex: 11999998888"
+                        className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none w-full max-w-[200px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleDispararTesteZap}
+                        disabled={testandoZap}
+                        className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white font-black text-xs shadow-xs transition cursor-pointer disabled:opacity-50"
+                      >
+                        {testandoZap ? 'Disparando...' : 'Enviar Teste'}
+                      </button>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-500 italic max-w-[220px]">
+                    Receba uma mensagem de teste para confirmar que o canal está entregando.
                   </span>
                 </div>
               </div>

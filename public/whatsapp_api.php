@@ -121,6 +121,10 @@ function dispararMensagemWhatsApp($telefone, $textoMensagem) {
             $dataResp = json_decode($resp, true);
             $msgId = $dataResp['key']['id'] ?? $dataResp['messageId'] ?? 'evo_' . time();
             return ['sucesso' => true, 'provedor' => 'evolution', 'msgId' => $msgId];
+        } else {
+            $errData = json_decode($resp, true);
+            $detalhe = $errData['response']['message'][0] ?? $errData['message'] ?? $errData['error'] ?? ($err ?: "HTTP {$httpCode}");
+            return ['sucesso' => false, 'erro' => "Evolution API rejeitou o envio ({$detalhe}). Verifique se o WhatsApp da agência está conectado via QR Code."];
         }
     }
 
@@ -243,6 +247,81 @@ if ($action === 'save_config') {
         exit;
     }
     echo json_encode(['sucesso' => false, 'erro' => 'Dados de configuração inválidos.'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 2.1 Obter QR Code da Evolution API
+if ($action === 'get_qrcode') {
+    $apiUrl = rtrim($config['apiUrl'] ?? '', '/');
+    $apiKey = $config['apiKey'] ?? '';
+    $instancia = $config['instancia'] ?? 'on-cobranca';
+
+    if (empty($apiUrl) || empty($apiKey)) {
+        echo json_encode(['sucesso' => false, 'erro' => 'API não configurada.'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => "{$apiUrl}/instance/connect/{$instancia}",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'apikey: ' . $apiKey
+        ],
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_SSL_VERIFYPEER => false
+    ]);
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $data = json_decode($resp, true) ?: [];
+    $base64 = $data['base64'] ?? $data['qrcode']['base64'] ?? null;
+    $pairingCode = $data['pairingCode'] ?? null;
+
+    echo json_encode([
+        'sucesso' => !empty($base64) || !empty($pairingCode),
+        'base64' => $base64,
+        'pairingCode' => $pairingCode,
+        'instancia' => $instancia
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 2.2 Verificar status da conexão da instância
+if ($action === 'verificar_conexao') {
+    $apiUrl = rtrim($config['apiUrl'] ?? '', '/');
+    $apiKey = $config['apiKey'] ?? '';
+    $instancia = $config['instancia'] ?? 'on-cobranca';
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => "{$apiUrl}/instance/connectionState/{$instancia}",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'apikey: ' . $apiKey
+        ],
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_SSL_VERIFYPEER => false
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+
+    $data = json_decode($resp, true) ?: [];
+    $state = $data['instance']['state'] ?? $data['state'] ?? 'close';
+    $conectado = ($state === 'open');
+
+    if ($conectado) {
+        $config['status'] = 'conectado';
+        @file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    }
+
+    echo json_encode([
+        'sucesso' => true,
+        'conectado' => $conectado,
+        'estado' => $state,
+        'instancia' => $instancia
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 

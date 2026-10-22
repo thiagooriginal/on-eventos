@@ -129,6 +129,13 @@ export interface ParcelaBoleto {
   lembrete1DiaData?: string;
 }
 
+export interface ObservacaoRegistro {
+  id: string;
+  dataHora: string;
+  autorNome: string;
+  texto: string;
+}
+
 export interface VendaAlbum {
   id: string;
   codigoPedido: string;
@@ -161,6 +168,7 @@ export interface VendaAlbum {
   // Produção & Gestão de Prazos por Etapa e Responsável
   statusProducao: 'EM_DIAGRAMACAO' | 'APROVACAO_CLIENTE' | 'EM_GRAFICA' | 'PRONTO_ENTREGA' | 'ENTREGUE';
   observacoes?: string;
+  historicoObservacoes?: ObservacaoRegistro[];
   responsavelId?: string;
   responsavelNome?: string;
   responsavelEmail?: string;
@@ -537,6 +545,27 @@ export default function VendasAlbunsPage() {
   const [editCartaoBandeira, setEditCartaoBandeira] = useState<string>('Mastercard');
   const [editCartaoNsu, setEditCartaoNsu] = useState<string>('');
 
+  // Estados para Modal de Correção de Valor Total (Lápis do Valor)
+  const [modalEditarValorTotalAberto, setModalEditarValorTotalAberto] = useState(false);
+  const [vendaEditandoValorTotal, setVendaEditandoValorTotal] = useState<VendaAlbum | null>(null);
+  const [novoValorTotalInput, setNovoValorTotalInput] = useState<string>('');
+  const [recalcularParcelasBoleto, setRecalcularParcelasBoleto] = useState<boolean>(true);
+
+  // Estados para Modal de Correção de Brindes e Modelo do Álbum (Lápis dos Brindes)
+  const [modalEditarBrindesAberto, setModalEditarBrindesAberto] = useState(false);
+  const [vendaEditandoBrindes, setVendaEditandoBrindes] = useState<VendaAlbum | null>(null);
+  const [editModeloAlbum, setEditModeloAlbum] = useState<ModeloAlbumTipo>('Album premium');
+  const [editListaBrindes, setEditListaBrindes] = useState<BrindeItem[]>([]);
+  const [novoBrindeNome, setNovoBrindeNome] = useState<string>('');
+  const [novoBrindeValor, setNovoBrindeValor] = useState<string>('0');
+
+  // Estados para Modal / Aba de Observações do Formando (Clique no Nome)
+  const [modalObservacoesAberto, setModalObservacoesAberto] = useState(false);
+  const [vendaObservacoes, setVendaObservacoes] = useState<VendaAlbum | null>(null);
+  const [abaObservacoesAtiva, setAbaObservacoesAtiva] = useState<'NOTAS' | 'CADASTRO' | 'PEDIDO'>('NOTAS');
+  const [textoNovaObservacao, setTextoNovaObservacao] = useState<string>('');
+  const [textoObservacoesGerais, setTextoObservacoesGerais] = useState<string>('');
+
   // Estados para Modal de Quitação Manual de Parcelas (Image 4)
   const [modalQuitarParcelaAberto, setModalQuitarParcelaAberto] = useState(false);
   const [quitacaoVenda, setQuitacaoVenda] = useState<VendaAlbum | null>(null);
@@ -782,6 +811,20 @@ export default function VendasAlbunsPage() {
       } catch (e) {}
     }
   };
+
+  // Se a página for aberta em nova aba com ?alunoId=..., abre automaticamente o prontuário/observações
+  useEffect(() => {
+    if (typeof window !== 'undefined' && vendas.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const alunoId = params.get('alunoId');
+      if (alunoId && !vendaObservacoes) {
+        const encontrada = vendas.find((x) => x.id === alunoId || x.codigoPedido === alunoId);
+        if (encontrada) {
+          abrirModalObservacoes(encontrada);
+        }
+      }
+    }
+  }, [vendas, vendaObservacoes]);
 
   // Abrir modal de confirmação com auditoria para excluir um álbum
   const abrirModalExclusaoSegura = (venda: VendaAlbum) => {
@@ -1166,6 +1209,220 @@ export default function VendasAlbunsPage() {
     salvarVendasLocal(atualizadas);
     setVendaEditandoPrazo(null);
     showToast('Prazos por etapa e responsável atualizados com sucesso!');
+  };
+
+  // ==========================================
+  // FUNÇÕES PARA CORREÇÃO DE VALOR TOTAL DO KIT (LÁPIS DO VALOR)
+  // ==========================================
+  const abrirModalEditarValorTotal = (venda: VendaAlbum) => {
+    setVendaEditandoValorTotal(venda);
+    setNovoValorTotalInput(String(venda.valorTotalKit || 0));
+    setRecalcularParcelasBoleto(true);
+    setModalEditarValorTotalAberto(true);
+  };
+
+  const handleSalvarValorTotal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vendaEditandoValorTotal) return;
+
+    const novoValor = parseFloat(novoValorTotalInput.replace(',', '.'));
+    if (isNaN(novoValor) || novoValor <= 0) {
+      showToast('⚠️ Digite um valor numérico válido maior que zero.');
+      return;
+    }
+
+    const atualizadas = vendas.map((v) => {
+      if (v.id === vendaEditandoValorTotal.id) {
+        let novasParcelas = v.parcelasBoletos ? [...v.parcelasBoletos] : undefined;
+
+        if (v.formaPagamento === 'BOLETO' && Array.isArray(novasParcelas) && novasParcelas.length > 0 && recalcularParcelasBoleto) {
+          const pagas = novasParcelas.filter((p) => p.status === 'PAGO');
+          const pendentes = novasParcelas.filter((p) => p.status !== 'PAGO');
+
+          if (pendentes.length > 0) {
+            const somaPagas = pagas.reduce((acc, p) => acc + (p.valorPago || p.valor), 0);
+            const restante = Math.max(0, novoValor - somaPagas);
+            const valorBase = Math.floor((restante / pendentes.length) * 100) / 100;
+            const centavosDiferenca = Number((restante - valorBase * pendentes.length).toFixed(2));
+
+            novasParcelas = novasParcelas.map((p) => {
+              if (p.status === 'PAGO') return p;
+              const idxPendente = pendentes.findIndex((x) => x.numero === p.numero);
+              const val = idxPendente === pendentes.length - 1 ? Number((valorBase + centavosDiferenca).toFixed(2)) : valorBase;
+
+              const dig1 = Math.floor(10000 + Math.random() * 90000);
+              const dig2 = Math.floor(10000 + Math.random() * 90000);
+              const linha = `74891.12003 ${dig1}.234508 ${dig2}.67890${p.numero} ${p.numero} 98760000${Math.floor(val * 100)}`;
+              const pix = `00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef12345678520400005303986540${val.toFixed(2).length}${val.toFixed(2)}5802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304${dig1.toString().slice(0, 4)}`;
+
+              return {
+                ...p,
+                valor: val,
+                linhaDigitavel: linha,
+                codigoPix: pix,
+              };
+            });
+          }
+        }
+
+        return {
+          ...v,
+          valorTotalKit: novoValor,
+          parcelasBoletos: novasParcelas,
+        };
+      }
+      return v;
+    });
+
+    salvarVendasLocal(atualizadas);
+    if (vendaSelecionadaBoletos && vendaSelecionadaBoletos.id === vendaEditandoValorTotal.id) {
+      const at = atualizadas.find((x) => x.id === vendaEditandoValorTotal.id);
+      if (at) setVendaSelecionadaBoletos(at);
+    }
+    setModalEditarValorTotalAberto(false);
+    showToast(`✓ Valor total do pedido ${vendaEditandoValorTotal.codigoPedido} atualizado para R$ ${novoValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}!`);
+  };
+
+  // ==========================================
+  // FUNÇÕES PARA CORREÇÃO DE BRINDES & MODELO (LÁPIS DOS BRINDES)
+  // ==========================================
+  const abrirModalEditarBrindes = (venda: VendaAlbum) => {
+    setVendaEditandoBrindes(venda);
+    setEditModeloAlbum(venda.modeloAlbum || 'Album premium');
+    const brindesPadrao: BrindeItem[] = [
+      { id: '1', nome: 'Quadro 30x60', descricao: 'Moldura de madeira nobre e acabamento premium', selecionado: false, valorAdicional: 0 },
+      { id: '2', nome: 'Trio de quadros', descricao: 'Três quadros decorativos 15x21 com paspatur', selecionado: false, valorAdicional: 0 },
+      { id: '3', nome: 'Link de fotos', descricao: 'Acesso digital ilimitado em alta resolução', selecionado: false, valorAdicional: 0 },
+      { id: '4', nome: 'Diploma acrilico', descricao: 'Placa comemorativa em acrílico cristal', selecionado: false, valorAdicional: 0 },
+    ];
+
+    if (Array.isArray(venda.brindes) && venda.brindes.length > 0) {
+      const mesclados = brindesPadrao.map((padrao) => {
+        const existente = venda.brindes.find((b) => b.nome === padrao.nome || b.id === padrao.id);
+        return existente ? { ...padrao, ...existente } : padrao;
+      });
+      const extras = venda.brindes.filter((b) => !brindesPadrao.some((padrao) => padrao.nome === b.nome));
+      setEditListaBrindes([...mesclados, ...extras]);
+    } else {
+      setEditListaBrindes(brindesPadrao);
+    }
+
+    setNovoBrindeNome('');
+    setNovoBrindeValor('0');
+    setModalEditarBrindesAberto(true);
+  };
+
+  const toggleBrindeEdicao = (idOuNome: string) => {
+    setEditListaBrindes((prev) =>
+      prev.map((b) => (b.id === idOuNome || b.nome === idOuNome ? { ...b, selecionado: !b.selecionado } : b))
+    );
+  };
+
+  const handleAdicionarBrindeExtra = () => {
+    if (!novoBrindeNome.trim()) return;
+    const novo: BrindeItem = {
+      id: `brinde_extra_${Date.now()}`,
+      nome: novoBrindeNome.trim() as any,
+      descricao: 'Item adicional do kit',
+      selecionado: true,
+      valorAdicional: parseFloat(novoBrindeValor.replace(',', '.')) || 0,
+    };
+    setEditListaBrindes((prev) => [...prev, novo]);
+    setNovoBrindeNome('');
+    setNovoBrindeValor('0');
+    showToast(`✓ Brinde '${novo.nome}' adicionado à lista!`);
+  };
+
+  const handleRemoverBrindeExtra = (id: string) => {
+    setEditListaBrindes((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const handleSalvarBrindes = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vendaEditandoBrindes) return;
+
+    const somaBrindes = editListaBrindes
+      .filter((b) => b.selecionado)
+      .reduce((acc, b) => acc + (b.valorAdicional || 0), 0);
+
+    const atualizadas = vendas.map((v) => {
+      if (v.id === vendaEditandoBrindes.id) {
+        return {
+          ...v,
+          modeloAlbum: editModeloAlbum,
+          brindes: editListaBrindes,
+          valorTotalBrindes: somaBrindes,
+        };
+      }
+      return v;
+    });
+
+    salvarVendasLocal(atualizadas);
+    setModalEditarBrindesAberto(false);
+    showToast(`✓ Brindes e modelo do pedido ${vendaEditandoBrindes.codigoPedido} atualizados com sucesso!`);
+  };
+
+  // ==========================================
+  // FUNÇÕES PARA MODAL / ABA DE OBSERVAÇÕES (CLIQUE NO FORMANDO)
+  // ==========================================
+  const abrirModalObservacoes = (venda: VendaAlbum) => {
+    setVendaObservacoes(venda);
+    setTextoObservacoesGerais(venda.observacoes || '');
+    setTextoNovaObservacao('');
+    setAbaObservacoesAtiva('NOTAS');
+    setModalObservacoesAberto(true);
+  };
+
+  const handleAdicionarNovaNotaObservacao = () => {
+    if (!vendaObservacoes || !textoNovaObservacao.trim()) return;
+
+    const agora = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const novaNota: ObservacaoRegistro = {
+      id: `obs_${Date.now()}`,
+      dataHora: agora,
+      autorNome: usuarioLogado?.nome || 'Equipe ON',
+      texto: textoNovaObservacao.trim(),
+    };
+
+    const historicoAtual = Array.isArray(vendaObservacoes.historicoObservacoes)
+      ? vendaObservacoes.historicoObservacoes
+      : [];
+    const novoHistorico = [novaNota, ...historicoAtual];
+
+    const atualizadas = vendas.map((v) => {
+      if (v.id === vendaObservacoes.id) {
+        return {
+          ...v,
+          observacoes: textoObservacoesGerais.trim(),
+          historicoObservacoes: novoHistorico,
+        };
+      }
+      return v;
+    });
+
+    salvarVendasLocal(atualizadas);
+    const atualizada = atualizadas.find((v) => v.id === vendaObservacoes.id);
+    if (atualizada) setVendaObservacoes(atualizada);
+    setTextoNovaObservacao('');
+    showToast('✓ Anotação registrada com sucesso no prontuário do formando!');
+  };
+
+  const handleSalvarObservacoesGerais = () => {
+    if (!vendaObservacoes) return;
+    const atualizadas = vendas.map((v) => {
+      if (v.id === vendaObservacoes.id) {
+        return {
+          ...v,
+          observacoes: textoObservacoesGerais.trim(),
+        };
+      }
+      return v;
+    });
+
+    salvarVendasLocal(atualizadas);
+    const atualizada = atualizadas.find((v) => v.id === vendaObservacoes.id);
+    if (atualizada) setVendaObservacoes(atualizada);
+    showToast('✓ Observações gerais salvas com sucesso!');
   };
 
   const abrirModalNovaVenda = () => {
@@ -2730,11 +2987,35 @@ export default function VendasAlbunsPage() {
                           <span className="text-[10px] text-slate-400 font-medium block mt-0.5">{venda.dataVenda}</span>
                         </td>
 
-                        {/* 2. Formando & Turma (Organizado sem repetição e sem quebra de CPF) */}
+                        {/* 2. Formando & Turma (Clique no Nome para abrir Prontuário/Observações) */}
                         <td className="py-3.5 px-4 min-w-[220px]">
-                          <strong className="text-slate-900 block text-xs font-bold leading-tight truncate max-w-[220px]" title={venda.alunoNome}>
-                            {venda.alunoNome}
-                          </strong>
+                          <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalObservacoes(venda);
+                              }}
+                              className="text-left font-bold text-xs text-slate-900 hover:text-purple-700 hover:underline flex items-center space-x-1 group cursor-pointer transition"
+                              title="Clique para ver ou adicionar observações e ocorrências deste formando"
+                            >
+                              <span className="truncate max-w-[190px]">{venda.alunoNome}</span>
+                              <FileText className="w-3.5 h-3.5 text-purple-600 opacity-60 group-hover:opacity-100 shrink-0" />
+                            </button>
+                            {((venda.observacoes && venda.observacoes.trim().length > 0) || (venda.historicoObservacoes && venda.historicoObservacoes.length > 0)) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  abrirModalObservacoes(venda);
+                                }}
+                                className="px-1.5 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-800 text-[9px] font-bold border border-amber-300 cursor-pointer shrink-0 transition"
+                                title="Possui observações gravadas. Clique para ver!"
+                              >
+                                📝 {venda.historicoObservacoes?.length ? `${venda.historicoObservacoes.length} notas` : 'Obs'}
+                              </button>
+                            )}
+                          </div>
                           <div className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 mt-1 max-w-full truncate">
                             <span>🏛️ {extrairInfoTurma(venda).instituicao}</span>
                             <span>&bull;</span>
@@ -2745,21 +3026,34 @@ export default function VendasAlbunsPage() {
                           </div>
                         </td>
 
-                        {/* 3. Kit & Brindes */}
-                        <td className="py-3.5 px-4 min-w-[180px]">
-                          <span
-                            className={`inline-block px-2.5 py-1 rounded-xl text-xs font-bold border ${
-                              venda.modeloAlbum === 'Album premium'
-                                ? 'bg-purple-50 text-purple-800 border-purple-200'
-                                : venda.modeloAlbum === 'Album Preto'
-                                ? 'bg-slate-900 text-white border-slate-700'
-                                : venda.modeloAlbum === 'Album Slim'
-                                ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            }`}
-                          >
-                            {venda.modeloAlbum}
-                          </span>
+                        {/* 3. Kit & Brindes (com Lápis para Corrigir Brindes e Modelo) */}
+                        <td className="py-3.5 px-4 min-w-[190px]">
+                          <div className="flex items-center space-x-1.5">
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-xl text-xs font-bold border ${
+                                venda.modeloAlbum === 'Album premium'
+                                  ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                  : venda.modeloAlbum === 'Album Preto'
+                                  ? 'bg-slate-900 text-white border-slate-700'
+                                  : venda.modeloAlbum === 'Album Slim'
+                                  ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              }`}
+                            >
+                              {venda.modeloAlbum}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalEditarBrindes(venda);
+                              }}
+                              className="p-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition shadow-2xs cursor-pointer hover:scale-110 active:scale-95 shrink-0"
+                              title="Corrigir brindes ou modelo do álbum deste kit"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+                          </div>
                           {brindesAtivos.length > 0 ? (
                             <div className="flex flex-wrap gap-1 mt-1.5 max-w-[200px]">
                               {brindesAtivos.map((b) => (
@@ -2776,11 +3070,24 @@ export default function VendasAlbunsPage() {
                           )}
                         </td>
 
-                        {/* 4. Total do Kit */}
-                        <td className="py-3.5 px-4 whitespace-nowrap w-32">
-                          <span className="font-mono font-black text-slate-950 text-sm block">
-                            R$ {venda.valorTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </span>
+                        {/* 4. Total do Kit (com Lápis para Corrigir Valor Total) */}
+                        <td className="py-3.5 px-4 whitespace-nowrap w-36">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="font-mono font-black text-slate-950 text-sm block">
+                              R$ {venda.valorTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalEditarValorTotal(venda);
+                              }}
+                              className="p-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition shadow-2xs cursor-pointer hover:scale-110 active:scale-95 shrink-0"
+                              title="Corrigir valor total do kit"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+                          </div>
                           <span className="text-[10px] text-emerald-700 font-bold block mt-0.5">
                             Kit Completo
                           </span>
@@ -6523,6 +6830,541 @@ ON AGENCIA DE EVENTOS LTDA`;
                   <span>Salvar Configurações</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: CORRIGIR VALOR TOTAL DO KIT (LÁPIS DO VALOR)
+          ========================================================================= */}
+      {modalEditarValorTotalAberto && vendaEditandoValorTotal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-[28px] w-full max-w-lg p-6 lg:p-7 shadow-2xl border border-slate-200 animate-in fade-in duration-150 my-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Corrigir Valor Total do Kit
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {vendaEditandoValorTotal.codigoPedido} &bull; {vendaEditandoValorTotal.alunoNome}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalEditarValorTotalAberto(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarValorTotal} className="mt-5 space-y-4">
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 block font-medium">Valor Atual do Kit:</span>
+                  <span className="font-mono font-black text-slate-900 text-sm">
+                    R$ {vendaEditandoValorTotal.valorTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block font-medium">Forma de Pagamento:</span>
+                  <span className="font-bold text-slate-800">
+                    {vendaEditandoValorTotal.formaPagamento === 'BOLETO'
+                      ? `Boleto Sicredi (${vendaEditandoValorTotal.parcelasBoletos?.length || vendaEditandoValorTotal.boletoQtdParcelas || 1}x)`
+                      : vendaEditandoValorTotal.formaPagamento}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Novo Valor Total do Kit (R$):
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">
+                    R$
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={novoValorTotalInput}
+                    onChange={(e) => setNovoValorTotalInput(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono font-black text-slate-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              {vendaEditandoValorTotal.formaPagamento === 'BOLETO' && (
+                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                  <label className="flex items-start space-x-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={recalcularParcelasBoleto}
+                      onChange={(e) => setRecalcularParcelasBoleto(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 rounded text-amber-600 border-amber-300 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <strong className="text-amber-950 block font-bold">
+                        Recalcular parcelas pendentes automaticamente
+                      </strong>
+                      <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
+                        Mantém as parcelas já pagas intactas e distribui o novo saldo restante igualmente entre as parcelas pendentes, atualizando os códigos de barras e PIX.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setModalEditarValorTotalAberto(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black shadow-md transition cursor-pointer hover:scale-102 flex items-center space-x-1"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Salvar Novo Valor</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: CORRIGIR MODELO DO ÁLBUM & BRINDES DO KIT (LÁPIS DOS BRINDES)
+          ========================================================================= */}
+      {modalEditarBrindesAberto && vendaEditandoBrindes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-[28px] w-full max-w-xl max-h-[92vh] overflow-y-auto p-6 lg:p-7 shadow-2xl border border-slate-200 animate-in fade-in duration-150 my-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md">
+                  <Gift className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Corrigir Modelo do Álbum & Brindes
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {vendaEditandoBrindes.codigoPedido} &bull; {vendaEditandoBrindes.alunoNome}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalEditarBrindesAberto(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarBrindes} className="mt-5 space-y-5">
+              {/* Modelo do Álbum */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2 flex items-center space-x-1">
+                  <Package className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Modelo Principal do Álbum:</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(['Album premium', 'Album Preto', 'Album Slim', 'Album Colégio'] as ModeloAlbumTipo[]).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setEditModeloAlbum(m)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                        editModeloAlbum === m
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Brindes do Kit */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-700 flex items-center space-x-1">
+                    <Gift className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Brindes e Itens Inclusos no Kit:</span>
+                  </label>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {editListaBrindes.filter((b) => b.selecionado).length} selecionado(s)
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {editListaBrindes.map((brinde) => (
+                    <div
+                      key={brinde.id || brinde.nome}
+                      className={`p-3 rounded-xl border flex items-center justify-between transition ${
+                        brinde.selecionado
+                          ? 'bg-purple-50/70 border-purple-300'
+                          : 'bg-slate-50 border-slate-200 opacity-60'
+                      }`}
+                    >
+                      <label className="flex items-center space-x-3 cursor-pointer flex-1 mr-2">
+                        <input
+                          type="checkbox"
+                          checked={brinde.selecionado}
+                          onChange={() => toggleBrindeEdicao(brinde.id || brinde.nome)}
+                          className="w-4 h-4 rounded text-purple-600 border-slate-300 focus:ring-purple-500 cursor-pointer"
+                        />
+                        <div>
+                          <strong className="text-xs font-bold text-slate-900 block">
+                            {brinde.nome}
+                          </strong>
+                          <span className="text-[10px] text-slate-500 block">
+                            {brinde.descricao}
+                          </span>
+                        </div>
+                      </label>
+
+                      {brinde.id && brinde.id.startsWith('brinde_extra_') && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoverBrindeExtra(brinde.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 transition"
+                          title="Remover este brinde extra"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Adicionar Brinde Personalizado / Extra */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <span className="text-xs font-bold text-slate-700 block">
+                  + Adicionar Brinde Personalizado / Extra:
+                </span>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={novoBrindeNome}
+                    onChange={(e) => setNovoBrindeNome(e.target.value)}
+                    placeholder="Nome do brinde (ex: Quadro 50x70, Estojo)"
+                    className="flex-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAdicionarBrindeExtra}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition cursor-pointer shrink-0"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setModalEditarBrindesAberto(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-md transition cursor-pointer hover:scale-102 flex items-center space-x-1"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Salvar Brindes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL / PRONTUÁRIO: OBSERVAÇÕES & HISTÓRICO DO FORMANDO (CLIQUE NO NOME)
+          ========================================================================= */}
+      {modalObservacoesAberto && vendaObservacoes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-[28px] w-full max-w-2xl max-h-[92vh] overflow-y-auto p-6 lg:p-7 shadow-2xl border border-slate-200 animate-in fade-in duration-150 my-6">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-11 h-11 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md">
+                  <User className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-base font-black text-slate-900">
+                      {vendaObservacoes.alunoNome}
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                      {vendaObservacoes.codigoPedido}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {extrairInfoTurma(vendaObservacoes).instituicao} &bull; {vendaObservacoes.turmaNome}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-1.5">
+                <a
+                  href={`/fotos?alunoId=${vendaObservacoes.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 text-slate-600 hover:text-purple-700 font-bold text-xs border border-slate-200 transition flex items-center space-x-1 cursor-pointer"
+                  title="Abrir a ficha completa deste formando em uma nova aba do navegador"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Nova Aba</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setModalObservacoesAberto(false)}
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-abas de Navegação */}
+            <div className="flex border-b border-slate-200 mt-4">
+              <button
+                type="button"
+                onClick={() => setAbaObservacoesAtiva('NOTAS')}
+                className={`pb-2.5 px-4 text-xs font-bold border-b-2 transition flex items-center space-x-1.5 cursor-pointer ${
+                  abaObservacoesAtiva === 'NOTAS'
+                    ? 'border-purple-600 text-purple-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Observações & Ocorrências ({vendaObservacoes.historicoObservacoes?.length || (vendaObservacoes.observacoes ? 1 : 0)})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAbaObservacoesAtiva('CADASTRO')}
+                className={`pb-2.5 px-4 text-xs font-bold border-b-2 transition flex items-center space-x-1.5 cursor-pointer ${
+                  abaObservacoesAtiva === 'CADASTRO'
+                    ? 'border-purple-600 text-purple-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Dados & Contato</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAbaObservacoesAtiva('PEDIDO')}
+                className={`pb-2.5 px-4 text-xs font-bold border-b-2 transition flex items-center space-x-1.5 cursor-pointer ${
+                  abaObservacoesAtiva === 'PEDIDO'
+                    ? 'border-purple-600 text-purple-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Resumo do Pedido</span>
+              </button>
+            </div>
+
+            {/* Conteúdo da Aba 1: NOTAS & OCORRÊNCIAS */}
+            {abaObservacoesAtiva === 'NOTAS' && (
+              <div className="py-4 space-y-5">
+                {/* Observações Gerais */}
+                <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-amber-950 flex items-center space-x-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Observações Gerais do Formando / Pedido:</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleSalvarObservacoesGerais}
+                      className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-2xs transition cursor-pointer"
+                    >
+                      Salvar Texto
+                    </button>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={textoObservacoesGerais}
+                    onChange={(e) => setTextoObservacoesGerais(e.target.value)}
+                    placeholder="Digite anotações gerais, preferências, restrições ou recados sobre este formando..."
+                    className="w-full p-2.5 rounded-xl bg-white border border-amber-200 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Adicionar Nova Ocorrência Rápida */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <strong className="text-xs font-bold text-slate-900 block">
+                    + Registrar Nova Ocorrência / Contato com o Formando:
+                  </strong>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={textoNovaObservacao}
+                      onChange={(e) => setTextoNovaObservacao(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAdicionarNovaNotaObservacao();
+                        }
+                      }}
+                      placeholder="Ex: Formando solicitou troca de foto da colação; Entregue comprovante via WhatsApp..."
+                      className="flex-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAdicionarNovaNotaObservacao}
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-xs transition cursor-pointer shrink-0"
+                    >
+                      + Registrar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Linha do Tempo de Ocorrências */}
+                <div>
+                  <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Linha do Tempo de Anotações</span>
+                  </h4>
+
+                  {Array.isArray(vendaObservacoes.historicoObservacoes) && vendaObservacoes.historicoObservacoes.length > 0 ? (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {vendaObservacoes.historicoObservacoes.map((item) => (
+                        <div key={item.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span className="font-bold text-purple-700">👤 {item.autorNome}</span>
+                            <span>📅 {item.dataHora}</span>
+                          </div>
+                          <p className="text-slate-800 leading-relaxed font-medium">
+                            {item.texto}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center rounded-2xl bg-slate-50 border border-slate-200/80 text-slate-400 text-xs">
+                      Nenhuma anotação registrada ainda. Use o campo acima para registrar qualquer contato ou ocorrência com o formando!
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Conteúdo da Aba 2: DADOS & CONTATO */}
+            {abaObservacoesAtiva === 'CADASTRO' && (
+              <div className="py-4 space-y-3.5 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 block text-[11px]">Nome Completo:</span>
+                    <strong className="text-slate-900 text-sm">{vendaObservacoes.alunoNome}</strong>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 block text-[11px]">CPF:</span>
+                    <span className="font-mono font-bold text-slate-900">{vendaObservacoes.alunoCpf}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 block text-[11px]">Telefone / WhatsApp:</span>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="font-bold text-slate-900">{vendaObservacoes.alunoTelefone || 'Não informado'}</span>
+                      {vendaObservacoes.alunoTelefone && (
+                        <a
+                          href={`https://wa.me/55${vendaObservacoes.alunoTelefone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-[10px] transition"
+                        >
+                          Chamar no Zap
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-400 block text-[11px]">E-mail:</span>
+                    <span className="font-bold text-slate-900">{vendaObservacoes.alunoEmail || 'Não informado'}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 sm:col-span-2">
+                    <span className="text-slate-400 block text-[11px]">Turma & Instituição:</span>
+                    <strong className="text-slate-900 block mt-0.5">
+                      {vendaObservacoes.turmaNome} ({extrairInfoTurma(vendaObservacoes).instituicao} - {extrairInfoTurma(vendaObservacoes).periodo})
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Conteúdo da Aba 3: RESUMO DO PEDIDO */}
+            {abaObservacoesAtiva === 'PEDIDO' && (
+              <div className="py-4 space-y-3.5 text-xs">
+                <div className="p-4 bg-purple-50/60 rounded-2xl border border-purple-200 grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-purple-900/70 block text-[11px]">Modelo Escolhido:</span>
+                    <strong className="text-purple-950 text-sm">{vendaObservacoes.modeloAlbum}</strong>
+                  </div>
+                  <div>
+                    <span className="text-purple-900/70 block text-[11px]">Valor Total do Kit:</span>
+                    <strong className="font-mono text-purple-950 text-base">
+                      R$ {vendaObservacoes.valorTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-purple-900/70 block text-[11px]">Forma de Pagamento:</span>
+                    <span className="font-bold text-purple-900">{vendaObservacoes.formaPagamento}</span>
+                  </div>
+                  <div>
+                    <span className="text-purple-900/70 block text-[11px]">Status de Produção:</span>
+                    <span className="font-bold text-purple-900">{vendaObservacoes.statusProducao}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="font-bold text-slate-700 block mb-1.5">Brindes e Itens do Kit:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {vendaObservacoes.brindes?.filter((b) => b.selecionado).map((b) => (
+                      <span
+                        key={b.id || b.nome}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 font-bold border border-slate-200"
+                      >
+                        ✓ {b.nome}
+                      </span>
+                    )) || <span className="text-slate-400 italic">Nenhum brinde selecionado.</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Data do Pedido: {vendaObservacoes.dataVenda}
+              </span>
+              <button
+                type="button"
+                onClick={() => setModalObservacoesAberto(false)}
+                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                Fechar Prontuário
+              </button>
             </div>
           </div>
         </div>

@@ -22,6 +22,9 @@ const nextConfig = {
     '*.loca.lt',
   ],
   turbopack: {},
+  experimental: {
+    agentUpgrade: 'security',
+  },
 };
 
 export default nextConfig;

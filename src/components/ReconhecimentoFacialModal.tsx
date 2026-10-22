@@ -129,10 +129,29 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
       });
       const data = await res.json();
       if (data.sucesso) {
-        setMsgFeedback({ tipo: 'sucesso', texto: 'Configurações da AWS Rekognition salvas com sucesso!' });
+        setMsgFeedback({ tipo: 'sucesso', texto: 'Configurações salvas! Validando conexão com a AWS...' });
         setFormAccessKey('');
         setFormSecretKey('');
-        carregarConfigAws();
+        await carregarConfigAws();
+
+        // Validação automática imediata com a AWS
+        try {
+          const resTest = await fetch('/aws_rekognition.php?action=testar_conexao');
+          const dataTest = await resTest.json();
+          if (dataTest.sucesso) {
+            setMsgFeedback({
+              tipo: 'sucesso',
+              texto: `✅ Credenciais validadas com sucesso na AWS Rekognition (${formRegiao})! O serviço está 100% ativo.`
+            });
+          } else {
+            setMsgFeedback({
+              tipo: 'erro',
+              texto: `Chaves salvas, mas a AWS retornou erro: ${dataTest.erro || 'Verifique as permissões da chave.'}`
+            });
+          }
+        } catch {
+          setMsgFeedback({ tipo: 'sucesso', texto: 'Configurações salvas com sucesso!' });
+        }
       } else {
         setMsgFeedback({ tipo: 'erro', texto: data.erro || 'Erro ao salvar configurações.' });
       }
@@ -222,6 +241,14 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
 
   // Executar Reconhecimento Facial em Lotes Progressivos
   const iniciarReconhecimento = async () => {
+    if (!configAws.configurado) {
+      setMsgFeedback({
+        tipo: 'erro',
+        texto: 'Por favor, configure as credenciais da AWS Rekognition na aba "Configurar AWS" antes de iniciar a análise.'
+      });
+      setAbaAtiva('CONFIG');
+      return;
+    }
     if (!fotoReferencia) {
       alert('Selecione primeiro a foto de referência (o rosto do formando).');
       return;
@@ -423,15 +450,110 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
         {/* ABA: CONFIGURAÇÕES DA AWS */}
         {abaAtiva === 'CONFIG' && (
           <div className="p-6 overflow-y-auto space-y-6">
-            <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200 flex items-start space-x-3 text-xs text-amber-900">
-              <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <strong className="block font-bold text-amber-950 mb-1">
-                  Cota Gratuita da AWS Rekognition (5.000 fotos / mês)
-                </strong>
-                A AWS oferece o nível gratuito (*Free Tier*) de <strong>5.000 análises por mês</strong> sem custos.
-                Para ativar, basta criar uma conta gratuita na AWS, gerar uma chave de acesso (Access Key) com permissão
-                `AmazonRekognitionFullAccess` e colar abaixo.
+            {/* Status Atual da Conexão */}
+            <div className={`rounded-2xl p-4 border flex items-center justify-between ${
+              configAws.configurado
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                : 'bg-amber-50 border-amber-200 text-amber-950'
+            }`}>
+              <div className="flex items-center space-x-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  configAws.configurado ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+                }`}>
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <strong className="text-xs font-black uppercase tracking-wider">
+                      Status da IA Facial:
+                    </strong>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      configAws.configurado
+                        ? 'bg-emerald-200 text-emerald-900'
+                        : 'bg-amber-200 text-amber-900'
+                    }`}>
+                      {configAws.configurado ? '🟢 Conectado e Operacional' : '⚠️ Aguardando Chaves AWS'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    {configAws.configurado
+                      ? `Chave ativa: ${configAws.aws_access_key_id_mascarada} • Região: ${configAws.aws_region} • Limiar: ${formLimiar}%`
+                      : 'Insira suas credenciais da AWS Rekognition abaixo para habilitar a separação automática.'}
+                  </p>
+                </div>
+              </div>
+
+              {configAws.configurado && (
+                <button
+                  type="button"
+                  onClick={testarConexaoAws}
+                  disabled={testandoConexao}
+                  className="px-3 py-1.5 rounded-xl bg-white text-emerald-800 text-xs font-bold border border-emerald-300 hover:bg-emerald-100 transition shadow-xs flex items-center space-x-1 cursor-pointer"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${testandoConexao ? 'animate-spin' : ''}`} />
+                  <span>{testandoConexao ? 'Testando...' : 'Re-testar Conexão'}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Passo a Passo Rápido para Gerar as Chaves */}
+            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Info className="w-4 h-4 text-purple-600" />
+                  <span>Como obter suas Chaves Gratuitas da AWS (5.000 fotos/mês grátis)</span>
+                </h4>
+                <a
+                  href="https://console.aws.amazon.com/iam/home#/users"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-bold text-purple-700 hover:text-purple-900 flex items-center space-x-1 underline"
+                >
+                  <span>Abrir AWS Console (IAM)</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div className="bg-white p-3 rounded-xl border border-slate-200">
+                  <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-800 font-black text-[10px] inline-flex items-center justify-center mb-1">
+                    1
+                  </span>
+                  <strong className="block text-slate-900 font-bold mb-0.5">Criar Usuário</strong>
+                  <p className="text-[11px] text-slate-600">
+                    Acesse o IAM no AWS Console e clique em <strong>Create user</strong> (ex: <code>on-eventos-facial</code>).
+                  </p>
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border border-slate-200">
+                  <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-800 font-black text-[10px] inline-flex items-center justify-center mb-1">
+                    2
+                  </span>
+                  <strong className="block text-slate-900 font-bold mb-0.5">Anexar Permissão</strong>
+                  <p className="text-[11px] text-slate-600">
+                    Selecione <em>Attach policies directly</em> e marque a política <code>AmazonRekognitionFullAccess</code>.
+                  </p>
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border border-slate-200">
+                  <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-800 font-black text-[10px] inline-flex items-center justify-center mb-1">
+                    3
+                  </span>
+                  <strong className="block text-slate-900 font-bold mb-0.5">Gerar Access Key</strong>
+                  <p className="text-[11px] text-slate-600">
+                    Vá na aba <em>Security credentials</em> do usuário e clique em <strong>Create access key</strong> (Outside AWS).
+                  </p>
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border border-slate-200">
+                  <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-800 font-black text-[10px] inline-flex items-center justify-center mb-1">
+                    4
+                  </span>
+                  <strong className="block text-slate-900 font-bold mb-0.5">Salvar e Ativar</strong>
+                  <p className="text-[11px] text-slate-600">
+                    Copie a <strong>Access Key ID</strong> e o <strong>Secret Access Key</strong> e cole no formulário abaixo.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -700,6 +822,16 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
               </div>
 
               <div className="flex items-center space-x-3">
+                {!configAws.configurado && (
+                  <button
+                    type="button"
+                    onClick={() => setAbaAtiva('CONFIG')}
+                    className="px-4 py-3 rounded-2xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs shadow-md transition flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Sliders className="w-4 h-4 text-slate-950" />
+                    <span>Configurar Chaves AWS</span>
+                  </button>
+                )}
                 <button
                   onClick={iniciarReconhecimento}
                   disabled={processando || !fotoReferencia || fotosLote.length === 0}

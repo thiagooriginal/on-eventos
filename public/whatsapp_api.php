@@ -1,6 +1,7 @@
 <?php
 // API Centralizada de Integração WhatsApp da Agência & Disparos Automáticos
 // ON Agência de Eventos - Envio Direto de Boletos & Lembrete de Vencimento de 1 Dia
+date_default_timezone_set('America/Sao_Paulo');
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -25,6 +26,8 @@ $defaultConfig = [
     'numeroConectado' => '(11) 98765-4321',
     'nomeAgencia' => 'ON Agência de Eventos',
     'lembreteAutomaticoAtivo' => true,
+    'horarioLembrete' => '09:00',
+    'diasAntesLembrete' => 1,
     'mensagemApenasEnvio' => true,
     'rodapeAviso' => "_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_",
     'chavePix' => '30.988.070/0001-60',
@@ -380,7 +383,7 @@ if ($action === 'get_config') {
 if ($action === 'save_config') {
     $novosDados = $payload['config'] ?? $payload;
     if (is_array($novosDados)) {
-        foreach (['ativo', 'status', 'provedor', 'apiUrl', 'apiKey', 'instancia', 'numeroConectado', 'nomeAgencia', 'chavePix', 'nomeBeneficiarioPix', 'cidadePix', 'lembreteAutomaticoAtivo', 'mensagemApenasEnvio', 'rodapeAviso', 'metaPhoneNumberId', 'metaAccessToken', 'zapiInstanceId', 'zapiToken'] as $campo) {
+        foreach (['ativo', 'status', 'provedor', 'apiUrl', 'apiKey', 'instancia', 'numeroConectado', 'nomeAgencia', 'chavePix', 'nomeBeneficiarioPix', 'cidadePix', 'lembreteAutomaticoAtivo', 'horarioLembrete', 'diasAntesLembrete', 'mensagemApenasEnvio', 'rodapeAviso', 'metaPhoneNumberId', 'metaAccessToken', 'zapiInstanceId', 'zapiToken'] as $campo) {
             if (isset($novosDados[$campo])) {
                 $config[$campo] = $novosDados[$campo];
             }
@@ -707,16 +710,82 @@ if ($action === 'enviar_carne') {
     exit;
 }
 
-// 6. ENVIAR LEMBRETES DE VENCIMENTO DE 1 DIA (AUTOMAÇÃO DE VENCIMENTO)
+// 5.5 Verificar Boletos que Vencem Amanhã (Prévia sem disparar)
+if ($action === 'verificar_lembretes_pendentes') {
+    date_default_timezone_set('America/Sao_Paulo');
+    $diasAntes = intval($config['diasAntesLembrete'] ?? 1);
+    if ($diasAntes < 1) $diasAntes = 1;
+    $alvoTimestamp = strtotime("+{$diasAntes} day");
+    $alvoPtBr = date('d/m/Y', $alvoTimestamp);
+
+    $vendas = file_exists($vendasFile) ? (json_decode(file_get_contents($vendasFile), true) ?: []) : [];
+
+    $padronizarData = function($str) {
+        $str = trim((string)$str);
+        if (strpos($str, '/') !== false) {
+            $pt = explode('/', $str);
+            if (count($pt) === 3) {
+                return sprintf('%02d/%02d/%04d', intval($pt[0]), intval($pt[1]), intval($pt[2]));
+            }
+        }
+        if (strpos($str, '-') !== false) {
+            $pt = explode('-', $str);
+            if (count($pt) === 3) {
+                return sprintf('%02d/%02d/%04d', intval($pt[2]), intval($pt[1]), intval($pt[0]));
+            }
+        }
+        return $str;
+    };
+
+    $alvoPadrao = $padronizarData($alvoPtBr);
+    $boletosAlvo = [];
+
+    foreach ($vendas as $venda) {
+        $parcelas = $venda['parcelasBoletos'] ?? [];
+        if (!is_array($parcelas)) continue;
+        $totalP = count($parcelas);
+
+        foreach ($parcelas as $p) {
+            if (($p['status'] ?? '') === 'PAGO') continue;
+            $venc = $padronizarData($p['vencimento'] ?? '');
+            if ($venc === $alvoPadrao) {
+                $boletosAlvo[] = [
+                    'vendaId' => $venda['id'] ?? '',
+                    'alunoNome' => $venda['alunoNome'] ?? '',
+                    'alunoTelefone' => $venda['alunoTelefone'] ?? '',
+                    'codigoPedido' => $venda['codigoPedido'] ?? '',
+                    'modeloAlbum' => $venda['modeloAlbum'] ?? 'Kit Formatura',
+                    'parcelaNumero' => intval($p['numero'] ?? 1),
+                    'totalParcelas' => $totalP,
+                    'valor' => floatval($p['valor'] ?? 0),
+                    'vencimento' => $p['vencimento'] ?? '',
+                    'jaEnviado' => !empty($p['lembrete1DiaEnviado']),
+                    'dataEnvio' => $p['lembrete1DiaData'] ?? null
+                ];
+            }
+        }
+    }
+
+    echo json_encode([
+        'sucesso' => true,
+        'dataAlvo' => $alvoPtBr,
+        'diasAntes' => $diasAntes,
+        'totalPendentes' => count($boletosAlvo),
+        'boletos' => $boletosAlvo
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 6. ENVIAR LEMBRETES DE VENCIMENTO AGENDADOS (AUTOMAÇÃO 1 DIA ANTES DO VENCIMENTO)
 if ($action === 'enviar_lembretes_vencimento') {
+    date_default_timezone_set('America/Sao_Paulo');
     $vendas = file_exists($vendasFile) ? (json_decode(file_get_contents($vendasFile), true) ?: []) : [];
     
-    // Calcula a data de amanhã em diferentes formatos para comparação
-    $hojeTimestamp = time();
-    $amanhaTimestamp = strtotime('+1 day', $hojeTimestamp);
+    $diasAntes = intval($config['diasAntesLembrete'] ?? 1);
+    if ($diasAntes < 1) $diasAntes = 1;
+    $amanhaTimestamp = strtotime("+{$diasAntes} day");
     
-    $amanhaPtBr = date('d/m/Y', $amanhaTimestamp);   // Ex: 22/10/2026
-    $amanhaIso = date('Y-m-d', $amanhaTimestamp);    // Ex: 2026-10-22
+    $amanhaPtBr = date('d/m/Y', $amanhaTimestamp);   // Ex: 23/10/2026
     
     // Normalizador de datas
     $padronizarData = function($str) {
@@ -740,7 +809,10 @@ if ($action === 'enviar_lembretes_vencimento') {
     $totalDisparados = 0;
     $detalhesEnvios = [];
     $modificado = false;
-    $rodape = $config['rodapeAviso'] ?? "_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_";
+    $rodape = $config['rodapeAviso'] ?? "_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos e cobrança, favor não responder)_";
+    $chavePix = $config['chavePix'] ?? '30988070000160';
+    $nomeBeneficiario = $config['nomeBeneficiarioPix'] ?? 'ON EVENTOS LTDA';
+    $cidadeBeneficiario = $config['cidadePix'] ?? 'SAO PAULO';
 
     foreach ($vendas as &$venda) {
         $alunoNome = $venda['alunoNome'] ?? 'Formando';
@@ -764,48 +836,69 @@ if ($action === 'enviar_lembretes_vencimento') {
             $vencimentoOriginal = $parcela['vencimento'] ?? '';
             $vencimentoPadrao = $padronizarData($vencimentoOriginal);
 
-            // Verifica se a parcela vence AMANHÃ (1 dia antes)
+            // Verifica se a parcela vence na data alvo (1 dia antes)
             if ($vencimentoPadrao === $amanhaPadrao) {
-                // Verifica se já não enviou lembrete para esta parcela
+                // Prevenção de duplicidade: verifica se já enviou lembrete para esta parcela
                 if (!empty($parcela['lembrete1DiaEnviado'])) {
                     continue;
                 }
 
-                $pNum = $parcela['numero'] ?? 1;
-                $pVal = number_format(floatval($parcela['valor'] ?? 0), 2, ',', '.');
+                $pNum = intval($parcela['numero'] ?? 1);
+                $pVal = floatval($parcela['valor'] ?? 0);
+                $valFormatado = number_format($pVal, 2, ',', '.');
                 $pLinha = trim($parcela['linhaDigitavel'] ?? '');
                 $pPix = trim($parcela['codigoPix'] ?? '');
+
                 if (empty($pPix) || strpos($pPix, 'e4b8c9f0') !== false) {
-                    $chavePix = $config['chavePix'] ?? '30988070000160';
-                    $nomeBeneficiario = $config['nomeBeneficiarioPix'] ?? 'ON EVENTOS LTDA';
-                    $cidadeBeneficiario = $config['cidadePix'] ?? 'SAO PAULO';
-                    $pPix = gerarCodigoPixValido($chavePix, $nomeBeneficiario, $cidadeBeneficiario, floatval($parcela['valor'] ?? 0), '***');
+                    $pPix = gerarCodigoPixValido($chavePix, $nomeBeneficiario, $cidadeBeneficiario, $pVal, '***');
                     $parcela['codigoPix'] = $pPix;
                     $modificado = true;
                 }
 
-                // Montagem da mensagem amigável de lembrete de 1 dia
-                $msgLembrete = "Olá, *{$alunoNome}*! 👋\n\n";
-                $msgLembrete .= "Passando para lembrar que a *Parcela {$pNum} de {$totalParcelas}* do seu Kit de Formatura vence *amanhã ({$vencimentoOriginal})* no valor de *R$ {$pVal}*.\n\n";
+                $pFormatada = str_pad($pNum, 2, '0', STR_PAD_LEFT) . '/' . str_pad($totalParcelas, 2, '0', STR_PAD_LEFT);
+
+                // 1ª MENSAGEM: Informações completas do Boleto do Mês
+                $msgLembrete = "🔔 *Lembrete de Vencimento - Parcela do Mês*\n";
+                $msgLembrete .= "*Boleto {$pFormatada}*\n\n";
+                $msgLembrete .= "Olá, *{$alunoNome}*! 👋\n";
+                $msgLembrete .= "Lembramos que o boleto da sua parcela deste mês do Kit de Formatura (*Pedido {$codigoPedido}*) vence *amanhã ({$vencimentoOriginal})*:\n\n";
+                $msgLembrete .= "• Formando: {$alunoNome}\n";
+                $msgLembrete .= "• Pedido: {$codigoPedido} ({$modeloAlbum})\n";
+                $msgLembrete .= "• Vencimento: {$vencimentoOriginal}\n";
+                $msgLembrete .= "• Valor: R$ {$valFormatado}\n\n";
                 
                 if (!empty($pLinha)) {
-                    $msgLembrete .= "📄 *Código do Boleto (Linha Digitável):*\n{$pLinha}\n\n";
+                    $msgLembrete .= "*Código do Boleto:*\n{$pLinha}\n\n";
                 }
                 
                 if (!empty($pPix)) {
-                    $msgLembrete .= "💠 *PIX Copia e Cola:*\n{$pPix}\n\n";
+                    $msgLembrete .= "*PIX Copia e Cola:*\n{$pPix}\n\n";
                 }
                 
-                $msgLembrete .= "Evite juros e encargos realizando o pagamento até a data de vencimento. Caso já tenha efetuado o pagamento, por favor desconsidere este aviso.\n\n";
+                $msgLembrete .= "👇 _Para facilitar o pagamento, enviamos logo abaixo o código do boleto e o código Pix em mensagens avulsas para você copiar com 1 toque no celular:_\n\n";
+                $msgLembrete .= "_(Caso já tenha efetuado o pagamento, favor desconsiderar este aviso)_\n";
                 $msgLembrete .= $rodape;
 
-                // Realiza o disparo direto
+                // Realiza o disparo da mensagem principal
                 $res = dispararMensagemWhatsApp($telefone, $msgLembrete);
                 
                 if ($res['sucesso']) {
+                    // 2ª MENSAGEM SEPARADA: APENAS a linha digitável avulsa
+                    if (!empty($pLinha)) {
+                        usleep(500000); // 500ms
+                        dispararMensagemWhatsApp($telefone, $pLinha);
+                    }
+
+                    // 3ª MENSAGEM SEPARADA: APENAS o PIX Copia e Cola avulso
+                    if (!empty($pPix)) {
+                        usleep(500000); // 500ms
+                        dispararMensagemWhatsApp($telefone, $pPix);
+                    }
+
+                    $agora = date('d/m/Y H:i:s');
                     $parcela['lembrete1DiaEnviado'] = true;
-                    $parcela['lembrete1DiaData'] = date('d/m/Y H:i:s');
-                    $parcela['ultimoEnvioZap'] = date('d/m/Y H:i:s');
+                    $parcela['lembrete1DiaData'] = $agora;
+                    $parcela['ultimoEnvioZap'] = $agora;
                     $totalDisparados++;
                     $modificado = true;
 
@@ -814,14 +907,14 @@ if ($action === 'enviar_lembretes_vencimento') {
                         'telefone' => $telefone,
                         'pedido' => $codigoPedido,
                         'parcela' => $pNum,
-                        'valor' => $pVal,
+                        'valor' => $valFormatado,
                         'vencimento' => $vencimentoOriginal,
                         'status' => 'Enviado'
                     ];
 
-                    registrarLogZap('LEMBRETE_1_DIA', $telefone, $alunoNome, $codigoPedido, true, $res['msgId'] ?? '');
+                    registrarLogZap('LEMBRETE_1_DIA', $telefone, $alunoNome, "{$codigoPedido} #{$pNum}", true, $res['msgId'] ?? '');
                 } else {
-                    registrarLogZap('LEMBRETE_1_DIA', $telefone, $alunoNome, $codigoPedido, false, '', $res['erro'] ?? '');
+                    registrarLogZap('LEMBRETE_1_DIA', $telefone, $alunoNome, "{$codigoPedido} #{$pNum}", false, '', $res['erro'] ?? '');
                 }
             }
         }
@@ -841,8 +934,8 @@ if ($action === 'enviar_lembretes_vencimento') {
         'totalDisparados' => $totalDisparados,
         'detalhes' => $detalhesEnvios,
         'mensagem' => $totalDisparados > 0
-            ? "✓ {$totalDisparados} lembrete(s) de vencimento para amanhã ({$amanhaPtBr}) enviado(s) com sucesso!"
-            : "Nenhuma parcela ativa encontrada com vencimento para amanhã ({$amanhaPtBr}). Todas as notificações estão em dia!"
+            ? "✓ {$totalDisparados} boleto(s) de amanhã ({$amanhaPtBr}) enviado(s) com sucesso com códigos avulsos!"
+            : "Nenhum boleto pendente com vencimento para amanhã ({$amanhaPtBr}). Todas as notificações estão em dia!"
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }

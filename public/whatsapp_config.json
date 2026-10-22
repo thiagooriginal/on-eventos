@@ -11,6 +11,8 @@
     "nomeBeneficiarioPix": "ON EVENTOS LTDA",
     "cidadePix": "SAO PAULO",
     "lembreteAutomaticoAtivo": true,
+    "horarioLembrete": "09:00",
+    "diasAntesLembrete": 1,
     "mensagemApenasEnvio": true,
     "rodapeAviso": "_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos e cobrança, favor não responder)_",
     "metaPhoneNumberId": "",

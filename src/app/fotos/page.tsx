@@ -608,8 +608,13 @@ export default function VendasAlbunsPage() {
   const [whatsAppApiKey, setWhatsAppApiKey] = useState('429683C4C977415CAAFCCE10F7D57E11');
   const [whatsAppInstancia, setWhatsAppInstancia] = useState('on-cobranca');
   const [whatsAppLembreteAtivo, setWhatsAppLembreteAtivo] = useState(true);
+  const [whatsAppHorarioLembrete, setWhatsAppHorarioLembrete] = useState('09:00');
+  const [whatsAppDiasAntes, setWhatsAppDiasAntes] = useState(1);
+  const [boletosAmanhaPrevia, setBoletosAmanhaPrevia] = useState<any[]>([]);
+  const [dataAlvoPrevia, setDataAlvoPrevia] = useState<string>('');
+  const [carregandoPreviaAmanha, setCarregandoPreviaAmanha] = useState(false);
   const [whatsAppRodape, setWhatsAppRodape] = useState(
-    '_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_'
+    '_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos e cobrança, favor não responder)_'
   );
   const [whatsAppChavePix, setWhatsAppChavePix] = useState('30.988.070/0001-60');
   const [whatsAppNomeBeneficiarioPix, setWhatsAppNomeBeneficiarioPix] = useState('ON EVENTOS LTDA');
@@ -795,8 +800,35 @@ export default function VendasAlbunsPage() {
             if (typeof d.config.lembreteAutomaticoAtivo === 'boolean') {
               setWhatsAppLembreteAtivo(d.config.lembreteAutomaticoAtivo);
             }
+            if (d.config.horarioLembrete) setWhatsAppHorarioLembrete(d.config.horarioLembrete);
+            if (d.config.diasAntesLembrete) setWhatsAppDiasAntes(d.config.diasAntesLembrete);
             if (d.config.rodapeAviso) setWhatsAppRodape(d.config.rodapeAviso);
             if (d.config.ultimoScanLembretes) setUltimoScanLembretes(d.config.ultimoScanLembretes);
+
+            // Verificação automática diária se o envio agendado estiver ativo
+            if (d.config.lembreteAutomaticoAtivo) {
+              const hojeStr = new Date().toLocaleDateString('pt-BR');
+              const ultimoScan = d.config.ultimoScanLembretes || '';
+              if (!ultimoScan.includes(hojeStr)) {
+                fetch('/whatsapp_api.php?action=enviar_lembretes_vencimento')
+                  .then((res) => res.json())
+                  .then((resData) => {
+                    if (resData.sucesso && resData.totalDisparados > 0) {
+                      showToast(`🔔 Envio Agendado: ${resData.totalDisparados} boleto(s) de amanhã disparados no WhatsApp!`);
+                      // Atualiza vendas localmente
+                      fetch('/vendas.php')
+                        .then((r) => r.json())
+                        .then((dadosVendas) => {
+                          if (Array.isArray(dadosVendas)) {
+                            setVendas(dadosVendas.filter((v: any) => !isClienteFicticio(v)));
+                          }
+                        })
+                        .catch(() => {});
+                    }
+                  })
+                  .catch(() => {});
+              }
+            }
           }
         })
         .catch(() => {});
@@ -835,6 +867,13 @@ export default function VendasAlbunsPage() {
       }
     }
   }, [vendas, vendaObservacoes]);
+
+  // Recarrega prévia dos lembretes sempre que o modal do WhatsApp for aberto
+  useEffect(() => {
+    if (modalWhatsAppAberto) {
+      handleCarregarPreviaLembretes();
+    }
+  }, [modalWhatsAppAberto]);
 
   // Sanitiza parcelas existentes para garantir que códigos PIX mock sejam convertidos para PIX oficial com CRC16
   useEffect(() => {
@@ -2158,7 +2197,7 @@ export default function VendasAlbunsPage() {
   // Executar Lembretes de Vencimento de 1 Dia (Automação de Vencimento)
   const handleExecutarLembretesAmanha = async () => {
     setExecutandoLembretesZap(true);
-    showToast('🔔 Verificando parcelas que vencem amanhã e disparando lembretes...');
+    showToast('🔔 Verificando boletos que vencem amanhã e disparando lembretes...');
 
     try {
       const res = await fetch('/whatsapp_api.php', {
@@ -2177,6 +2216,7 @@ export default function VendasAlbunsPage() {
           })
           .catch(() => {});
 
+        handleCarregarPreviaLembretes();
         showToast(`🎉 ${data.mensagem}`);
       } else {
         showToast(`⚠️ ${data.erro || 'Falha ao executar lembretes.'}`);
@@ -2185,6 +2225,23 @@ export default function VendasAlbunsPage() {
       showToast(`⚠️ Erro: ${e.message}`);
     } finally {
       setExecutandoLembretesZap(false);
+    }
+  };
+
+  // Carrega prévia dos boletos com vencimento para amanhã
+  const handleCarregarPreviaLembretes = async () => {
+    setCarregandoPreviaAmanha(true);
+    try {
+      const res = await fetch('/whatsapp_api.php?action=verificar_lembretes_pendentes');
+      const data = await res.json();
+      if (data.sucesso && Array.isArray(data.boletos)) {
+        setBoletosAmanhaPrevia(data.boletos);
+        if (data.dataAlvo) setDataAlvoPrevia(data.dataAlvo);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCarregandoPreviaAmanha(false);
     }
   };
 
@@ -2208,6 +2265,8 @@ export default function VendasAlbunsPage() {
             nomeBeneficiarioPix: whatsAppNomeBeneficiarioPix,
             cidadePix: whatsAppCidadePix,
             lembreteAutomaticoAtivo: whatsAppLembreteAtivo,
+            horarioLembrete: whatsAppHorarioLembrete,
+            diasAntesLembrete: whatsAppDiasAntes,
             rodapeAviso: whatsAppRodape,
           },
         }),
@@ -6794,12 +6853,12 @@ ON AGENCIA DE EVENTOS LTDA`;
 
             {/* Corpo */}
             <div className="space-y-5 my-5 text-xs text-slate-700">
-              {/* Card 1: Automação do Lembrete de 1 Dia */}
-              <div className="p-4.5 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-3">
+              {/* Card 1: Envio Agendado Automático (1 Dia Antes do Vencimento) */}
+              <div className="p-4.5 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2 text-blue-900 font-black text-sm">
                     <Clock className="w-4 h-4 text-blue-600" />
-                    <span>Lembrete de Vencimento de 1 Dia Antes</span>
+                    <span>Envio Agendado Automático (1 Dia Antes do Vencimento)</span>
                   </div>
                   <label className="flex items-center space-x-2 cursor-pointer font-bold text-blue-950">
                     <input
@@ -6813,15 +6872,126 @@ ON AGENCIA DE EVENTOS LTDA`;
                 </div>
 
                 <p className="text-blue-900/90 text-xs leading-relaxed">
-                  Quando faltar <strong>exatamente 1 dia para vencer a parcela</strong>, o sistema dispara uma mensagem amigável no WhatsApp do formando contendo a linha digitável e o código PIX Copia e Cola.
+                  Quando faltar <strong>1 dia para vencer o boleto daquele mês</strong>, o sistema faz o envio automático diretamente no WhatsApp do cliente com as informações da parcela, linha digitável e código PIX Copia e Cola avulso para facilitar o pagamento rápido.
                 </p>
 
-                <div className="p-3 bg-white/80 rounded-xl border border-blue-100 text-[11px] text-slate-600 font-mono space-y-1">
-                  <strong className="text-blue-900 block font-sans text-xs">Exemplo da mensagem enviada:</strong>
-                  <p>Olá, Formando! Passando para lembrar que a Parcela 3/12 da sua Formatura vence amanhã (22/10/2026) no valor de R$ 124,50.</p>
-                  <p>📄 Linha Digitável: 74891.12003 ...</p>
-                  <p>💠 PIX Copia e Cola: 00020126 ...</p>
-                  <p className="italic text-slate-500">{whatsAppRodape}</p>
+                {/* Configurações de Horário e Antecedência */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-white/90 rounded-xl border border-blue-100">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      ⏰ Horário Diário de Envio:
+                    </label>
+                    <input
+                      type="time"
+                      value={whatsAppHorarioLembrete}
+                      onChange={(e) => setWhatsAppHorarioLembrete(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      📅 Antecedência do Envio:
+                    </label>
+                    <select
+                      value={whatsAppDiasAntes}
+                      onChange={(e) => setWhatsAppDiasAntes(Number(e.target.value))}
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value={1}>1 dia antes do vencimento (Recomendado)</option>
+                      <option value={2}>2 dias antes do vencimento</option>
+                      <option value={3}>3 dias antes do vencimento</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Prévia ao Vivo dos Boletos Agendados para Amanhã */}
+                <div className="p-3 bg-white/90 rounded-xl border border-blue-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 text-xs flex items-center space-x-1.5">
+                      <span>📋 Prévia dos Boletos Agendados</span>
+                      {dataAlvoPrevia && (
+                        <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                          Vencimento em {dataAlvoPrevia}
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCarregarPreviaLembretes}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
+                    >
+                      🔄 Atualizar Prévia
+                    </button>
+                  </div>
+
+                  {carregandoPreviaAmanha ? (
+                    <div className="py-2 text-center text-xs text-slate-500 italic">
+                      Verificando parcelas no banco de dados...
+                    </div>
+                  ) : boletosAmanhaPrevia.length > 0 ? (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {boletosAmanhaPrevia.map((b, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs"
+                        >
+                          <div>
+                            <strong className="text-slate-900 block">{b.alunoNome}</strong>
+                            <span className="text-[10px] text-slate-500">
+                              Pedido {b.codigoPedido} • Parcela {b.parcelaNumero}/{b.totalParcelas} • Tel: {b.alunoTelefone}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-slate-800 block">
+                              R$ {b.valor?.toFixed(2)}
+                            </span>
+                            {b.jaEnviado ? (
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                ✓ Enviado ({b.dataEnvio})
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                ⏳ Aguardando Envio
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-emerald-900 text-xs flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Nenhum boleto com vencimento para amanhã ({dataAlvoPrevia || 'o próximo dia'}). Todos os avisos estão em dia!
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Automação Contínua na Nuvem (Hostinger Cron) */}
+                <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 text-xs space-y-1.5">
+                  <div className="flex items-center space-x-1.5 text-purple-950 font-bold">
+                    <span>☁️</span>
+                    <span>Disparo 100% Automático na Nuvem (Hostinger Cron)</span>
+                  </div>
+                  <p className="text-[11px] text-purple-900/80 leading-relaxed">
+                    O sistema executa a checagem automática sempre que o painel é aberto. Para disparos pontuais na nuvem 24/7 (mesmo com computador desligado), adicione no hPanel da Hostinger uma Tarefa Cron diária às {whatsAppHorarioLembrete}:
+                  </p>
+                  <div className="flex items-center space-x-2 bg-white px-2.5 py-1.5 rounded-lg border border-purple-200 text-[10px] font-mono text-purple-900">
+                    <span className="truncate flex-1 select-all">
+                      curl -s "https://onagenciadeeventos.com.br/whatsapp_api.php?cron=1"
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('curl -s "https://onagenciadeeventos.com.br/whatsapp_api.php?cron=1"');
+                        showToast('✓ Comando do Cron copiado para a área de transferência!');
+                      }}
+                      className="px-2 py-0.5 rounded bg-purple-100 hover:bg-purple-200 text-purple-800 font-sans font-bold cursor-pointer transition shrink-0"
+                    >
+                      Copiar
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-blue-200/80">
@@ -6829,7 +6999,7 @@ ON AGENCIA DE EVENTOS LTDA`;
                     {ultimoScanLembretes ? (
                       <span>Último scan executado: <strong>{ultimoScanLembretes}</strong></span>
                     ) : (
-                      <span>Scan diário automático ativo às <strong>08:00</strong></span>
+                      <span>Scan diário ativo às <strong>{whatsAppHorarioLembrete}</strong></span>
                     )}
                   </div>
                   <button
@@ -6839,7 +7009,7 @@ ON AGENCIA DE EVENTOS LTDA`;
                     className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black text-xs shadow-xs transition flex items-center space-x-1.5 cursor-pointer hover:scale-102 shrink-0"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>{executandoLembretesZap ? 'Verificando e Enviando...' : 'Disparar Lembretes de Amanhã Agora'}</span>
+                    <span>{executandoLembretesZap ? 'Verificando e Enviando...' : 'Executar Envio Agendado Agora'}</span>
                   </button>
                 </div>
               </div>

@@ -566,6 +566,10 @@ export default function VendasAlbunsPage() {
   const [textoNovaObservacao, setTextoNovaObservacao] = useState<string>('');
   const [textoObservacoesGerais, setTextoObservacoesGerais] = useState<string>('');
 
+  // Estados para Edição Rápida de Telefone WhatsApp do Formando (no Carnê ou Prontuário)
+  const [editandoTelefoneVendaId, setEditandoTelefoneVendaId] = useState<string | null>(null);
+  const [novoTelefoneInput, setNovoTelefoneInput] = useState<string>('');
+
   // Estados para Modal de Quitação Manual de Parcelas (Image 4)
   const [modalQuitarParcelaAberto, setModalQuitarParcelaAberto] = useState(false);
   const [quitacaoVenda, setQuitacaoVenda] = useState<VendaAlbum | null>(null);
@@ -1425,6 +1429,25 @@ export default function VendasAlbunsPage() {
     showToast('✓ Observações gerais salvas com sucesso!');
   };
 
+  const handleSalvarTelefoneFormando = (vendaId: string, novoTelefone: string) => {
+    const limpo = novoTelefone.trim();
+    if (!limpo) {
+      showToast('⚠️ Informe um número de telefone válido.');
+      return;
+    }
+    const atualizadas = vendas.map((v) => (v.id === vendaId ? { ...v, alunoTelefone: limpo } : v));
+    salvarVendasLocal(atualizadas);
+
+    if (vendaSelecionadaBoletos && vendaSelecionadaBoletos.id === vendaId) {
+      setVendaSelecionadaBoletos({ ...vendaSelecionadaBoletos, alunoTelefone: limpo });
+    }
+    if (vendaObservacoes && vendaObservacoes.id === vendaId) {
+      setVendaObservacoes({ ...vendaObservacoes, alunoTelefone: limpo });
+    }
+    setEditandoTelefoneVendaId(null);
+    showToast(`✓ Telefone atualizado para ${limpo}! Agora você pode reenviar via WhatsApp.`);
+  };
+
   const abrirModalNovaVenda = () => {
     const insts = getInstituicoes();
     const cur = getCursos();
@@ -1937,6 +1960,10 @@ export default function VendasAlbunsPage() {
         showToast(`🎉 Carnê enviado com sucesso pelo WhatsApp da agência para ${venda.alunoNome}!`);
       } else {
         showToast(`⚠️ ${data.erro || 'Falha ao enviar carnê via WhatsApp.'}`);
+        if (data.erro && (data.erro.includes('não possui conta') || data.erro.includes('inexistente'))) {
+          setNovoTelefoneInput(venda.alunoTelefone || '');
+          setEditandoTelefoneVendaId(venda.id);
+        }
       }
     } catch (e: any) {
       showToast(`⚠️ Erro de conexão com o WhatsApp da agência: ${e.message}`);
@@ -1991,6 +2018,10 @@ export default function VendasAlbunsPage() {
         showToast(`🎉 Parcela #${parcela.numero} enviada no WhatsApp de ${venda.alunoNome}!`);
       } else {
         showToast(`⚠️ ${data.erro || 'Falha ao enviar parcela via WhatsApp.'}`);
+        if (data.erro && (data.erro.includes('não possui conta') || data.erro.includes('inexistente'))) {
+          setNovoTelefoneInput(venda.alunoTelefone || '');
+          setEditandoTelefoneVendaId(venda.id);
+        }
       }
     } catch (e: any) {
       showToast(`⚠️ Erro: ${e.message}`);
@@ -4276,6 +4307,59 @@ export default function VendasAlbunsPage() {
                   <p className="text-xs text-slate-500">
                     Formando: <strong>{vendaSelecionadaBoletos.alunoNome}</strong> ({vendaSelecionadaBoletos.turmaNome})
                   </p>
+                  <div className="flex items-center space-x-2 mt-1 text-xs text-slate-600">
+                    <span className="font-semibold">📱 WhatsApp:</span>
+                    {editandoTelefoneVendaId === vendaSelecionadaBoletos.id ? (
+                      <div className="flex items-center space-x-1.5 bg-purple-50 p-1 rounded-lg border border-purple-200">
+                        <input
+                          type="text"
+                          value={novoTelefoneInput}
+                          onChange={(e) => setNovoTelefoneInput(e.target.value)}
+                          placeholder="(11) 99999-9999"
+                          className="px-2 py-0.5 rounded border border-purple-300 font-mono text-xs w-36 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSalvarTelefoneFormando(vendaSelecionadaBoletos.id, novoTelefoneInput);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSalvarTelefoneFormando(vendaSelecionadaBoletos.id, novoTelefoneInput)}
+                          className="px-2 py-0.5 rounded bg-purple-600 text-white font-bold text-[11px] hover:bg-purple-700 cursor-pointer"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditandoTelefoneVendaId(null)}
+                          className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[11px] hover:bg-slate-300 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-1.5">
+                        <strong className="font-mono text-slate-800">
+                          {vendaSelecionadaBoletos.alunoTelefone || 'Sem telefone cadastrado'}
+                        </strong>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNovoTelefoneInput(vendaSelecionadaBoletos.alunoTelefone || '');
+                            setEditandoTelefoneVendaId(vendaSelecionadaBoletos.id);
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-[10px] font-bold flex items-center space-x-1 transition cursor-pointer"
+                          title="Clique para corrigir ou alterar o número de WhatsApp deste formando"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Alterar Número</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -7284,20 +7368,68 @@ ON AGENCIA DE EVENTOS LTDA`;
                     <span className="font-mono font-bold text-slate-900">{vendaObservacoes.alunoCpf}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-400 block text-[11px]">Telefone / WhatsApp:</span>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <span className="font-bold text-slate-900">{vendaObservacoes.alunoTelefone || 'Não informado'}</span>
-                      {vendaObservacoes.alunoTelefone && (
-                        <a
-                          href={`https://wa.me/55${vendaObservacoes.alunoTelefone.replace(/\D/g, '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-[10px] transition"
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 block text-[11px]">Telefone / WhatsApp:</span>
+                      {editandoTelefoneVendaId !== vendaObservacoes.id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNovoTelefoneInput(vendaObservacoes.alunoTelefone || '');
+                            setEditandoTelefoneVendaId(vendaObservacoes.id);
+                          }}
+                          className="text-[10px] text-purple-700 hover:text-purple-900 font-bold flex items-center space-x-1 cursor-pointer"
                         >
-                          Chamar no Zap
-                        </a>
+                          <Edit3 className="w-3 h-3" />
+                          <span>Editar</span>
+                        </button>
                       )}
                     </div>
+                    {editandoTelefoneVendaId === vendaObservacoes.id ? (
+                      <div className="flex items-center space-x-1.5 mt-1">
+                        <input
+                          type="text"
+                          value={novoTelefoneInput}
+                          onChange={(e) => setNovoTelefoneInput(e.target.value)}
+                          placeholder="(11) 99999-9999"
+                          className="px-2 py-1 rounded-lg border border-purple-300 font-mono text-xs w-full bg-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSalvarTelefoneFormando(vendaObservacoes.id, novoTelefoneInput);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSalvarTelefoneFormando(vendaObservacoes.id, novoTelefoneInput)}
+                          className="px-2.5 py-1 rounded-lg bg-purple-600 text-white font-bold text-xs hover:bg-purple-700 cursor-pointer"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditandoTelefoneVendaId(null)}
+                          className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 text-xs hover:bg-slate-300 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="font-bold text-slate-900 font-mono">{vendaObservacoes.alunoTelefone || 'Não informado'}</span>
+                        {vendaObservacoes.alunoTelefone && (
+                          <a
+                            href={`https://wa.me/55${vendaObservacoes.alunoTelefone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-[10px] transition"
+                          >
+                            Chamar no Zap
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-slate-400 block text-[11px]">E-mail:</span>

@@ -76,6 +76,41 @@ function registrarLogZap($tipo, $destinatario, $alunoNome, $pedido, $sucesso, $m
     @file_put_contents($logsFile, json_encode($logs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
+// Requisição HTTP direta para o endpoint sendText da Evolution API
+function requisitarEnvioEvolution($apiUrl, $instancia, $apiKey, $numeroFormatado, $textoMensagem) {
+    $urlEndpoint = "{$apiUrl}/message/sendText/{$instancia}";
+    $body = [
+        'number' => $numeroFormatado,
+        'text' => $textoMensagem,
+        'options' => ['delay' => 1200, 'presence' => 'composing']
+    ];
+
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $urlEndpoint,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($body, JSON_UNESCAPED_UNICODE),
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'apikey: ' . $apiKey
+        ],
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_SSL_VERIFYPEER => false
+    ]);
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    return [
+        'httpCode' => $httpCode,
+        'err' => $err,
+        'resp' => $resp,
+        'data' => json_decode($resp, true)
+    ];
+}
+
 // Disparador genérico HTTP para o WhatsApp do Provedor Conectado
 function dispararMensagemWhatsApp($telefone, $textoMensagem) {
     global $config;
@@ -92,40 +127,83 @@ function dispararMensagemWhatsApp($telefone, $textoMensagem) {
 
     // 1. Provedor: Evolution API
     if ($provedor === 'evolution' && !empty($apiUrl)) {
-        $urlEndpoint = "{$apiUrl}/message/sendText/{$instancia}";
-        $body = [
-            'number' => $numeroFormatado,
-            'text' => $textoMensagem,
-            'options' => ['delay' => 1200, 'presence' => 'composing']
-        ];
-
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $urlEndpoint,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($body, JSON_UNESCAPED_UNICODE),
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'apikey: ' . $apiKey
-            ],
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_SSL_VERIFYPEER => false
-        ]);
-        $resp = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err = curl_error($ch);
-        curl_close($ch);
+        $resEvo = requisitarEnvioEvolution($apiUrl, $instancia, $apiKey, $numeroFormatado, $textoMensagem);
+        $httpCode = $resEvo['httpCode'];
+        $err = $resEvo['err'];
+        $resp = $resEvo['resp'];
+        $dataResp = $resEvo['data'];
 
         if (!$err && $httpCode >= 200 && $httpCode < 300) {
-            $dataResp = json_decode($resp, true);
             $msgId = $dataResp['key']['id'] ?? $dataResp['messageId'] ?? 'evo_' . time();
             return ['sucesso' => true, 'provedor' => 'evolution', 'msgId' => $msgId];
-        } else {
-            $errData = json_decode($resp, true);
-            $detalhe = $errData['response']['message'][0] ?? $errData['message'] ?? $errData['error'] ?? ($err ?: "HTTP {$httpCode}");
-            return ['sucesso' => false, 'erro' => "Evolution API rejeitou o envio ({$detalhe}). Verifique se o WhatsApp da agência está conectado via QR Code."];
         }
+
+        // Verifica se o erro foi de número inexistente no WhatsApp (exists: false)
+        $numeroInexistente = false;
+        if (isset($dataResp['response']['message']) && is_array($dataResp['response']['message'])) {
+            foreach ($dataResp['response']['message'] as $item) {
+                if (is_array($item) && isset($item['exists']) && $item['exists'] === false) {
+                    $numeroInexistente = true;
+                    break;
+                }
+            }
+        }
+
+        // Fallback inteligente para o Brasil (tentar formato alternativo com/sem 9º dígito)
+        if ($numeroInexistente && strpos($numeroFormatado, '55') === 0) {
+            $numeroAlt = null;
+            if (strlen($numeroFormatado) === 13) {
+                // Remove o 9º dígito (ex: 55119XXXXXXXX -> 5511XXXXXXXX)
+                $numeroAlt = substr($numeroFormatado, 0, 4) . substr($numeroFormatado, 5);
+            } else if (strlen($numeroFormatado) === 12) {
+                // Adiciona o 9º dígito (ex: 5511XXXXXXXX -> 55119XXXXXXXX)
+                $numeroAlt = substr($numeroFormatado, 0, 4) . '9' . substr($numeroFormatado, 4);
+            }
+
+            if ($numeroAlt) {
+                $resAlt = requisitarEnvioEvolution($apiUrl, $instancia, $apiKey, $numeroAlt, $textoMensagem);
+                if (!$resAlt['err'] && $resAlt['httpCode'] >= 200 && $resAlt['httpCode'] < 300) {
+                    $msgId = $resAlt['data']['key']['id'] ?? $resAlt['data']['messageId'] ?? 'evo_' . time();
+                    return ['sucesso' => true, 'provedor' => 'evolution', 'msgId' => $msgId];
+                }
+            }
+
+            return [
+                'sucesso' => false,
+                'erro' => "O número {$telefone} não possui conta ativa no WhatsApp (número inexistente no WhatsApp). Verifique se o telefone do formando está correto e clique em ✏️ para editar."
+            ];
+        }
+
+        // Verifica se o WhatsApp da agência está desconectado ou não autorizado
+        $respStr = is_string($resp) ? $resp : '';
+        if ($httpCode === 401 || $httpCode === 403 || stripos($respStr, 'Unauthorized') !== false || stripos($respStr, 'not connected') !== false || stripos($respStr, 'Connection Closed') !== false) {
+            return [
+                'sucesso' => false,
+                'erro' => "O WhatsApp da agência está desconectado na Evolution API. Clique em 'Zap Agência' para reconectar via QR Code."
+            ];
+        }
+
+        // Extração limpa e amigável de qualquer outro erro (nunca imprime 'Array')
+        $rawMsg = $dataResp['response']['message'] ?? $dataResp['message'] ?? $dataResp['error'] ?? null;
+        if (is_array($rawMsg)) {
+            $detalhes = [];
+            foreach ($rawMsg as $rm) {
+                if (is_array($rm)) {
+                    if (isset($rm['message']) && is_string($rm['message'])) {
+                        $detalhes[] = $rm['message'];
+                    } else {
+                        $detalhes[] = json_encode($rm, JSON_UNESCAPED_UNICODE);
+                    }
+                } else if (is_string($rm)) {
+                    $detalhes[] = $rm;
+                }
+            }
+            $detalhe = implode(', ', $detalhes);
+        } else {
+            $detalhe = is_string($rawMsg) ? $rawMsg : ($err ?: "HTTP {$httpCode}");
+        }
+
+        return ['sucesso' => false, 'erro' => "Evolution API rejeitou o envio: {$detalhe}"];
     }
 
     // 2. Provedor: Z-API
@@ -359,7 +437,7 @@ if ($action === 'enviar_boleto') {
             $vendaIndex = $idx;
             $alunoNome = $v['alunoNome'] ?? $alunoNome;
             $codigoPedido = $v['codigoPedido'] ?? $codigoPedido;
-            $telefone = $v['alunoTelefone'] ?? $telefone;
+            $telefone = !empty($payload['telefone']) ? $payload['telefone'] : ($v['alunoTelefone'] ?? $telefone);
             break;
         }
     }
@@ -387,11 +465,14 @@ if ($action === 'enviar_boleto') {
     $res = dispararMensagemWhatsApp($telefone, $texto);
     registrarLogZap('ENVIO_BOLETO_PARCELA', $telefone, $alunoNome, $codigoPedido, $res['sucesso'], $res['msgId'] ?? '', $res['erro'] ?? '');
 
-    // Atualiza a venda com o registro do envio
+    // Atualiza a venda com o registro do envio e telefone se necessário
     if ($res['sucesso'] && $vendaIndex >= 0 && isset($vendas[$vendaIndex]['parcelasBoletos'])) {
         $agora = date('d/m/Y H:i');
+        if (!empty($payload['telefone'])) {
+            $vendas[$vendaIndex]['alunoTelefone'] = $payload['telefone'];
+        }
         foreach ($vendas[$vendaIndex]['parcelasBoletos'] as &$p) {
-            if (intval($p['numero'] ?? 0) === $parcelNum) {
+            if (intval($p['numero'] ?? 0) === $parcelaNum) {
                 $p['ultimoEnvioZap'] = $agora;
                 break;
             }
@@ -420,13 +501,15 @@ if ($action === 'enviar_carne') {
     $parcelas = $payload['parcelas'] ?? [];
 
     $vendas = file_exists($vendasFile) ? (json_decode(file_get_contents($vendasFile), true) ?: []) : [];
-    foreach ($vendas as $v) {
+    $vendaIdx = -1;
+    foreach ($vendas as $idx => $v) {
         if (($v['id'] ?? '') === $vendaId) {
+            $vendaIdx = $idx;
             $alunoNome = $v['alunoNome'] ?? $alunoNome;
             $codigoPedido = $v['codigoPedido'] ?? $codigoPedido;
-            $telefone = $v['alunoTelefone'] ?? $telefone;
+            $telefone = !empty($payload['telefone']) ? $payload['telefone'] : ($v['alunoTelefone'] ?? $telefone);
             $valorTotal = floatval($v['valorTotalKit'] ?? $valorTotal);
-            $parcelas = $v['parcelasBoletos'] ?? $parcelas;
+            $parcelas = !empty($payload['parcelas']) ? $payload['parcelas'] : ($v['parcelasBoletos'] ?? $parcelas);
             break;
         }
     }
@@ -477,6 +560,12 @@ if ($action === 'enviar_carne') {
 
     $res = dispararMensagemWhatsApp($telefone, $texto);
     registrarLogZap('ENVIO_CARNE_COMPLETO', $telefone, $alunoNome, $codigoPedido, $res['sucesso'], $res['msgId'] ?? '', $res['erro'] ?? '');
+
+    // Atualiza o telefone na base se foi fornecido um novo número
+    if ($res['sucesso'] && $vendaIdx >= 0 && !empty($payload['telefone'])) {
+        $vendas[$vendaIdx]['alunoTelefone'] = $payload['telefone'];
+        @file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    }
 
     echo json_encode([
         'sucesso' => $res['sucesso'],

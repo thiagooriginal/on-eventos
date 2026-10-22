@@ -611,6 +611,9 @@ export default function VendasAlbunsPage() {
   const [whatsAppRodape, setWhatsAppRodape] = useState(
     '_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_'
   );
+  const [whatsAppChavePix, setWhatsAppChavePix] = useState('30.988.070/0001-60');
+  const [whatsAppNomeBeneficiarioPix, setWhatsAppNomeBeneficiarioPix] = useState('ON EVENTOS LTDA');
+  const [whatsAppCidadePix, setWhatsAppCidadePix] = useState('SAO PAULO');
   const [enviandoZap, setEnviandoZap] = useState<string | null>(null);
   const [executandoLembretesZap, setExecutandoLembretesZap] = useState(false);
   const [ultimoScanLembretes, setUltimoScanLembretes] = useState<string>('');
@@ -786,6 +789,9 @@ export default function VendasAlbunsPage() {
             if (d.config.apiUrl) setWhatsAppApiUrl(d.config.apiUrl);
             if (d.config.apiKey) setWhatsAppApiKey(d.config.apiKey);
             if (d.config.instancia) setWhatsAppInstancia(d.config.instancia);
+            if (d.config.chavePix) setWhatsAppChavePix(d.config.chavePix);
+            if (d.config.nomeBeneficiarioPix) setWhatsAppNomeBeneficiarioPix(d.config.nomeBeneficiarioPix);
+            if (d.config.cidadePix) setWhatsAppCidadePix(d.config.cidadePix);
             if (typeof d.config.lembreteAutomaticoAtivo === 'boolean') {
               setWhatsAppLembreteAtivo(d.config.lembreteAutomaticoAtivo);
             }
@@ -829,6 +835,32 @@ export default function VendasAlbunsPage() {
       }
     }
   }, [vendas, vendaObservacoes]);
+
+  // Sanitiza parcelas existentes para garantir que códigos PIX mock sejam convertidos para PIX oficial com CRC16
+  useEffect(() => {
+    if (vendas.length > 0) {
+      let precisaAtualizar = false;
+      const atualizadas = vendas.map((v) => {
+        if (v.parcelasBoletos && v.parcelasBoletos.some((p) => !p.codigoPix || p.codigoPix.includes('e4b8c9f0'))) {
+          precisaAtualizar = true;
+          const novasP = v.parcelasBoletos.map((p) => {
+            if (!p.codigoPix || p.codigoPix.includes('e4b8c9f0')) {
+              return {
+                ...p,
+                codigoPix: gerarCodigoPixOficial('30988070000160', 'ON EVENTOS LTDA', 'SAO PAULO', p.valor, '***'),
+              };
+            }
+            return p;
+          });
+          return { ...v, parcelasBoletos: novasP };
+        }
+        return v;
+      });
+      if (precisaAtualizar) {
+        salvarVendasLocal(atualizadas);
+      }
+    }
+  }, [vendas.length]);
 
   // Abrir modal de confirmação com auditoria para excluir um álbum
   const abrirModalExclusaoSegura = (venda: VendaAlbum) => {
@@ -1257,7 +1289,7 @@ export default function VendasAlbunsPage() {
               const dig1 = Math.floor(10000 + Math.random() * 90000);
               const dig2 = Math.floor(10000 + Math.random() * 90000);
               const linha = `74891.12003 ${dig1}.234508 ${dig2}.67890${p.numero} ${p.numero} 98760000${Math.floor(val * 100)}`;
-              const pix = `00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef12345678520400005303986540${val.toFixed(2).length}${val.toFixed(2)}5802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304${dig1.toString().slice(0, 4)}`;
+              const pix = gerarCodigoPixOficial('30988070000160', 'ON EVENTOS LTDA', 'SAO PAULO', val, '***');
 
               return {
                 ...p,
@@ -1636,6 +1668,71 @@ export default function VendasAlbunsPage() {
     );
   };
 
+  // Funções oficiais para geração de PIX Copia e Cola (Padrão Banco Central do Brasil / CRC16-CCITT)
+  const calcularCrc16Pix = (str: string): string => {
+    let crc = 0xFFFF;
+    for (let i = 0; i < str.length; i++) {
+      crc ^= str.charCodeAt(i) << 8;
+      for (let j = 0; j < 8; j++) {
+        if ((crc & 0x8000) !== 0) {
+          crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+        } else {
+          crc = (crc << 1) & 0xFFFF;
+        }
+      }
+    }
+    return crc.toString(16).toUpperCase().padStart(4, '0');
+  };
+
+  const formatarTLVPix = (tag: string, valor: string): string => {
+    const tamanho = valor.length.toString().padStart(2, '0');
+    return `${tag}${tamanho}${valor}`;
+  };
+
+  const gerarCodigoPixOficial = (
+    chavePix: string = '30988070000160',
+    nome: string = 'ON EVENTOS LTDA',
+    cidade: string = 'SAO PAULO',
+    valor: number = 0,
+    txid: string = '***'
+  ): string => {
+    let chaveLimpa = (chavePix || '30988070000160').trim();
+    if (!chaveLimpa.includes('@')) {
+      const soDigitos = chaveLimpa.replace(/\D/g, '');
+      if (soDigitos.length === 14 || soDigitos.length === 11) {
+        chaveLimpa = soDigitos;
+      } else if (soDigitos.length === 10 || soDigitos.length === 11) {
+        chaveLimpa = '+55' + soDigitos;
+      }
+    }
+
+    const tag26 = formatarTLVPix('00', 'br.gov.bcb.pix') + formatarTLVPix('01', chaveLimpa);
+    const nomeLimpo = (nome || 'ON EVENTOS LTDA').substring(0, 25).toUpperCase();
+    const cidadeLimpa = (cidade || 'SAO PAULO').substring(0, 15).toUpperCase();
+    const txidLimpo = (txid || '***').substring(0, 25);
+
+    let payload =
+      formatarTLVPix('00', '01') +
+      formatarTLVPix('26', tag26) +
+      formatarTLVPix('52', '0000') +
+      formatarTLVPix('53', '986');
+
+    if (valor > 0) {
+      const valStr = valor.toFixed(2);
+      payload += formatarTLVPix('54', valStr);
+    }
+
+    payload +=
+      formatarTLVPix('58', 'BR') +
+      formatarTLVPix('59', nomeLimpo) +
+      formatarTLVPix('60', cidadeLimpa) +
+      formatarTLVPix('62', formatarTLVPix('05', txidLimpo)) +
+      '6304';
+
+    const crc = calcularCrc16Pix(payload);
+    return payload + crc;
+  };
+
   // Gerar Boletos Sicredi automáticos com base no Valor Total do Kit
   const gerarParcelasBoletos = (valorTotal: number, qtdParcelas: number, primeiroVenc: string): ParcelaBoleto[] => {
     const valorParcela = Math.floor((valorTotal / qtdParcelas) * 100) / 100;
@@ -1652,7 +1749,7 @@ export default function VendasAlbunsPage() {
       const dig1 = Math.floor(10000 + Math.random() * 90000);
       const dig2 = Math.floor(10000 + Math.random() * 90000);
       const linha = `74891.12003 ${dig1}.234508 ${dig2}.67890${i} ${i} 98760000${Math.floor(val * 100)}`;
-      const pix = `00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef12345678520400005303986540${val.toFixed(2).length}${val.toFixed(2)}5802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304${dig1.toString().slice(0, 4)}`;
+      const pix = gerarCodigoPixOficial('30988070000160', 'ON EVENTOS LTDA', 'SAO PAULO', val, '***');
 
       parcelas.push({
         numero: i,
@@ -1898,7 +1995,7 @@ export default function VendasAlbunsPage() {
       const dig1 = Math.floor(10000 + Math.random() * 90000);
       const dig2 = Math.floor(10000 + Math.random() * 90000);
       const linha = `74891.12003 ${dig1}.234508 ${dig2}.67890${numParcela} ${numParcela} 98760000${Math.floor(val * 100)}`;
-      const pix = `00020126580014br.gov.bcb.pix0136e4b8c9f0-1234-5678-90ab-cdef12345678520400005303986540${val.toFixed(2).length}${val.toFixed(2)}5802BR5915ON EVENTOS LTDA6009SAO PAULO62070503***6304${dig1.toString().slice(0, 4)}`;
+      const pix = gerarCodigoPixOficial('30988070000160', 'ON EVENTOS LTDA', 'SAO PAULO', val, '***');
 
       novasAjustadas.push({
         numero: numParcela,
@@ -1937,8 +2034,18 @@ export default function VendasAlbunsPage() {
       showToast('⚠️ O formando não possui telefone cadastrado.');
       return;
     }
+    const parcelasPendentes = (venda.parcelasBoletos || []).filter((p) => p.status !== 'PAGO');
+    if (parcelasPendentes.length === 0) {
+      showToast('⚠️ Todas as parcelas deste carnê já foram quitadas!');
+      return;
+    }
+    const confirma = window.confirm(
+      `Deseja enviar ${parcelasPendentes.length} boletos pendentes como mensagens separadas para o WhatsApp de ${venda.alunoNome} (${venda.alunoTelefone})?`
+    );
+    if (!confirma) return;
+
     setEnviandoZap('carne');
-    showToast(`📤 Enviando carnê diretamente via WhatsApp da agência para ${venda.alunoNome}...`);
+    showToast(`📤 Enviando ${parcelasPendentes.length} boletos individualmente via WhatsApp para ${venda.alunoNome}...`);
 
     try {
       const res = await fetch('/whatsapp_api.php', {
@@ -1953,11 +2060,26 @@ export default function VendasAlbunsPage() {
           modeloAlbum: venda.modeloAlbum,
           valorTotal: venda.valorTotalKit,
           parcelas: venda.parcelasBoletos || [],
+          chavePix: whatsAppChavePix,
+          nomeBeneficiarioPix: whatsAppNomeBeneficiarioPix,
+          cidadePix: whatsAppCidadePix,
         }),
       });
       const data = await res.json();
       if (data.sucesso) {
-        showToast(`🎉 Carnê enviado com sucesso pelo WhatsApp da agência para ${venda.alunoNome}!`);
+        const agora = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const atualizadas = vendas.map((v) => {
+          if (v.id === venda.id && v.parcelasBoletos) {
+            const novasP = v.parcelasBoletos.map((p) => (p.status !== 'PAGO' ? { ...p, ultimoEnvioZap: agora } : p));
+            return { ...v, parcelasBoletos: novasP };
+          }
+          return v;
+        });
+        salvarVendasLocal(atualizadas);
+        const atualizada = atualizadas.find((v) => v.id === venda.id);
+        if (atualizada) setVendaSelecionadaBoletos(atualizada);
+
+        showToast(`🎉 ${data.mensagem || 'Boletos enviados com sucesso pelo WhatsApp!'}`);
       } else {
         showToast(`⚠️ ${data.erro || 'Falha ao enviar carnê via WhatsApp.'}`);
         if (data.erro && (data.erro.includes('não possui conta') || data.erro.includes('inexistente'))) {
@@ -1999,6 +2121,9 @@ export default function VendasAlbunsPage() {
           linhaDigitavel: parcela.linhaDigitavel,
           codigoPix: parcela.codigoPix,
           totalParcelas: venda.parcelasBoletos?.length || 1,
+          chavePix: whatsAppChavePix,
+          nomeBeneficiarioPix: whatsAppNomeBeneficiarioPix,
+          cidadePix: whatsAppCidadePix,
         }),
       });
       const data = await res.json();
@@ -2079,6 +2204,9 @@ export default function VendasAlbunsPage() {
             apiUrl: whatsAppApiUrl,
             apiKey: whatsAppApiKey,
             instancia: whatsAppInstancia,
+            chavePix: whatsAppChavePix,
+            nomeBeneficiarioPix: whatsAppNomeBeneficiarioPix,
+            cidadePix: whatsAppCidadePix,
             lembreteAutomaticoAtivo: whatsAppLembreteAtivo,
             rodapeAviso: whatsAppRodape,
           },
@@ -4502,16 +4630,39 @@ export default function VendasAlbunsPage() {
                   <Printer className="w-3.5 h-3.5" />
                   <span>Imprimir Carnê</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleEnviarCarneWhatsApp(vendaSelecionadaBoletos)}
-                  disabled={enviandoZap === 'carne'}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
-                  title="Enviar carnê completo diretamente pelo WhatsApp da agência para o telefone do formando"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>{enviandoZap === 'carne' ? 'Enviando pelo Zap...' : 'Enviar Carnê no Zap'}</span>
-                </button>
+                {(() => {
+                  const proximaPendente = vendaSelecionadaBoletos.parcelasBoletos?.find((p) => p.status !== 'PAGO');
+                  return (
+                    <>
+                      {proximaPendente && (
+                        <button
+                          type="button"
+                          onClick={() => handleEnviarParcelaWhatsApp(vendaSelecionadaBoletos, proximaPendente)}
+                          disabled={enviandoZap === `parcela-${proximaPendente.numero}`}
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
+                          title={`Enviar a próxima parcela pendente (Boleto #${proximaPendente.numero}) com código e Pix avulsos`}
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>
+                            {enviandoZap === `parcela-${proximaPendente.numero}`
+                              ? 'Enviando...'
+                              : `Enviar Boleto #${proximaPendente.numero} no Zap`}
+                          </span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleEnviarCarneWhatsApp(vendaSelecionadaBoletos)}
+                        disabled={enviandoZap === 'carne'}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-800 border border-emerald-300 font-bold text-xs shadow-2xs flex items-center space-x-1.5 cursor-pointer transition hover:scale-102"
+                        title="Enviar todas as parcelas pendentes separadamente pelo WhatsApp"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>{enviandoZap === 'carne' ? 'Enviando Boletos...' : 'Enviar Todos Boletos Separados'}</span>
+                      </button>
+                    </>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={() => setModalWhatsAppAberto(true)}
@@ -4604,7 +4755,7 @@ export default function VendasAlbunsPage() {
                             >
                               <Send className="w-3.5 h-3.5 text-emerald-700" />
                               <span>
-                                {enviandoZap === `parcela-${parcela.numero}` ? 'Enviando...' : 'Enviar no Zap'}
+                                {enviandoZap === `parcela-${parcela.numero}` ? 'Enviando...' : 'Enviar Boleto no Zap'}
                               </span>
                             </button>
                             <button
@@ -6888,6 +7039,62 @@ ON AGENCIA DE EVENTOS LTDA`;
                     onChange={(e) => setWhatsAppRodape(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+                </div>
+
+                {/* Configuração do PIX Copia e Cola Oficial (BACEN / EMV BR Code) */}
+                <div className="pt-3 border-t border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 text-xs uppercase tracking-wider block">
+                      💠 PIX Copia e Cola Oficial (Padrão Banco Central / CRC16-CCITT)
+                    </span>
+                    <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+                      BACEN Ativo
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Chave PIX da Agência:
+                      </label>
+                      <input
+                        type="text"
+                        value={whatsAppChavePix}
+                        onChange={(e) => setWhatsAppChavePix(e.target.value)}
+                        placeholder="30.988.070/0001-60"
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-mono font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Nome Beneficiário (Até 25 car.):
+                      </label>
+                      <input
+                        type="text"
+                        value={whatsAppNomeBeneficiarioPix}
+                        onChange={(e) => setWhatsAppNomeBeneficiarioPix(e.target.value)}
+                        placeholder="ON EVENTOS LTDA"
+                        maxLength={25}
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Cidade Beneficiário:
+                      </label>
+                      <input
+                        type="text"
+                        value={whatsAppCidadePix}
+                        onChange={(e) => setWhatsAppCidadePix(e.target.value)}
+                        placeholder="SAO PAULO"
+                        maxLength={15}
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic">
+                    Códigos Pix gerados com cálculo matemático oficial CRC16-CCITT (0x1021). Funciona instantaneamente em qualquer app bancário (Nubank, Itaú, Bradesco, Sicredi, etc.).
+                  </p>
                 </div>
               </div>
             </div>

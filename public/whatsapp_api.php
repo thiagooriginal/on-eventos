@@ -27,6 +27,9 @@ $defaultConfig = [
     'lembreteAutomaticoAtivo' => true,
     'mensagemApenasEnvio' => true,
     'rodapeAviso' => "_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_",
+    'chavePix' => '30.988.070/0001-60',
+    'nomeBeneficiarioPix' => 'ON EVENTOS LTDA',
+    'cidadePix' => 'SAO PAULO',
     'metaPhoneNumberId' => '',
     'metaAccessToken' => '',
     'zapiInstanceId' => '',
@@ -49,6 +52,72 @@ function formatarNumeroWhatsApp($numero) {
         $limpo = '55' . $limpo;
     }
     return $limpo;
+}
+
+// =========================================================================
+// GERADOR OFICIAL DE PIX COPIA E COLA (PADRÃO BR CODE / BANCO CENTRAL COM CRC16)
+// =========================================================================
+function calcularCrc16Pix($str) {
+    $crc = 0xFFFF;
+    $length = strlen($str);
+    for ($i = 0; $i < $length; $i++) {
+        $crc ^= (ord($str[$i]) << 8);
+        for ($j = 0; $j < 8; $j++) {
+            if (($crc & 0x8000) !== 0) {
+                $crc = (($crc << 1) ^ 0x1021) & 0xFFFF;
+            } else {
+                $crc = ($crc << 1) & 0xFFFF;
+            }
+        }
+    }
+    return strtoupper(str_pad(dechex($crc), 4, '0', STR_PAD_LEFT));
+}
+
+function formatarTLVPix($tag, $valor) {
+    $len = str_pad(strlen($valor), 2, '0', STR_PAD_LEFT);
+    return $tag . $len . $valor;
+}
+
+function gerarCodigoPixValido($chave, $nome = 'ON EVENTOS LTDA', $cidade = 'SAO PAULO', $valor = 0, $txid = '***') {
+    $chaveLimpa = trim((string)$chave);
+    if (empty($chaveLimpa)) {
+        $chaveLimpa = '30988070000160';
+    }
+    // Se for email, preserva. Se for número (CNPJ, CPF ou telefone), limpa
+    if (strpos($chaveLimpa, '@') === false) {
+        $soDigitos = preg_replace('/\D/', '', $chaveLimpa);
+        if (strlen($soDigitos) === 14 || strlen($soDigitos) === 11) {
+            $chaveLimpa = $soDigitos;
+        } else if (strlen($soDigitos) === 10 || strlen($soDigitos) === 11) {
+            $chaveLimpa = '+55' . $soDigitos;
+        }
+    }
+
+    $tag26 = formatarTLVPix('00', 'br.gov.bcb.pix') . formatarTLVPix('01', $chaveLimpa);
+    $nomeLimpo = substr(mb_strtoupper($nome ?: 'ON EVENTOS LTDA', 'UTF-8'), 0, 25);
+    $cidadeLimpa = substr(mb_strtoupper($cidade ?: 'SAO PAULO', 'UTF-8'), 0, 15);
+    $txidLimpo = substr($txid ?: '***', 0, 25);
+
+    $payload = 
+        formatarTLVPix('00', '01') .
+        formatarTLVPix('26', $tag26) .
+        formatarTLVPix('52', '0000') .
+        formatarTLVPix('53', '986');
+
+    if ($valor > 0) {
+        $valStr = number_format($valor, 2, '.', '');
+        $payload .= formatarTLVPix('54', $valStr);
+    }
+
+    $payload .= 
+        formatarTLVPix('58', 'BR') .
+        formatarTLVPix('59', $nomeLimpo) .
+        formatarTLVPix('60', $cidadeLimpa) .
+        formatarTLVPix('62', formatarTLVPix('05', $txidLimpo)) .
+        '6304';
+
+    $crc = calcularCrc16Pix($payload);
+    return $payload . $crc;
 }
 
 // Gravar log de disparo
@@ -311,7 +380,7 @@ if ($action === 'get_config') {
 if ($action === 'save_config') {
     $novosDados = $payload['config'] ?? $payload;
     if (is_array($novosDados)) {
-        foreach (['ativo', 'status', 'provedor', 'apiUrl', 'apiKey', 'instancia', 'numeroConectado', 'nomeAgencia', 'lembreteAutomaticoAtivo', 'mensagemApenasEnvio', 'rodapeAviso', 'metaPhoneNumberId', 'metaAccessToken', 'zapiInstanceId', 'zapiToken'] as $campo) {
+        foreach (['ativo', 'status', 'provedor', 'apiUrl', 'apiKey', 'instancia', 'numeroConectado', 'nomeAgencia', 'chavePix', 'nomeBeneficiarioPix', 'cidadePix', 'lembreteAutomaticoAtivo', 'mensagemApenasEnvio', 'rodapeAviso', 'metaPhoneNumberId', 'metaAccessToken', 'zapiInstanceId', 'zapiToken'] as $campo) {
             if (isset($novosDados[$campo])) {
                 $config[$campo] = $novosDados[$campo];
             }
@@ -425,8 +494,8 @@ if ($action === 'enviar_boleto') {
     $modeloAlbum = $payload['modeloAlbum'] ?? 'Kit Formatura';
     $vencimento = $payload['vencimento'] ?? '';
     $valor = floatval($payload['valor'] ?? 0);
-    $linhaDigitavel = $payload['linhaDigitavel'] ?? '';
-    $codigoPix = $payload['codigoPix'] ?? '';
+    $linhaDigitavel = trim($payload['linhaDigitavel'] ?? '');
+    $codigoPix = trim($payload['codigoPix'] ?? '');
     $totalParcelas = intval($payload['totalParcelas'] ?? 1);
 
     // Carrega dados da venda se disponível
@@ -442,42 +511,66 @@ if ($action === 'enviar_boleto') {
         }
     }
 
-    $rodape = $config['rodapeAviso'] ?? "_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_";
+    // Se o código Pix estiver vazio ou for o mock antigo com e4b8c9f0, gera um PIX 100% válido no padrão BACEN
+    $chavePix = $config['chavePix'] ?? '30988070000160';
+    $nomeBeneficiario = $config['nomeBeneficiarioPix'] ?? 'ON EVENTOS LTDA';
+    $cidadeBeneficiario = $config['cidadePix'] ?? 'SAO PAULO';
+    if (empty($codigoPix) || strpos($codigoPix, 'e4b8c9f0') !== false) {
+        $codigoPix = gerarCodigoPixValido($chavePix, $nomeBeneficiario, $cidadeBeneficiario, $valor, '***');
+    }
 
-    $texto = "Olá, *{$alunoNome}*! 👋\n\n";
-    $texto .= "Seguem as informações de pagamento da sua parcela do seu Kit de Formatura:\n\n";
-    $texto .= "📦 *Pedido:* {$codigoPedido} ({$modeloAlbum})\n";
-    $texto .= "🔢 *Parcela:* {$parcelaNum} de {$totalParcelas}\n";
-    $texto .= "📅 *Vencimento:* {$vencimento}\n";
-    $texto .= "💰 *Valor:* R$ " . number_format($valor, 2, ',', '.') . "\n\n";
-    
+    $parcelaFormatada = str_pad($parcelaNum, 2, '0', STR_PAD_LEFT) . '/' . str_pad($totalParcelas, 2, '0', STR_PAD_LEFT);
+    $valorFormatado = number_format($valor, 2, ',', '.');
+
+    // 1ª MENSAGEM: Informações completas do Boleto com quebras de linha limpas
+    $textoInfo = "*Boleto {$parcelaFormatada}*\n\n";
+    $textoInfo .= "• Formando: {$alunoNome}\n";
+    $textoInfo .= "• Pedido: {$codigoPedido} ({$modeloAlbum})\n";
+    $textoInfo .= "• Vencimento: {$vencimento}\n";
+    $textoInfo .= "• Valor: R$ {$valorFormatado}\n\n";
+
     if (!empty($linhaDigitavel)) {
-        $texto .= "📄 *Linha Digitável do Boleto:*\n```{$linhaDigitavel}```\n\n";
+        $textoInfo .= "*Código do Boleto:*\n{$linhaDigitavel}\n\n";
     }
-    
+
     if (!empty($codigoPix)) {
-        $texto .= "💠 *Chave PIX Copia e Cola:*\n```{$codigoPix}```\n\n";
+        $textoInfo .= "*PIX Copia e Cola:*\n{$codigoPix}\n\n";
     }
-    
-    $texto .= "Você também pode acessar seu carnê completo através do portal do formando.\n\n";
-    $texto .= $rodape;
 
-    $res = dispararMensagemWhatsApp($telefone, $texto);
-    registrarLogZap('ENVIO_BOLETO_PARCELA', $telefone, $alunoNome, $codigoPedido, $res['sucesso'], $res['msgId'] ?? '', $res['erro'] ?? '');
+    $textoInfo .= "👇 _Para facilitar, enviamos logo abaixo o código do boleto e o código Pix em mensagens avulsas para você copiar com 1 toque no celular:_";
 
-    // Atualiza a venda com o registro do envio e telefone se necessário
-    if ($res['sucesso'] && $vendaIndex >= 0 && isset($vendas[$vendaIndex]['parcelasBoletos'])) {
-        $agora = date('d/m/Y H:i');
-        if (!empty($payload['telefone'])) {
-            $vendas[$vendaIndex]['alunoTelefone'] = $payload['telefone'];
+    // Dispara a 1ª mensagem com o resumo
+    $res = dispararMensagemWhatsApp($telefone, $textoInfo);
+    registrarLogZap('ENVIO_BOLETO_PARCELA', $telefone, $alunoNome, "{$codigoPedido} #{$parcelaNum}", $res['sucesso'], $res['msgId'] ?? '', $res['erro'] ?? '');
+
+    if ($res['sucesso']) {
+        // 2ª MENSAGEM SEPARADA: APENAS o código do boleto (linha digitável avulsa para copiar com 1 toque)
+        if (!empty($linhaDigitavel)) {
+            usleep(600000); // 600ms
+            dispararMensagemWhatsApp($telefone, $linhaDigitavel);
         }
-        foreach ($vendas[$vendaIndex]['parcelasBoletos'] as &$p) {
-            if (intval($p['numero'] ?? 0) === $parcelaNum) {
-                $p['ultimoEnvioZap'] = $agora;
-                break;
+
+        // 3ª MENSAGEM SEPARADA: APENAS o PIX Copia e Cola oficial (avulso para copiar com 1 toque)
+        if (!empty($codigoPix)) {
+            usleep(600000); // 600ms
+            dispararMensagemWhatsApp($telefone, $codigoPix);
+        }
+
+        // Atualiza a venda na base
+        if ($vendaIndex >= 0 && isset($vendas[$vendaIndex]['parcelasBoletos'])) {
+            $agora = date('d/m/Y H:i');
+            if (!empty($payload['telefone'])) {
+                $vendas[$vendaIndex]['alunoTelefone'] = $payload['telefone'];
             }
+            foreach ($vendas[$vendaIndex]['parcelasBoletos'] as &$p) {
+                if (intval($p['numero'] ?? 0) === $parcelaNum) {
+                    $p['ultimoEnvioZap'] = $agora;
+                    $p['codigoPix'] = $codigoPix;
+                    break;
+                }
+            }
+            @file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         }
-        @file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
     }
 
     echo json_encode([
@@ -485,12 +578,12 @@ if ($action === 'enviar_boleto') {
         'erro' => $res['erro'] ?? null,
         'msgId' => $res['msgId'] ?? null,
         'destinatario' => $telefone,
-        'mensagem' => "Boleto da Parcela #{$parcelaNum} enviado diretamente para o WhatsApp de {$alunoNome}!"
+        'mensagem' => "Boleto {$parcelaFormatada} enviado diretamente para o WhatsApp de {$alunoNome} com códigos avulsos para cópia rápida!"
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// 5. Enviar Carnê Completo
+// 5. Enviar Carnê Completo com Boletos Separados
 if ($action === 'enviar_carne') {
     $vendaId = $payload['vendaId'] ?? '';
     $telefone = $payload['telefone'] ?? '';
@@ -514,65 +607,102 @@ if ($action === 'enviar_carne') {
         }
     }
 
-    $rodape = $config['rodapeAviso'] ?? "_(Mensagem automática da ON Agência de Eventos • Canal exclusivo para avisos, favor não responder)_";
     $totalQtd = count($parcelas);
+    $chavePix = $config['chavePix'] ?? '30988070000160';
+    $nomeBeneficiario = $config['nomeBeneficiarioPix'] ?? 'ON EVENTOS LTDA';
+    $cidadeBeneficiario = $config['cidadePix'] ?? 'SAO PAULO';
 
-    $texto = "Olá, *{$alunoNome}*! 👋\n\n";
-    $texto .= "Aqui estão as informações do seu *Carnê de Boletos do Kit de Formatura*:\n\n";
-    $texto .= "📦 *Pedido:* {$codigoPedido} ({$modeloAlbum})\n";
-    $texto .= "💰 *Valor Total do Kit:* R$ " . number_format($valorTotal, 2, ',', '.') . " em {$totalQtd} parcelas\n\n";
-    $texto .= "📋 *Resumo das Parcelas:*\n";
+    // Filtra apenas parcelas que não estão quitadas
+    $parcelasPendentes = array_values(array_filter($parcelas, function($p) {
+        return ($p['status'] ?? '') !== 'PAGO';
+    }));
 
-    foreach ($parcelas as $p) {
-        $num = $p['numero'] ?? 1;
-        $venc = $p['vencimento'] ?? '';
-        $val = number_format(floatval($p['valor'] ?? 0), 2, ',', '.');
-        $statusStr = ($p['status'] ?? '') === 'PAGO' ? '✅ Liquidado' : '⏳ Vence em ' . $venc;
-        $texto .= "• Parcela {$num}/{$totalQtd}: R$ {$val} — {$statusStr}\n";
+    if (empty($parcelasPendentes)) {
+        echo json_encode([
+            'sucesso' => false,
+            'erro' => 'Todas as parcelas deste formando já foram quitadas!'
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
-    // Inclui detalhes da primeira parcela pendente
-    $primeiraPendente = null;
-    foreach ($parcelas as $p) {
-        if (($p['status'] ?? '') !== 'PAGO') {
-            $primeiraPendente = $p;
-            break;
+    // Mensagem de Introdução do Carnê
+    $intro = "🎓 *ON Agência de Eventos - Boletos do Formando*\n\n";
+    $intro .= "Olá, *{$alunoNome}*! 👋\n";
+    $intro .= "Seguem abaixo os boletos do seu Kit de Formatura referentes ao pedido *{$codigoPedido}* ({$modeloAlbum}):\n";
+    $intro .= "💰 *Valor Total:* R$ " . number_format($valorTotal, 2, ',', '.') . "\n\n";
+    $intro .= "Cada boleto será enviado logo abaixo de forma individual com as informações e os códigos avulsos para você copiar com facilidade no aplicativo do seu banco.";
+
+    $resIntro = dispararMensagemWhatsApp($telefone, $intro);
+    if (!$resIntro['sucesso']) {
+        echo json_encode($resIntro, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $enviadasComSucesso = 0;
+    $agora = date('d/m/Y H:i');
+
+    // Envia cada boleto pendente em bloco separado
+    foreach ($parcelasPendentes as $p) {
+        $pNum = intval($p['numero'] ?? 1);
+        $pVenc = $p['vencimento'] ?? '';
+        $pVal = floatval($p['valor'] ?? 0);
+        $pLinha = trim($p['linhaDigitavel'] ?? '');
+        $pPix = trim($p['codigoPix'] ?? '');
+
+        // Garante PIX válido
+        if (empty($pPix) || strpos($pPix, 'e4b8c9f0') !== false) {
+            $pPix = gerarCodigoPixValido($chavePix, $nomeBeneficiario, $cidadeBeneficiario, $pVal, '***');
         }
-    }
 
-    if ($primeiraPendente) {
-        $pNum = $primeiraPendente['numero'];
-        $pVal = number_format(floatval($primeiraPendente['valor'] ?? 0), 2, ',', '.');
-        $pVenc = $primeiraPendente['vencimento'];
-        $pLinha = $primeiraPendente['linhaDigitavel'] ?? '';
-        $pPix = $primeiraPendente['codigoPix'] ?? '';
+        $pFormatada = str_pad($pNum, 2, '0', STR_PAD_LEFT) . '/' . str_pad($totalQtd, 2, '0', STR_PAD_LEFT);
+        $valFormatado = number_format($pVal, 2, ',', '.');
 
-        $texto .= "\n👉 *Próxima Parcela a Vencer (#{$pNum} - R$ {$pVal} em {$pVenc}):*\n";
+        // 1ª MENSAGEM DO BOLETO: Informações
+        $txtBoleto = "*Boleto {$pFormatada}*\n\n";
+        $txtBoleto .= "• Formando: {$alunoNome}\n";
+        $txtBoleto .= "• Pedido: {$codigoPedido}\n";
+        $txtBoleto .= "• Vencimento: {$pVenc}\n";
+        $txtBoleto .= "• Valor: R$ {$valFormatado}\n\n";
+
         if (!empty($pLinha)) {
-            $texto .= "📄 *Linha Digitável:*\n```{$pLinha}```\n\n";
+            $txtBoleto .= "*Código do Boleto:*\n{$pLinha}\n\n";
         }
         if (!empty($pPix)) {
-            $texto .= "💠 *PIX Copia e Cola:*\n```{$pPix}```\n\n";
+            $txtBoleto .= "*PIX Copia e Cola:*\n{$pPix}\n";
+        }
+
+        // Dispara a mensagem individual do boleto
+        usleep(1000000); // 1s de intervalo seguro
+        $resBoleto = dispararMensagemWhatsApp($telefone, $txtBoleto);
+        if ($resBoleto['sucesso']) {
+            $enviadasComSucesso++;
         }
     }
 
-    $texto .= $rodape;
-
-    $res = dispararMensagemWhatsApp($telefone, $texto);
-    registrarLogZap('ENVIO_CARNE_COMPLETO', $telefone, $alunoNome, $codigoPedido, $res['sucesso'], $res['msgId'] ?? '', $res['erro'] ?? '');
-
-    // Atualiza o telefone na base se foi fornecido um novo número
-    if ($res['sucesso'] && $vendaIdx >= 0 && !empty($payload['telefone'])) {
-        $vendas[$vendaIdx]['alunoTelefone'] = $payload['telefone'];
+    // Atualiza o registro na base de dados
+    if ($vendaIdx >= 0 && isset($vendas[$vendaIdx]['parcelasBoletos'])) {
+        if (!empty($payload['telefone'])) {
+            $vendas[$vendaIdx]['alunoTelefone'] = $payload['telefone'];
+        }
+        foreach ($vendas[$vendaIdx]['parcelasBoletos'] as &$p) {
+            if (($p['status'] ?? '') !== 'PAGO') {
+                $p['ultimoEnvioZap'] = $agora;
+                // Atualiza também o Pix válido na base
+                if (empty($p['codigoPix']) || strpos($p['codigoPix'], 'e4b8c9f0') !== false) {
+                    $p['codigoPix'] = gerarCodigoPixValido($chavePix, $nomeBeneficiario, $cidadeBeneficiario, floatval($p['valor'] ?? 0), '***');
+                }
+            }
+        }
         @file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
     }
 
+    registrarLogZap('ENVIO_CARNE_COMPLETO', $telefone, $alunoNome, $codigoPedido, true, $resIntro['msgId'] ?? '', '');
+
     echo json_encode([
-        'sucesso' => $res['sucesso'],
-        'erro' => $res['erro'] ?? null,
-        'msgId' => $res['msgId'] ?? null,
+        'sucesso' => true,
         'destinatario' => $telefone,
-        'mensagem' => "Carnê completo enviado com sucesso para o WhatsApp de {$alunoNome}!"
+        'totalEnviadas' => $enviadasComSucesso,
+        'mensagem' => "{$enviadasComSucesso} boletos enviados individualmente com sucesso para o WhatsApp de {$alunoNome}!"
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -643,19 +773,27 @@ if ($action === 'enviar_lembretes_vencimento') {
 
                 $pNum = $parcela['numero'] ?? 1;
                 $pVal = number_format(floatval($parcela['valor'] ?? 0), 2, ',', '.');
-                $pLinha = $parcela['linhaDigitavel'] ?? '';
-                $pPix = $parcela['codigoPix'] ?? '';
+                $pLinha = trim($parcela['linhaDigitavel'] ?? '');
+                $pPix = trim($parcela['codigoPix'] ?? '');
+                if (empty($pPix) || strpos($pPix, 'e4b8c9f0') !== false) {
+                    $chavePix = $config['chavePix'] ?? '30988070000160';
+                    $nomeBeneficiario = $config['nomeBeneficiarioPix'] ?? 'ON EVENTOS LTDA';
+                    $cidadeBeneficiario = $config['cidadePix'] ?? 'SAO PAULO';
+                    $pPix = gerarCodigoPixValido($chavePix, $nomeBeneficiario, $cidadeBeneficiario, floatval($parcela['valor'] ?? 0), '***');
+                    $parcela['codigoPix'] = $pPix;
+                    $modificado = true;
+                }
 
                 // Montagem da mensagem amigável de lembrete de 1 dia
                 $msgLembrete = "Olá, *{$alunoNome}*! 👋\n\n";
                 $msgLembrete .= "Passando para lembrar que a *Parcela {$pNum} de {$totalParcelas}* do seu Kit de Formatura vence *amanhã ({$vencimentoOriginal})* no valor de *R$ {$pVal}*.\n\n";
                 
                 if (!empty($pLinha)) {
-                    $msgLembrete .= "📄 *Linha Digitável do Boleto:*\n```{$pLinha}```\n\n";
+                    $msgLembrete .= "📄 *Código do Boleto (Linha Digitável):*\n{$pLinha}\n\n";
                 }
                 
                 if (!empty($pPix)) {
-                    $msgLembrete .= "💠 *Chave PIX Copia e Cola:*\n```{$pPix}```\n\n";
+                    $msgLembrete .= "💠 *PIX Copia e Cola:*\n{$pPix}\n\n";
                 }
                 
                 $msgLembrete .= "Evite juros e encargos realizando o pagamento até a data de vencimento. Caso já tenha efetuado o pagamento, por favor desconsidere este aviso.\n\n";

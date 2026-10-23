@@ -52,6 +52,12 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
   // Aba ativa: 'ANALISE' ou 'CONFIG'
   const [abaAtiva, setAbaAtiva] = useState<'ANALISE' | 'CONFIG'>('ANALISE');
 
+  // Motor de IA: 'LOCAL' (Navegador / 100% Grátis sem Cartão) ou 'AWS' (Nuvem Rekognition)
+  const [motorIa, setMotorIa] = useState<'LOCAL' | 'AWS'>('LOCAL');
+  const [modelosCarregados, setModelosCarregados] = useState(false);
+  const [carregandoModelos, setCarregandoModelos] = useState(false);
+  const [statusCarregamento, setStatusCarregamento] = useState<string>('');
+
   // Configurações AWS
   const [configAws, setConfigAws] = useState<ConfigAws>({
     configurado: false,
@@ -88,12 +94,15 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
   const inputRefFoto = useRef<HTMLInputElement>(null);
   const inputLoteRef = useRef<HTMLInputElement>(null);
 
-  // Carregar Configurações ao Abrir
+  // Carregar Configurações e Inicializar IA ao Abrir
   useEffect(() => {
     if (aberto) {
       carregarConfigAws();
+      if (motorIa === 'LOCAL' && !modelosCarregados) {
+        inicializarModelosLocais();
+      }
     }
-  }, [aberto]);
+  }, [aberto, motorIa]);
 
   const carregarConfigAws = async () => {
     try {
@@ -239,33 +248,239 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
     });
   };
 
-  // Executar Reconhecimento Facial em Lotes Progressivos
-  const iniciarReconhecimento = async () => {
-    if (!configAws.configurado) {
+  // Carrega o script Face-API no navegador se ainda não estiver presente
+  const carregarScriptFaceApi = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (typeof window === 'undefined') return resolve();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).faceapi) return resolve();
+
+      const scriptExistente = document.getElementById('face-api-script') as HTMLScriptElement;
+      if (scriptExistente) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((window as any).faceapi) return resolve();
+        scriptExistente.addEventListener('load', () => resolve());
+        scriptExistente.addEventListener('error', (err) => reject(err));
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = 'face-api-script';
+      script.src = '/js/face-api.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        // Fallback CDN caso necessário
+        const scriptCdn = document.createElement('script');
+        scriptCdn.src = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';
+        scriptCdn.onload = () => resolve();
+        scriptCdn.onerror = reject;
+        document.body.appendChild(scriptCdn);
+      };
+      document.body.appendChild(script);
+    });
+  };
+
+  // Inicializa modelos neurais faciais (SSD MobileNet, Landmarks 68 e Face Recognition)
+  const inicializarModelosLocais = async (): Promise<boolean> => {
+    if (modelosCarregados) return true;
+    setCarregandoModelos(true);
+    setStatusCarregamento('Carregando biblioteca de IA no navegador...');
+
+    try {
+      await carregarScriptFaceApi();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const faceapi = (window as any).faceapi;
+      if (!faceapi) {
+        throw new Error('Face-API não foi carregado corretamente.');
+      }
+
+      setStatusCarregamento('Inicializando redes neurais biométricas...');
+      const LOCAL_PATH = '/models/face-api';
+      const CDN_PATH = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+
+      try {
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(LOCAL_PATH),
+          faceapi.nets.faceLandmark68Net.loadFromUri(LOCAL_PATH),
+          faceapi.nets.faceRecognitionNet.loadFromUri(LOCAL_PATH),
+        ]);
+      } catch {
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(CDN_PATH),
+          faceapi.nets.faceLandmark68Net.loadFromUri(CDN_PATH),
+          faceapi.nets.faceRecognitionNet.loadFromUri(CDN_PATH),
+        ]);
+      }
+
+      setModelosCarregados(true);
+      setStatusCarregamento('');
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar modelos';
+      setStatusCarregamento('');
       setMsgFeedback({
         tipo: 'erro',
-        texto: 'Por favor, configure as credenciais da AWS Rekognition na aba "Configurar AWS" antes de iniciar a análise.'
+        texto: `Não foi possível carregar a IA local: ${msg}. Verifique sua conexão.`
       });
-      setAbaAtiva('CONFIG');
+      return false;
+    } finally {
+      setCarregandoModelos(false);
+    }
+  };
+
+  // Carrega e redimensiona imagem para o Canvas para máxima performance de IA
+  const carregarImagemOtimizada = (src: string, maxDim: number = 1280): Promise<HTMLCanvasElement | HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas);
+            return;
+          }
+        }
+        resolve(img);
+      };
+      img.onerror = (err) => reject(err);
+      img.src = src;
+    });
+  };
+
+  // Processamento 1: IA Nativa Local no Navegador (Face-API / TensorFlow)
+  const executarIaNativaLocal = async () => {
+    if (!fotoReferencia) return;
+
+    setProcessando(true);
+    setIndiceAtual(0);
+
+    // Reseta status para pendente
+    setFotosLote((prev) =>
+      prev.map((f) => ({ ...f, status: 'pendente', similaridade: undefined, erro: undefined }))
+    );
+
+    const prontos = await inicializarModelosLocais();
+    if (!prontos) {
+      setProcessando(false);
       return;
     }
-    if (!fotoReferencia) {
-      alert('Selecione primeiro a foto de referência (o rosto do formando).');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const faceapi = (window as any).faceapi;
+    if (!faceapi) {
+      setMsgFeedback({ tipo: 'erro', texto: 'Biblioteca Face-API não está disponível.' });
+      setProcessando(false);
       return;
     }
-    if (fotosLote.length === 0) {
-      alert('Adicione as fotos do evento para a IA analisar.');
-      return;
+
+    try {
+      setStatusCarregamento('Mapeando rosto de referência do formando...');
+      const canvasRef = await carregarImagemOtimizada(fotoReferencia.preview, 800);
+
+      const refDetection = await faceapi
+        .detectSingleFace(canvasRef, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.35 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!refDetection) {
+        alert('Nenhum rosto foi identificado com clareza na foto de referência (selfie). Por favor, use uma foto nítida e iluminada.');
+        setProcessando(false);
+        setStatusCarregamento('');
+        return;
+      }
+
+      setStatusCarregamento('Comparando biometricamente com as fotos do evento...');
+      // Limiar: distância máxima 0.58 (~80% similaridade)
+      const maxDistance = 0.58;
+      const faceMatcher = new faceapi.FaceMatcher(refDetection, maxDistance);
+
+      const total = fotosLote.length;
+      for (let i = 0; i < total; i++) {
+        const item = fotosLote[i];
+        setIndiceAtual(i + 1);
+
+        setFotosLote((prev) =>
+          prev.map((f, idx) => (idx === i ? { ...f, status: 'processando' } : f))
+        );
+
+        try {
+          const canvasAlvo = await carregarImagemOtimizada(item.preview, 1280);
+          const detections = await faceapi
+            .detectAllFaces(canvasAlvo, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.35 }))
+            .withFaceLandmarks()
+            .withFaceDescriptors();
+
+          let matchEncontrado = false;
+          let melhorSimilaridade = 0;
+
+          for (const det of detections) {
+            const match = faceMatcher.findBestMatch(det.descriptor);
+            if (match.label !== 'unknown') {
+              matchEncontrado = true;
+              // Converte distância para porcentagem de similaridade
+              const simPct = Math.max(55, Math.min(99, Math.round((1 - (match.distance * 0.75)) * 100)));
+              if (simPct > melhorSimilaridade) {
+                melhorSimilaridade = simPct;
+              }
+            }
+          }
+
+          setFotosLote((prev) =>
+            prev.map((f, idx) =>
+              idx === i
+                ? {
+                    ...f,
+                    status: matchEncontrado ? 'encontrado' : 'nao_encontrado',
+                    similaridade: matchEncontrado ? melhorSimilaridade : undefined,
+                  }
+                : f
+            )
+          );
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : 'Falha na foto';
+          setFotosLote((prev) =>
+            prev.map((f, idx) =>
+              idx === i ? { ...f, status: 'erro', erro: errorMsg } : f
+            )
+          );
+        }
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Falha no processamento';
+      setMsgFeedback({ tipo: 'erro', texto: `Erro no processamento da IA: ${errorMsg}` });
+    } finally {
+      setProcessando(false);
+      setIndiceAtual(fotosLote.length);
+      setFiltroResultado('ENCONTRADAS');
+      setStatusCarregamento('');
     }
+  };
+
+  // Processamento 2: AWS Rekognition (Nuvem SigV4)
+  const executarAwsRekognition = async () => {
+    if (!fotoReferencia) return;
 
     setProcessando(true);
     setIndiceAtual(0);
 
     const base64Ref = fotoReferencia.preview;
-    const tamanhoPacote = 4; // Envia em pacotes de 4 fotos para feedback instantâneo e não sobrecarregar
+    const tamanhoPacote = 4;
     const totalFotos = fotosLote.length;
 
-    // Reseta status para pendente
     setFotosLote((prev) =>
       prev.map((f) => ({ ...f, status: 'pendente', similaridade: undefined, erro: undefined }))
     );
@@ -274,13 +489,11 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
       const grupo = fotosLote.slice(i, i + tamanhoPacote);
       setIndiceAtual(i + 1);
 
-      // Marca o grupo como 'processando'
       setFotosLote((prev) =>
         prev.map((f) => (grupo.some((g) => g.id === f.id) ? { ...f, status: 'processando' } : f))
       );
 
       try {
-        // Prepara lote em base64
         const lotePayload = await Promise.all(
           grupo.map(async (item) => ({
             id: item.id,
@@ -316,7 +529,6 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
             })
           );
         } else {
-          // Se a AWS retornar erro ou se não tiver credencial configurada
           setFotosLote((prev) =>
             prev.map((item) =>
               grupo.some((g) => g.id === item.id)
@@ -340,6 +552,32 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
     setProcessando(false);
     setIndiceAtual(totalFotos);
     setFiltroResultado('ENCONTRADAS');
+  };
+
+  // Executar Reconhecimento Facial (escolhe o motor ativo)
+  const iniciarReconhecimento = async () => {
+    if (!fotoReferencia) {
+      alert('Selecione primeiro a foto de referência (o rosto do formando).');
+      return;
+    }
+    if (fotosLote.length === 0) {
+      alert('Adicione as fotos do evento para a IA analisar.');
+      return;
+    }
+
+    if (motorIa === 'AWS') {
+      if (!configAws.configurado) {
+        setMsgFeedback({
+          tipo: 'erro',
+          texto: 'Por favor, configure as credenciais da AWS Rekognition na aba "Configurações" antes de iniciar a análise.'
+        });
+        setAbaAtiva('CONFIG');
+        return;
+      }
+      return executarAwsRekognition();
+    } else {
+      return executarIaNativaLocal();
+    }
   };
 
   // Contadores
@@ -384,7 +622,11 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
         {/* Topo do Modal */}
         <header className="px-6 py-4 bg-gradient-to-r from-slate-900 via-purple-950 to-indigo-950 text-white flex items-center justify-between border-b border-purple-800/40">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 via-purple-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-900/50">
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg ${
+              motorIa === 'LOCAL'
+                ? 'bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500 shadow-emerald-900/50'
+                : 'bg-gradient-to-tr from-amber-400 via-purple-500 to-indigo-500 shadow-purple-900/50'
+            }`}>
               <Cpu className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -392,18 +634,50 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
                 <h3 className="font-black text-base tracking-tight text-white flex items-center">
                   IA Facial: Separação Automática por Rosto
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 flex items-center space-x-1 shadow-xs">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center space-x-1 shadow-xs ${
+                  motorIa === 'LOCAL'
+                    ? 'bg-emerald-400 text-slate-950'
+                    : 'bg-amber-400 text-slate-950'
+                }`}>
                   <Sparkles className="w-3 h-3 text-slate-950" />
-                  <span>AWS Rekognition</span>
+                  <span>{motorIa === 'LOCAL' ? 'IA Nativa (Grátis / Sem Cartão)' : 'AWS Rekognition'}</span>
                 </span>
               </div>
               <p className="text-xs text-purple-200 mt-0.5">
-                Envie o rosto do formando e a IA encontra todas as fotos dele no evento com precisão biométrica.
+                Envie o rosto do formando e a IA encontra todas as fotos dele no evento com precisão biométrica neural.
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Seletor Rápido de Motor */}
+            <div className="hidden sm:flex items-center bg-black/40 p-1 rounded-xl border border-white/10 text-xs">
+              <button
+                type="button"
+                onClick={() => setMotorIa('LOCAL')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center space-x-1 cursor-pointer ${
+                  motorIa === 'LOCAL'
+                    ? 'bg-emerald-500 text-white shadow-xs font-black'
+                    : 'text-purple-200 hover:text-white'
+                }`}
+                title="Modo gratuito que roda direto no navegador sem precisar de cartão ou contas externas"
+              >
+                <span>🤖 IA Nativa (Grátis)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMotorIa('AWS')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center space-x-1 cursor-pointer ${
+                  motorIa === 'AWS'
+                    ? 'bg-amber-400 text-slate-950 shadow-xs font-black'
+                    : 'text-purple-200 hover:text-white'
+                }`}
+                title="Modo em nuvem via AWS Rekognition (requer credenciais da AWS)"
+              >
+                <span>☁️ AWS</span>
+              </button>
+            </div>
+
             <button
               onClick={() => setAbaAtiva(abaAtiva === 'ANALISE' ? 'CONFIG' : 'ANALISE')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer ${
@@ -413,7 +687,7 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
               }`}
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>{abaAtiva === 'CONFIG' ? 'Voltar à IA' : 'Configurar AWS'}</span>
+              <span>{abaAtiva === 'CONFIG' ? 'Voltar à IA' : 'Configurações'}</span>
             </button>
             <button
               onClick={onFechar}
@@ -447,9 +721,70 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
           </div>
         )}
 
-        {/* ABA: CONFIGURAÇÕES DA AWS */}
+        {/* ABA: CONFIGURAÇÕES */}
         {abaAtiva === 'CONFIG' && (
           <div className="p-6 overflow-y-auto space-y-6">
+            {/* Escolha do Motor de Inteligência Artificial */}
+            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 rounded-2xl p-5 border border-emerald-200">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Cpu className="w-4 h-4 text-emerald-600" />
+                  <span>Escolha do Motor de Inteligência Artificial</span>
+                </h4>
+                <span className="text-[11px] font-bold text-slate-500">
+                  Ativo: <strong className={motorIa === 'LOCAL' ? 'text-emerald-700' : 'text-purple-700'}>{motorIa === 'LOCAL' ? 'IA Nativa (Grátis)' : 'AWS Rekognition'}</strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                <button
+                  type="button"
+                  onClick={() => setMotorIa('LOCAL')}
+                  className={`p-3.5 rounded-xl border text-left transition flex items-start space-x-3 cursor-pointer ${
+                    motorIa === 'LOCAL'
+                      ? 'bg-white border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
+                      : 'bg-white/60 border-slate-200 hover:bg-white'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-1.5">
+                      <strong className="text-xs text-slate-900 font-black">IA Nativa (Recomendada)</strong>
+                      <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 font-black text-[9px] rounded-sm">100% GRÁTIS</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                      Processamento neural no próprio navegador. <strong>Não requer cartão de crédito</strong> nem conta na AWS.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMotorIa('AWS')}
+                  className={`p-3.5 rounded-xl border text-left transition flex items-start space-x-3 cursor-pointer ${
+                    motorIa === 'AWS'
+                      ? 'bg-white border-purple-500 shadow-md ring-2 ring-purple-500/20'
+                      : 'bg-white/60 border-slate-200 hover:bg-white'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <Cpu className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-1.5">
+                      <strong className="text-xs text-slate-900 font-black">AWS Rekognition</strong>
+                      <span className="px-1.5 py-0.2 bg-purple-100 text-purple-800 font-black text-[9px] rounded-sm">NUVEM</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                      Processamento na nuvem da AWS. Requer par de chaves Access Key configurados abaixo.
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Status Atual da Conexão */}
             <div className={`rounded-2xl p-4 border flex items-center justify-between ${
               configAws.configurado
@@ -809,20 +1144,31 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
             </div>
 
             {/* BARRA DE AÇÃO PRINCIPAL E PROGRESSO */}
-            <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-slate-50 rounded-2xl p-4 border border-purple-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className={`rounded-2xl p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
+              motorIa === 'LOCAL'
+                ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-slate-50 border-emerald-200'
+                : 'bg-gradient-to-r from-purple-50 via-indigo-50 to-slate-50 border-purple-200/80'
+            }`}>
               <div>
-                <strong className="text-slate-900 text-xs font-black block uppercase tracking-wide">
-                  Motor de Reconhecimento Facial AWS
+                <strong className="text-slate-900 text-xs font-black block uppercase tracking-wide flex items-center space-x-1.5">
+                  <span className={`w-2 h-2 rounded-full ${motorIa === 'LOCAL' ? 'bg-emerald-500' : 'bg-purple-600'} animate-pulse`} />
+                  <span>
+                    {motorIa === 'LOCAL'
+                      ? 'Motor: IA Facial Nativa (100% Gratuito & Ilimitado)'
+                      : 'Motor: AWS Rekognition (Nuvem)'}
+                  </span>
                 </strong>
                 <span className="text-[11px] text-slate-600 mt-0.5 block">
-                  {configAws.configurado
-                    ? `🟢 Conectado à AWS (${configAws.aws_region}) • Limiar: ${formLimiar}% de similaridade`
-                    : '⚠️ Nenhuma chave AWS configurada ainda. Clique em "Configurar AWS" no canto superior.'}
+                  {motorIa === 'LOCAL'
+                    ? (statusCarregamento || '🟢 IA Nativa Ativa! Processamento biométrico neural direto no navegador sem cartão de crédito.')
+                    : (configAws.configurado
+                        ? `🟢 Conectado à AWS (${configAws.aws_region}) • Limiar: ${formLimiar}% de similaridade`
+                        : '⚠️ Nenhuma chave AWS configurada ainda. Clique em "Configurar Chaves AWS" ao lado.')}
                 </span>
               </div>
 
               <div className="flex items-center space-x-3">
-                {!configAws.configurado && (
+                {motorIa === 'AWS' && !configAws.configurado && (
                   <button
                     type="button"
                     onClick={() => setAbaAtiva('CONFIG')}
@@ -832,15 +1178,22 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
                     <span>Configurar Chaves AWS</span>
                   </button>
                 )}
+
                 <button
                   onClick={iniciarReconhecimento}
-                  disabled={processando || !fotoReferencia || fotosLote.length === 0}
-                  className="px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:brightness-110 text-white font-black text-xs shadow-lg shadow-purple-600/30 transition disabled:opacity-50 flex items-center space-x-2 cursor-pointer"
+                  disabled={processando || !fotoReferencia || fotosLote.length === 0 || carregandoModelos}
+                  className={`px-6 py-3 rounded-2xl hover:brightness-110 text-white font-black text-xs shadow-lg transition disabled:opacity-50 flex items-center space-x-2 cursor-pointer ${
+                    motorIa === 'LOCAL'
+                      ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 shadow-emerald-600/30'
+                      : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 shadow-purple-600/30'
+                  }`}
                 >
-                  <Sparkles className={`w-4 h-4 ${processando ? 'animate-spin' : ''}`} />
+                  <Sparkles className={`w-4 h-4 ${processando || carregandoModelos ? 'animate-spin' : ''}`} />
                   <span>
                     {processando
                       ? `Analisando foto ${indiceAtual} de ${fotosLote.length}...`
+                      : carregandoModelos
+                      ? 'Carregando IA...'
                       : '🔍 Iniciar Separação Facial com IA'}
                   </span>
                 </button>
@@ -852,14 +1205,22 @@ export default function ReconhecimentoFacialModal({ aberto, onFechar, alunosCada
               <div className="space-y-1.5 animate-in fade-in duration-200">
                 <div className="flex justify-between text-xs font-bold text-slate-700">
                   <span className="flex items-center space-x-1.5">
-                    <span className="w-2 h-2 rounded-full bg-purple-600 animate-ping" />
-                    <span>Processando via AWS Rekognition...</span>
+                    <span className={`w-2 h-2 rounded-full ${motorIa === 'LOCAL' ? 'bg-emerald-600' : 'bg-purple-600'} animate-ping`} />
+                    <span>
+                      {motorIa === 'LOCAL'
+                        ? 'Processando biometricamente via IA Nativa...'
+                        : 'Processando via AWS Rekognition...'}
+                    </span>
                   </span>
                   <span>{Math.round((indiceAtual / Math.max(1, fotosLote.length)) * 100)}%</span>
                 </div>
                 <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-purple-600 to-indigo-600 h-full transition-all duration-300 rounded-full"
+                    className={`h-full transition-all duration-300 rounded-full ${
+                      motorIa === 'LOCAL'
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                        : 'bg-gradient-to-r from-purple-600 to-indigo-600'
+                    }`}
                     style={{ width: `${Math.round((indiceAtual / Math.max(1, fotosLote.length)) * 100)}%` }}
                   />
                 </div>

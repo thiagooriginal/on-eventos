@@ -56,7 +56,12 @@ interface VendaAlbum {
   turmaNome: string;
   modeloAlbum: string;
   valorTotalKit: number;
-  formaPagamento: 'BOLETO' | 'CARTAO' | 'PIX' | 'DINHEIRO';
+  formaPagamento: 'BOLETO' | 'CARTAO' | 'PIX' | 'DINHEIRO' | 'COMBINADO';
+  valorEntrada?: number;
+  formaEntrada?: 'PIX' | 'DINHEIRO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';
+  nsuEntrada?: string;
+  valorRestante?: number;
+  formaRestante?: 'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO';
   boletoQtdParcelas?: number;
   parcelasBoletos?: ParcelaBoleto[];
   brindes?: { id?: string; nome: string; selecionado: boolean; valorAdicional: number }[];
@@ -166,7 +171,7 @@ export default function AppAlunoPage() {
 
       // Se ainda não encontrou, pega a primeira com boletos ou a primeira válida
       if (!vendaEncontrada && validas.length > 0) {
-        vendaEncontrada = validas.find((v) => v.formaPagamento === 'BOLETO' && (v.parcelasBoletos?.length || 0) > 0) || validas[0];
+        vendaEncontrada = validas.find((v) => (v.formaPagamento === 'BOLETO' || (v.formaPagamento === 'COMBINADO' && v.formaRestante === 'BOLETO')) && (v.parcelasBoletos?.length || 0) > 0) || validas[0];
       }
 
       if (vendaEncontrada) {
@@ -399,6 +404,23 @@ export default function AppAlunoPage() {
               </span>
             </div>
           </div>
+
+          {vendaAtual?.formaPagamento === 'COMBINADO' && (
+            <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="font-bold text-indigo-900 flex items-center">
+                <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] mr-1.5 font-black uppercase">Combinado</span>
+                Entrada + Saldo
+              </span>
+              <div className="flex items-center space-x-3 text-[11px]">
+                <span className="text-emerald-700 font-semibold">
+                  Entrada: <strong>R$ {(vendaAtual.valorEntrada || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> ({vendaAtual.formaEntrada === 'CARTAO_DEBITO' ? 'Débito' : vendaAtual.formaEntrada === 'CARTAO_CREDITO' ? 'Crédito' : vendaAtual.formaEntrada || 'PIX'})
+                </span>
+                <span className="text-indigo-700 font-semibold">
+                  Saldo: <strong>R$ {(vendaAtual.valorRestante ?? Math.max(0, vendaAtual.valorTotalKit - (vendaAtual.valorEntrada || 0))).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Barra de Progresso do Pagamento */}
           {totalParcelas > 0 && (

@@ -156,7 +156,13 @@ export interface VendaAlbum {
   // Soma Total do Kit
   valorTotalKit: number;
   // Pagamento
-  formaPagamento: 'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO';
+  formaPagamento: 'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO' | 'COMBINADO';
+  // Campos de Pagamento Combinado / Misto
+  valorEntrada?: number;
+  formaEntrada?: 'PIX' | 'DINHEIRO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO';
+  nsuEntrada?: string;
+  valorRestante?: number;
+  formaRestante?: 'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO';
   // Cartão
   cartaoQtdParcelas?: number;
   cartaoBandeira?: string;
@@ -471,7 +477,7 @@ export default function VendasAlbunsPage() {
   const [vendas, setVendas] = useState<VendaAlbum[]>(VENDAS_INICIAIS);
   const [busca, setBusca] = useState('');
   const [filtroModelo, setFiltroModelo] = useState<string>('TODOS');
-  const [filtroPagamento, setFiltroPagamento] = useState<'TODOS' | 'CARTAO' | 'BOLETO' | 'A_VISTA' | 'PIX' | 'DINHEIRO'>('TODOS');
+  const [filtroPagamento, setFiltroPagamento] = useState<'TODOS' | 'CARTAO' | 'BOLETO' | 'A_VISTA' | 'PIX' | 'DINHEIRO' | 'COMBINADO'>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [filtroInstituicao, setFiltroInstituicao] = useState<string>('TODAS');
   const [filtroPeriodo, setFiltroPeriodo] = useState<string>('TODOS');
@@ -537,13 +543,18 @@ export default function VendasAlbunsPage() {
   // Estados para Modal de Edição / Correção de Pagamento
   const [modalEditarPagamentoAberto, setModalEditarPagamentoAberto] = useState(false);
   const [vendaParaEditarPagamento, setVendaParaEditarPagamento] = useState<VendaAlbum | null>(null);
-  const [editFormaPagamento, setEditFormaPagamento] = useState<'BOLETO' | 'CARTAO' | 'PIX' | 'DINHEIRO'>('BOLETO');
+  const [editFormaPagamento, setEditFormaPagamento] = useState<'BOLETO' | 'CARTAO' | 'PIX' | 'DINHEIRO' | 'COMBINADO'>('BOLETO');
   const [editValorTotalKit, setEditValorTotalKit] = useState<string>('0');
   const [editBoletoParcelas, setEditBoletoParcelas] = useState<number>(6);
   const [editPrimeiroVencimento, setEditPrimeiroVencimento] = useState<string>('');
   const [editCartaoParcelas, setEditCartaoParcelas] = useState<number>(1);
   const [editCartaoBandeira, setEditCartaoBandeira] = useState<string>('Mastercard');
   const [editCartaoNsu, setEditCartaoNsu] = useState<string>('');
+  // Estados de Pagamento Combinado para Edição
+  const [editCombinadoEntradaValor, setEditCombinadoEntradaValor] = useState<string>('');
+  const [editCombinadoEntradaForma, setEditCombinadoEntradaForma] = useState<'PIX' | 'DINHEIRO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'>('PIX');
+  const [editCombinadoEntradaNsu, setEditCombinadoEntradaNsu] = useState<string>('');
+  const [editCombinadoRestanteForma, setEditCombinadoRestanteForma] = useState<'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO'>('CARTAO');
 
   // Estados para Modal de Correção de Valor Total (Lápis do Valor)
   const [modalEditarValorTotalAberto, setModalEditarValorTotalAberto] = useState(false);
@@ -669,13 +680,19 @@ export default function VendasAlbunsPage() {
   ]);
 
   // Pagamento
-  const [formFormaPagamento, setFormFormaPagamento] = useState<'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO'>('CARTAO');
+  const [formFormaPagamento, setFormFormaPagamento] = useState<'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO' | 'COMBINADO'>('CARTAO');
   const [formCartaoParcelas, setFormCartaoParcelas] = useState('10');
   const [formCartaoBandeira, setFormCartaoBandeira] = useState('Mastercard');
   const [formCartaoNsu, setFormCartaoNsu] = useState('');
   const [formBoletoParcelas, setFormBoletoParcelas] = useState('6');
   const [formPrimeiroVencimento, setFormPrimeiroVencimento] = useState('2026-11-15');
   const [formObservacoes, setFormObservacoes] = useState('');
+
+  // Estados para Pagamento Combinado (Entrada + Saldo Restante)
+  const [formCombinadoEntradaValor, setFormCombinadoEntradaValor] = useState('800');
+  const [formCombinadoEntradaForma, setFormCombinadoEntradaForma] = useState<'PIX' | 'DINHEIRO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO'>('PIX');
+  const [formCombinadoEntradaNsu, setFormCombinadoEntradaNsu] = useState('');
+  const [formCombinadoRestanteForma, setFormCombinadoRestanteForma] = useState<'CARTAO' | 'BOLETO' | 'PIX' | 'DINHEIRO'>('CARTAO');
 
   // Cálculo da Soma Total do Kit em Tempo Real
   const numValorAlbum = parseFloat(formValorAlbum) || 0;
@@ -1310,13 +1327,21 @@ export default function VendasAlbunsPage() {
       if (v.id === vendaEditandoValorTotal.id) {
         let novasParcelas = v.parcelasBoletos ? [...v.parcelasBoletos] : undefined;
 
-        if (v.formaPagamento === 'BOLETO' && Array.isArray(novasParcelas) && novasParcelas.length > 0 && recalcularParcelasBoleto) {
+        const isBoleto = v.formaPagamento === 'BOLETO' || (v.formaPagamento === 'COMBINADO' && v.formaRestante === 'BOLETO');
+        let novoValorRestante = v.valorRestante;
+
+        if (v.formaPagamento === 'COMBINADO') {
+          novoValorRestante = Math.max(0, novoValor - (v.valorEntrada || 0));
+        }
+
+        if (isBoleto && Array.isArray(novasParcelas) && novasParcelas.length > 0 && recalcularParcelasBoleto) {
           const pagas = novasParcelas.filter((p) => p.status === 'PAGO');
           const pendentes = novasParcelas.filter((p) => p.status !== 'PAGO');
 
           if (pendentes.length > 0) {
             const somaPagas = pagas.reduce((acc, p) => acc + (p.valorPago || p.valor), 0);
-            const restante = Math.max(0, novoValor - somaPagas);
+            const baseTotalRestante = v.formaPagamento === 'COMBINADO' ? (novoValorRestante || 0) : novoValor;
+            const restante = Math.max(0, baseTotalRestante - somaPagas);
             const valorBase = Math.floor((restante / pendentes.length) * 100) / 100;
             const centavosDiferenca = Number((restante - valorBase * pendentes.length).toFixed(2));
 
@@ -1343,6 +1368,7 @@ export default function VendasAlbunsPage() {
         return {
           ...v,
           valorTotalKit: novoValor,
+          valorRestante: novoValorRestante,
           parcelasBoletos: novasParcelas,
         };
       }
@@ -1828,6 +1854,13 @@ export default function VendasAlbunsPage() {
     setEditCartaoParcelas(venda.cartaoQtdParcelas || 1);
     setEditCartaoBandeira(venda.cartaoBandeira || 'Mastercard');
     setEditCartaoNsu(venda.cartaoNsu || '');
+
+    // Dados de Pagamento Combinado
+    setEditCombinadoEntradaValor(venda.valorEntrada?.toString() || '');
+    setEditCombinadoEntradaForma(venda.formaEntrada || 'PIX');
+    setEditCombinadoEntradaNsu(venda.nsuEntrada || '');
+    setEditCombinadoRestanteForma(venda.formaRestante || (venda.parcelasBoletos && venda.parcelasBoletos.length > 0 ? 'BOLETO' : 'CARTAO'));
+
     setModalEditarPagamentoAberto(true);
   };
 
@@ -1839,20 +1872,39 @@ export default function VendasAlbunsPage() {
     const vendaId = vendaParaEditarPagamento.id;
 
     let parcelasNovas: ParcelaBoleto[] | undefined = undefined;
-    if (editFormaPagamento === 'BOLETO') {
+    let valorRestanteCalculado = valorNum;
+    let valorEntradaFinal: number | undefined = undefined;
+
+    if (editFormaPagamento === 'COMBINADO') {
+      const entradaNum = parseFloat(editCombinadoEntradaValor) || 0;
+      valorEntradaFinal = entradaNum;
+      valorRestanteCalculado = Math.max(0, valorNum - entradaNum);
+
+      if (editCombinadoRestanteForma === 'BOLETO') {
+        parcelasNovas = gerarParcelasBoletos(valorRestanteCalculado, editBoletoParcelas, editPrimeiroVencimento);
+      }
+    } else if (editFormaPagamento === 'BOLETO') {
       parcelasNovas = gerarParcelasBoletos(valorNum, editBoletoParcelas, editPrimeiroVencimento);
     }
+
+    const isBoletoFinal = editFormaPagamento === 'BOLETO' || (editFormaPagamento === 'COMBINADO' && editCombinadoRestanteForma === 'BOLETO');
+    const isCartaoFinal = editFormaPagamento === 'CARTAO' || (editFormaPagamento === 'COMBINADO' && editCombinadoRestanteForma === 'CARTAO');
 
     const vendaAtualizada: VendaAlbum = {
       ...vendaParaEditarPagamento,
       valorTotalKit: valorNum,
       formaPagamento: editFormaPagamento,
-      boletoQtdParcelas: editFormaPagamento === 'BOLETO' ? editBoletoParcelas : undefined,
+      valorEntrada: editFormaPagamento === 'COMBINADO' ? valorEntradaFinal : undefined,
+      formaEntrada: editFormaPagamento === 'COMBINADO' ? editCombinadoEntradaForma : undefined,
+      nsuEntrada: editFormaPagamento === 'COMBINADO' ? editCombinadoEntradaNsu : undefined,
+      valorRestante: editFormaPagamento === 'COMBINADO' ? valorRestanteCalculado : undefined,
+      formaRestante: editFormaPagamento === 'COMBINADO' ? editCombinadoRestanteForma : undefined,
+      boletoQtdParcelas: isBoletoFinal ? editBoletoParcelas : undefined,
       parcelasBoletos: parcelasNovas,
-      cartaoQtdParcelas: editFormaPagamento === 'CARTAO' ? editCartaoParcelas : undefined,
-      cartaoBandeira: editFormaPagamento === 'CARTAO' ? editCartaoBandeira : undefined,
-      cartaoNsu: editFormaPagamento === 'CARTAO' ? (editCartaoNsu.trim() || `NSU-${Date.now().toString().slice(-6)}`) : undefined,
-      cartaoStatus: editFormaPagamento === 'CARTAO' ? 'Aprovado / Liquidado' : undefined,
+      cartaoQtdParcelas: isCartaoFinal ? editCartaoParcelas : undefined,
+      cartaoBandeira: isCartaoFinal ? editCartaoBandeira : undefined,
+      cartaoNsu: isCartaoFinal ? (editCartaoNsu.trim() || `NSU-${Date.now().toString().slice(-6)}`) : undefined,
+      cartaoStatus: isCartaoFinal ? 'Aprovado / Liquidado' : undefined,
     };
 
     const novasVendas = vendas.map((v) => (v.id === vendaId ? vendaAtualizada : v));
@@ -1860,11 +1912,11 @@ export default function VendasAlbunsPage() {
 
     // Se o modal de boletos estava aberto para essa venda
     if (vendaSelecionadaBoletos && vendaSelecionadaBoletos.id === vendaId) {
-      if (editFormaPagamento === 'BOLETO') {
+      if (isBoletoFinal) {
         setVendaSelecionadaBoletos(vendaAtualizada);
       } else {
         setVendaSelecionadaBoletos(null);
-        if (editFormaPagamento === 'CARTAO') {
+        if (isCartaoFinal) {
           setVendaSelecionadaCartao(vendaAtualizada);
         }
       }
@@ -1872,18 +1924,18 @@ export default function VendasAlbunsPage() {
 
     // Se o modal de cartão estava aberto para essa venda
     if (vendaSelecionadaCartao && vendaSelecionadaCartao.id === vendaId) {
-      if (editFormaPagamento === 'CARTAO') {
+      if (isCartaoFinal) {
         setVendaSelecionadaCartao(vendaAtualizada);
       } else {
         setVendaSelecionadaCartao(null);
-        if (editFormaPagamento === 'BOLETO') {
+        if (isBoletoFinal) {
           setVendaSelecionadaBoletos(vendaAtualizada);
         }
       }
     }
 
     // Se a nova forma for boleto, registrar automaticamente na API Sicredi
-    if (editFormaPagamento === 'BOLETO' && parcelasNovas && parcelasNovas.length > 0) {
+    if (isBoletoFinal && parcelasNovas && parcelasNovas.length > 0) {
       handleRegistrarBoletosApi(vendaAtualizada.id, vendaAtualizada);
     }
 
@@ -2366,9 +2418,23 @@ export default function VendasAlbunsPage() {
     const dataHoje = new Date().toLocaleDateString('pt-BR');
 
     let parcelasGeradas: ParcelaBoleto[] | undefined = undefined;
-    if (formFormaPagamento === 'BOLETO') {
+    let valorRestanteCalculado = somaTotalKit;
+    let valorEntradaFinal: number | undefined = undefined;
+
+    if (formFormaPagamento === 'COMBINADO') {
+      const entradaNum = parseFloat(formCombinadoEntradaValor) || 0;
+      valorEntradaFinal = entradaNum;
+      valorRestanteCalculado = Math.max(0, somaTotalKit - entradaNum);
+
+      if (formCombinadoRestanteForma === 'BOLETO') {
+        parcelasGeradas = gerarParcelasBoletos(valorRestanteCalculado, parseInt(formBoletoParcelas) || 1, formPrimeiroVencimento);
+      }
+    } else if (formFormaPagamento === 'BOLETO') {
       parcelasGeradas = gerarParcelasBoletos(somaTotalKit, parseInt(formBoletoParcelas) || 1, formPrimeiroVencimento);
     }
+
+    const isBoletoFinal = formFormaPagamento === 'BOLETO' || (formFormaPagamento === 'COMBINADO' && formCombinadoRestanteForma === 'BOLETO');
+    const isCartaoFinal = formFormaPagamento === 'CARTAO' || (formFormaPagamento === 'COMBINADO' && formCombinadoRestanteForma === 'CARTAO');
 
     const nova: VendaAlbum = {
       id: `venda-${Date.now()}`,
@@ -2387,11 +2453,16 @@ export default function VendasAlbunsPage() {
       valorTotalBrindes: numValorBrindes,
       valorTotalKit: somaTotalKit,
       formaPagamento: formFormaPagamento,
-      cartaoQtdParcelas: formFormaPagamento === 'CARTAO' ? parseInt(formCartaoParcelas) : undefined,
-      cartaoBandeira: formFormaPagamento === 'CARTAO' ? formCartaoBandeira : undefined,
-      cartaoNsu: formFormaPagamento === 'CARTAO' ? (formCartaoNsu.trim() || `NSU-${Math.floor(100000 + Math.random() * 900000)}`) : undefined,
-      cartaoStatus: formFormaPagamento === 'CARTAO' ? 'Aprovado / Liquidado' : undefined,
-      boletoQtdParcelas: formFormaPagamento === 'BOLETO' ? parseInt(formBoletoParcelas) : undefined,
+      valorEntrada: formFormaPagamento === 'COMBINADO' ? valorEntradaFinal : undefined,
+      formaEntrada: formFormaPagamento === 'COMBINADO' ? formCombinadoEntradaForma : undefined,
+      nsuEntrada: formFormaPagamento === 'COMBINADO' ? formCombinadoEntradaNsu : undefined,
+      valorRestante: formFormaPagamento === 'COMBINADO' ? valorRestanteCalculado : undefined,
+      formaRestante: formFormaPagamento === 'COMBINADO' ? formCombinadoRestanteForma : undefined,
+      cartaoQtdParcelas: isCartaoFinal ? parseInt(formCartaoParcelas) : undefined,
+      cartaoBandeira: isCartaoFinal ? formCartaoBandeira : undefined,
+      cartaoNsu: isCartaoFinal ? (formCartaoNsu.trim() || `NSU-${Math.floor(100000 + Math.random() * 900000)}`) : undefined,
+      cartaoStatus: isCartaoFinal ? 'Aprovado / Liquidado' : undefined,
+      boletoQtdParcelas: isBoletoFinal ? parseInt(formBoletoParcelas) : undefined,
       parcelasBoletos: parcelasGeradas,
       statusProducao: 'EM_DIAGRAMACAO',
       observacoes: formObservacoes.trim(),
@@ -2433,7 +2504,7 @@ export default function VendasAlbunsPage() {
     showToast(`Venda ${novoCodigo} (${instFinal}) cadastrada com sucesso!`);
 
     // Se for boleto, registra imediatamente na API do Sicredi na mesma hora
-    if (formFormaPagamento === 'BOLETO' && nova.parcelasBoletos && nova.parcelasBoletos.length > 0) {
+    if (isBoletoFinal && nova.parcelasBoletos && nova.parcelasBoletos.length > 0) {
       showToast(`⚡ Venda ${novoCodigo} criada! Registrando parcelas na API Sicredi automaticamente...`);
       handleRegistrarBoletosApi(nova.id, nova);
     }
@@ -2604,21 +2675,63 @@ export default function VendasAlbunsPage() {
   ).filter((v) => !isClienteFicticio(v));
 
   const totalFaturamento = vendasBaseMetricas.reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalAVista = vendasBaseMetricas
-    .filter((v) => v.formaPagamento === 'PIX' || v.formaPagamento === 'DINHEIRO')
-    .reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalPix = vendasBaseMetricas
-    .filter((v) => v.formaPagamento === 'PIX')
-    .reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalDinheiro = vendasBaseMetricas
-    .filter((v) => v.formaPagamento === 'DINHEIRO')
-    .reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalCartao = vendasBaseMetricas
-    .filter((v) => v.formaPagamento === 'CARTAO')
-    .reduce((acc, v) => acc + v.valorTotalKit, 0);
-  const totalBoleto = vendasBaseMetricas
-    .filter((v) => v.formaPagamento === 'BOLETO')
-    .reduce((acc, v) => acc + v.valorTotalKit, 0);
+  const totalAVista = vendasBaseMetricas.reduce((acc, v) => {
+    if (v.formaPagamento === 'PIX' || v.formaPagamento === 'DINHEIRO') {
+      return acc + v.valorTotalKit;
+    }
+    if (v.formaPagamento === 'COMBINADO') {
+      let soma = 0;
+      if (v.formaEntrada === 'PIX' || v.formaEntrada === 'DINHEIRO') {
+        soma += (v.valorEntrada || 0);
+      }
+      if (v.formaRestante === 'PIX' || v.formaRestante === 'DINHEIRO') {
+        soma += (v.valorRestante ?? Math.max(0, v.valorTotalKit - (v.valorEntrada || 0)));
+      }
+      return acc + soma;
+    }
+    return acc;
+  }, 0);
+
+  const totalPix = vendasBaseMetricas.reduce((acc, v) => {
+    if (v.formaPagamento === 'PIX') return acc + v.valorTotalKit;
+    if (v.formaPagamento === 'COMBINADO') {
+      let soma = 0;
+      if (v.formaEntrada === 'PIX') soma += (v.valorEntrada || 0);
+      if (v.formaRestante === 'PIX') soma += (v.valorRestante ?? Math.max(0, v.valorTotalKit - (v.valorEntrada || 0)));
+      return acc + soma;
+    }
+    return acc;
+  }, 0);
+
+  const totalDinheiro = vendasBaseMetricas.reduce((acc, v) => {
+    if (v.formaPagamento === 'DINHEIRO') return acc + v.valorTotalKit;
+    if (v.formaPagamento === 'COMBINADO') {
+      let soma = 0;
+      if (v.formaEntrada === 'DINHEIRO') soma += (v.valorEntrada || 0);
+      if (v.formaRestante === 'DINHEIRO') soma += (v.valorRestante ?? Math.max(0, v.valorTotalKit - (v.valorEntrada || 0)));
+      return acc + soma;
+    }
+    return acc;
+  }, 0);
+
+  const totalCartao = vendasBaseMetricas.reduce((acc, v) => {
+    if (v.formaPagamento === 'CARTAO') return acc + v.valorTotalKit;
+    if (v.formaPagamento === 'COMBINADO') {
+      let soma = 0;
+      if (v.formaEntrada === 'CARTAO_DEBITO' || v.formaEntrada === 'CARTAO_CREDITO') soma += (v.valorEntrada || 0);
+      if (v.formaRestante === 'CARTAO') soma += (v.valorRestante ?? Math.max(0, v.valorTotalKit - (v.valorEntrada || 0)));
+      return acc + soma;
+    }
+    return acc;
+  }, 0);
+
+  const totalBoleto = vendasBaseMetricas.reduce((acc, v) => {
+    if (v.formaPagamento === 'BOLETO') return acc + v.valorTotalKit;
+    if (v.formaPagamento === 'COMBINADO' && v.formaRestante === 'BOLETO') {
+      return acc + (v.valorRestante ?? Math.max(0, v.valorTotalKit - (v.valorEntrada || 0)));
+    }
+    return acc;
+  }, 0);
   const totalEmProducao = vendasBaseMetricas.filter(
     (v) => v.statusProducao === 'EM_DIAGRAMACAO' || v.statusProducao === 'APROVACAO_CLIENTE' || v.statusProducao === 'EM_GRAFICA'
   ).length;
@@ -3147,6 +3260,16 @@ export default function VendasAlbunsPage() {
             >
               <Barcode className="w-3.5 h-3.5 mr-1" /> Boleto
             </button>
+            <button
+              onClick={() => setFiltroPagamento('COMBINADO')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 ${
+                filtroPagamento === 'COMBINADO'
+                  ? 'bg-white text-indigo-700 shadow-2xs border border-indigo-200'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 mr-1 text-indigo-600" /> Combinado
+            </button>
           </div>
         </div>
 
@@ -3401,6 +3524,43 @@ export default function VendasAlbunsPage() {
                               </div>
                             </div>
                           )}
+
+                          {venda.formaPagamento === 'COMBINADO' && (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-2xs">
+                                <Layers className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+                                Combinado
+                              </span>
+                              <div className="text-[10px] text-slate-700 font-medium">
+                                <span className="font-bold text-emerald-700">Entrada:</span> R$ {(venda.valorEntrada || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ({venda.formaEntrada === 'CARTAO_DEBITO' ? 'Débito' : venda.formaEntrada === 'CARTAO_CREDITO' ? 'Crédito' : venda.formaEntrada || 'PIX'})
+                              </div>
+                              <div className="text-[10px] text-slate-700 font-medium">
+                                <span className="font-bold text-indigo-700">Saldo:</span> R$ {(venda.valorRestante ?? Math.max(0, venda.valorTotalKit - (venda.valorEntrada || 0))).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (
+                                  {venda.formaRestante === 'BOLETO'
+                                    ? `Carnê ${venda.boletoQtdParcelas || totalParcelasBoleto}x`
+                                    : venda.formaRestante === 'CARTAO'
+                                    ? `Cartão ${venda.cartaoQtdParcelas || 1}x`
+                                    : venda.formaRestante || 'À Vista'}
+                                )
+                              </div>
+                              {venda.formaRestante === 'BOLETO' && (
+                                <button
+                                  onClick={() => abrirCarneBoletos(venda)}
+                                  className="text-[10px] font-bold text-amber-700 hover:text-amber-900 flex items-center space-x-1 hover:underline cursor-pointer"
+                                >
+                                  <Barcode className="w-2.5 h-2.5 text-amber-600" />
+                                  <span>Ver carnê ({parcelasPagas}/{totalParcelasBoleto} pagas)</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => abrirModalEditarPagamento(venda)}
+                                className="text-[10px] font-bold text-amber-700 hover:text-amber-900 flex items-center space-x-1 hover:underline cursor-pointer"
+                              >
+                                <Edit3 className="w-2.5 h-2.5 text-amber-600" />
+                                <span>Corrigir pagamento</span>
+                              </button>
+                            </div>
+                          )}
                         </td>
 
                         {/* 6. Produção & Prazos */}
@@ -3464,7 +3624,7 @@ export default function VendasAlbunsPage() {
                         {/* 7. Ações Organizadas e Alinhadas */}
                         <td className="py-3.5 px-4 text-right whitespace-nowrap min-w-[180px]">
                           <div className="inline-flex items-center space-x-1.5">
-                            {venda.formaPagamento === 'BOLETO' && (
+                            {(venda.formaPagamento === 'BOLETO' || (venda.formaPagamento === 'COMBINADO' && venda.formaRestante === 'BOLETO')) && (
                               <button
                                 onClick={() => abrirCarneBoletos(venda)}
                                 className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
@@ -3475,7 +3635,7 @@ export default function VendasAlbunsPage() {
                               </button>
                             )}
 
-                            {venda.formaPagamento === 'CARTAO' && (
+                            {(venda.formaPagamento === 'CARTAO' || (venda.formaPagamento === 'COMBINADO' && (venda.formaRestante === 'CARTAO' || venda.formaEntrada === 'CARTAO_DEBITO' || venda.formaEntrada === 'CARTAO_CREDITO'))) && (
                               <button
                                 onClick={() => setVendaSelecionadaCartao(venda)}
                                 className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs border border-emerald-300 transition shadow-2xs inline-flex items-center space-x-1 cursor-pointer"
@@ -4061,7 +4221,7 @@ export default function VendasAlbunsPage() {
                   {/* Seleção da Forma de Pagamento */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Forma de Pagamento *</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       <button
                         type="button"
                         onClick={() => setFormFormaPagamento('PIX')}
@@ -4098,7 +4258,7 @@ export default function VendasAlbunsPage() {
                         }`}
                       >
                         <CreditCard className="w-5 h-5 text-emerald-600" />
-                        <span>Cartão de Crédito</span>
+                        <span>Cartão Crédito</span>
                       </button>
 
                       <button
@@ -4112,6 +4272,19 @@ export default function VendasAlbunsPage() {
                       >
                         <Barcode className="w-5 h-5 text-amber-600" />
                         <span>Boleto / Carnê</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormFormaPagamento('COMBINADO')}
+                        className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center space-y-1 transition col-span-2 sm:col-span-1 ${
+                          formFormaPagamento === 'COMBINADO'
+                            ? 'border-indigo-500 bg-indigo-50 text-indigo-900 shadow-sm ring-2 ring-indigo-400 font-black'
+                            : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <Layers className="w-5 h-5 text-indigo-600" />
+                        <span>Combinado / Misto</span>
                       </button>
                     </div>
                   </div>
@@ -4237,6 +4410,229 @@ export default function VendasAlbunsPage() {
                       </p>
                     </div>
                   )}
+
+                  {/* Detalhes do Pagamento Combinado */}
+                  {formFormaPagamento === 'COMBINADO' && (() => {
+                    const numEntradaAtual = Math.max(0, parseFloat(formCombinadoEntradaValor) || 0);
+                    const numRestanteAtual = Math.max(0, somaTotalKit - numEntradaAtual);
+
+                    return (
+                      <div className="p-4.5 bg-gradient-to-br from-indigo-50/80 via-purple-50/40 to-slate-50 rounded-2xl border-2 border-indigo-200 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-indigo-200/70">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                              <Layers className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-xs font-black text-indigo-950 uppercase tracking-wide block">
+                                Pagamento Combinado / Misto
+                              </span>
+                              <span className="text-[11px] text-indigo-800">
+                                Entrada no ato + saldo restante parcelado no cartão ou carnê
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2 text-xs">
+                            <span className="px-2.5 py-1 rounded-xl bg-white border border-indigo-200 text-indigo-900 font-bold">
+                              Kit: R$ {somaTotalKit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* BLOCO 1: ENTRADA */}
+                        <div className="p-3.5 bg-white rounded-xl border border-indigo-100 shadow-2xs space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-900 uppercase flex items-center">
+                              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-black mr-1.5">1</span>
+                              Entrada (Sinal / Adiantamento)
+                            </span>
+                            <span className="text-xs font-mono font-black text-emerald-700">
+                              R$ {numEntradaAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Valor da Entrada (R$) *</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max={somaTotalKit}
+                                step="0.01"
+                                value={formCombinadoEntradaValor}
+                                onChange={(e) => setFormCombinadoEntradaValor(e.target.value)}
+                                className="w-full bg-slate-50 text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-mono font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                placeholder="0,00"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Forma da Entrada</label>
+                              <select
+                                value={formCombinadoEntradaForma}
+                                onChange={(e) => setFormCombinadoEntradaForma(e.target.value as any)}
+                                className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-bold"
+                              >
+                                <option value="PIX">PIX À Vista</option>
+                                <option value="DINHEIRO">Dinheiro em Espécie</option>
+                                <option value="CARTAO_DEBITO">Cartão de Débito</option>
+                                <option value="CARTAO_CREDITO">Cartão de Crédito (1x)</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">NSU / Comprovante (opcional)</label>
+                              <input
+                                type="text"
+                                value={formCombinadoEntradaNsu}
+                                onChange={(e) => setFormCombinadoEntradaNsu(e.target.value)}
+                                placeholder="ex: PIX-0912 ou NSU-3829"
+                                className="w-full bg-white text-slate-900 text-xs rounded-xl p-2.5 border border-slate-200 font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* BLOCO 2: SALDO RESTANTE */}
+                        <div className="p-3.5 bg-white rounded-xl border border-indigo-100 shadow-2xs space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-900 uppercase flex items-center">
+                              <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center text-[10px] font-black mr-1.5">2</span>
+                              Saldo Restante a Cobrar
+                            </span>
+                            <span className="text-sm font-mono font-black text-indigo-950">
+                              R$ {numRestanteAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1.5">Forma de Quitação do Saldo</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {[
+                                { id: 'CARTAO', label: 'Cartão de Crédito', icone: CreditCard },
+                                { id: 'BOLETO', label: 'Boleto / Carnê Sicredi', icone: Barcode },
+                                { id: 'PIX', label: 'PIX Restante', icone: Sparkles },
+                                { id: 'DINHEIRO', label: 'Dinheiro Restante', icone: Wallet },
+                              ].map((item) => {
+                                const Icone = item.icone;
+                                const ativo = formCombinadoRestanteForma === item.id;
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => setFormCombinadoRestanteForma(item.id as any)}
+                                    className={`py-2.5 px-2 rounded-xl border text-[11px] font-bold flex items-center justify-center space-x-1.5 transition cursor-pointer ${
+                                      ativo
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
+                                    }`}
+                                  >
+                                    <Icone className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{item.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Se o saldo for no CARTÃO */}
+                          {formCombinadoRestanteForma === 'CARTAO' && (
+                            <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-2.5">
+                              <span className="text-[11px] font-extrabold text-emerald-950 block">
+                                Parcelamento do Saldo Restante (R$ {numRestanteAtual.toFixed(2)}) no Cartão:
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700 mb-1">Parcelas do Saldo</label>
+                                  <select
+                                    value={formCartaoParcelas}
+                                    onChange={(e) => setFormCartaoParcelas(e.target.value)}
+                                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2 border border-slate-200 font-mono font-bold"
+                                  >
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 24].map((p) => (
+                                      <option key={p} value={p}>
+                                        {p}x de R$ {(numRestanteAtual / p).toFixed(2)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700 mb-1">Bandeira</label>
+                                  <select
+                                    value={formCartaoBandeira}
+                                    onChange={(e) => setFormCartaoBandeira(e.target.value)}
+                                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2 border border-slate-200"
+                                  >
+                                    <option value="Mastercard">Mastercard</option>
+                                    <option value="Visa">Visa</option>
+                                    <option value="Elo">Elo</option>
+                                    <option value="American Express">American Express</option>
+                                    <option value="Hipercard">Hipercard</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700 mb-1">NSU / Autorização</label>
+                                  <input
+                                    type="text"
+                                    placeholder="ex: NSU-849102"
+                                    value={formCartaoNsu}
+                                    onChange={(e) => setFormCartaoNsu(e.target.value)}
+                                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2 border border-slate-200 font-mono"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Se o saldo for no BOLETO */}
+                          {formCombinadoRestanteForma === 'BOLETO' && (
+                            <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2.5">
+                              <span className="text-[11px] font-extrabold text-amber-950 block flex items-center">
+                                <Barcode className="w-3.5 h-3.5 mr-1 text-amber-700" />
+                                Emissão de Carnê Sicredi para o Saldo (R$ {numRestanteAtual.toFixed(2)}):
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700 mb-1">Parcelas do Carnê</label>
+                                  <select
+                                    value={formBoletoParcelas}
+                                    onChange={(e) => setFormBoletoParcelas(e.target.value)}
+                                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2 border border-slate-200 font-mono font-bold"
+                                  >
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 24].map((p) => (
+                                      <option key={p} value={p}>
+                                        {p} parcelas de R$ {(numRestanteAtual / p).toFixed(2)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700 mb-1">1º Vencimento</label>
+                                  <input
+                                    type="date"
+                                    required
+                                    value={formPrimeiroVencimento}
+                                    onChange={(e) => setFormPrimeiroVencimento(e.target.value)}
+                                    className="w-full bg-white text-slate-900 text-xs rounded-xl p-2 border border-slate-200 font-mono"
+                                  />
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-amber-800">
+                                ⚡ O sistema emitirá os boletos Sicredi cobrando unicamente o saldo restante de R$ {numRestanteAtual.toFixed(2)} dividido em {formBoletoParcelas}x de R$ {(numRestanteAtual / (parseInt(formBoletoParcelas) || 1)).toFixed(2)}.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Se o saldo for PIX ou DINHEIRO */}
+                          {(formCombinadoRestanteForma === 'PIX' || formCombinadoRestanteForma === 'DINHEIRO') && (
+                            <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 text-xs text-purple-900">
+                              O saldo restante de <strong>R$ {numRestanteAtual.toFixed(2)}</strong> será quitado à vista via {formCombinadoRestanteForma === 'PIX' ? 'chave PIX Sicredi' : 'dinheiro em espécie'}.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Seção: Responsável e Prazos por Etapa de Produção */}
                   <div className="p-4.5 bg-purple-50/70 rounded-2xl border border-purple-200/90 space-y-4">
@@ -4586,10 +4982,24 @@ export default function VendasAlbunsPage() {
                   Brindes Inclusos:{' '}
                   {vendaSelecionadaBoletos.brindes?.filter((b) => b.selecionado).map((b) => b.nome).join(', ') || 'Nenhum'}
                 </div>
-                <span className="text-amber-900 font-bold text-xs mt-1 block">
-                  Soma Total do Kit: <strong>R$ {vendaSelecionadaBoletos.valorTotalKit.toFixed(2)}</strong> em{' '}
-                  {vendaSelecionadaBoletos.parcelasBoletos?.length} parcelas
-                </span>
+                {vendaSelecionadaBoletos.formaPagamento === 'COMBINADO' ? (
+                  <div className="mt-1.5 space-y-0.5">
+                    <span className="text-amber-900 font-bold text-xs block">
+                      Soma Total do Kit: <strong>R$ {vendaSelecionadaBoletos.valorTotalKit.toFixed(2)}</strong>
+                    </span>
+                    <span className="text-emerald-800 font-semibold text-[11px] block">
+                      ✓ Entrada Paga: <strong>R$ {(vendaSelecionadaBoletos.valorEntrada || 0).toFixed(2)}</strong> ({vendaSelecionadaBoletos.formaEntrada === 'CARTAO_DEBITO' ? 'Débito' : vendaSelecionadaBoletos.formaEntrada === 'CARTAO_CREDITO' ? 'Crédito' : vendaSelecionadaBoletos.formaEntrada || 'PIX'})
+                    </span>
+                    <span className="text-indigo-900 font-black text-xs block">
+                      Saldo no Carnê Sicredi: <strong>R$ {(vendaSelecionadaBoletos.valorRestante ?? Math.max(0, vendaSelecionadaBoletos.valorTotalKit - (vendaSelecionadaBoletos.valorEntrada || 0))).toFixed(2)}</strong> em {vendaSelecionadaBoletos.parcelasBoletos?.length} parcelas
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-amber-900 font-bold text-xs mt-1 block">
+                    Soma Total do Kit: <strong>R$ {vendaSelecionadaBoletos.valorTotalKit.toFixed(2)}</strong> em{' '}
+                    {vendaSelecionadaBoletos.parcelasBoletos?.length} parcelas
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs shadow-2xs flex items-center space-x-1.5">
@@ -4970,6 +5380,25 @@ export default function VendasAlbunsPage() {
                 </span>
               </div>
 
+              {vendaSelecionadaCartao.formaPagamento === 'COMBINADO' && (
+                <div className="p-2.5 bg-indigo-50/70 rounded-xl border border-indigo-200 text-[11px] space-y-1">
+                  <div className="flex justify-between text-indigo-950 font-bold">
+                    <span>Pagamento Combinado:</span>
+                    <span>Entrada + Cartão</span>
+                  </div>
+                  <div className="flex justify-between text-slate-700">
+                    <span>Entrada ({vendaSelecionadaCartao.formaEntrada || 'PIX'}):</span>
+                    <strong className="text-emerald-700">R$ {(vendaSelecionadaCartao.valorEntrada || 0).toFixed(2)}</strong>
+                  </div>
+                  <div className="flex justify-between text-slate-700">
+                    <span>Saldo no Cartão:</span>
+                    <strong className="text-indigo-700">
+                      R$ {(vendaSelecionadaCartao.valorRestante ?? Math.max(0, vendaSelecionadaCartao.valorTotalKit - (vendaSelecionadaCartao.valorEntrada || 0))).toFixed(2)}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between text-slate-600">
                 <span>Bandeira:</span>
                 <strong className="text-slate-900">{vendaSelecionadaCartao.cartaoBandeira}</strong>
@@ -4979,7 +5408,14 @@ export default function VendasAlbunsPage() {
                 <span>Parcelamento:</span>
                 <strong className="text-slate-900">
                   {vendaSelecionadaCartao.cartaoQtdParcelas}x de R${' '}
-                  {(vendaSelecionadaCartao.valorTotalKit / (vendaSelecionadaCartao.cartaoQtdParcelas || 1)).toFixed(2)}
+                  {(() => {
+                    const baseCartao = vendaSelecionadaCartao.formaPagamento === 'COMBINADO'
+                      ? (vendaSelecionadaCartao.formaRestante === 'CARTAO'
+                          ? (vendaSelecionadaCartao.valorRestante ?? Math.max(0, vendaSelecionadaCartao.valorTotalKit - (vendaSelecionadaCartao.valorEntrada || 0)))
+                          : (vendaSelecionadaCartao.valorEntrada || 0))
+                      : vendaSelecionadaCartao.valorTotalKit;
+                    return (baseCartao / (vendaSelecionadaCartao.cartaoQtdParcelas || 1)).toFixed(2);
+                  })()}
                 </strong>
               </div>
 
@@ -6146,12 +6582,13 @@ ON AGENCIA DE EVENTOS LTDA`;
                 <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
                   Escolha a Nova Forma de Pagamento:
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {[
                     { id: 'BOLETO', label: 'Boleto', sub: 'Sicredi', icone: Barcode, cor: 'border-amber-300 bg-amber-50 text-amber-900' },
                     { id: 'CARTAO', label: 'Cartão', sub: 'Crédito', icone: CreditCard, cor: 'border-emerald-300 bg-emerald-50 text-emerald-900' },
                     { id: 'PIX', label: 'PIX', sub: 'À Vista', icone: Sparkles, cor: 'border-purple-300 bg-purple-50 text-purple-900' },
                     { id: 'DINHEIRO', label: 'Dinheiro', sub: 'À Vista', icone: Wallet, cor: 'border-teal-300 bg-teal-50 text-teal-900' },
+                    { id: 'COMBINADO', label: 'Combinado', sub: 'Entrada + Saldo', icone: Layers, cor: 'border-indigo-300 bg-indigo-50 text-indigo-900' },
                   ].map((item) => {
                     const Icone = item.icone;
                     const ativo = editFormaPagamento === item.id;
@@ -6338,6 +6775,186 @@ ON AGENCIA DE EVENTOS LTDA`;
                   </p>
                 </div>
               )}
+
+              {/* OPÇÕES QUANDO COMBINADO */}
+              {editFormaPagamento === 'COMBINADO' && (() => {
+                const editTotal = parseFloat(editValorTotalKit) || vendaParaEditarPagamento.valorTotalKit;
+                const editEntrada = Math.max(0, parseFloat(editCombinadoEntradaValor) || 0);
+                const editRestante = Math.max(0, editTotal - editEntrada);
+
+                return (
+                  <div className="p-4 bg-indigo-50/70 rounded-2xl border border-indigo-200 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-indigo-950 uppercase tracking-wide flex items-center">
+                        <Layers className="w-4 h-4 mr-1 text-indigo-700" />
+                        Pagamento Combinado (Entrada + Saldo):
+                      </span>
+                      <span className="text-[11px] font-mono font-black text-indigo-900 bg-indigo-100 px-2 py-0.5 rounded-lg">
+                        Total: R$ {editTotal.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Entrada */}
+                    <div className="p-3 bg-white rounded-xl border border-indigo-100 space-y-2.5">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                        <span>1. Valor da Entrada (Sinal)</span>
+                        <span className="font-mono text-emerald-700 font-black">R$ {editEntrada.toFixed(2)}</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Valor (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max={editTotal}
+                            value={editCombinadoEntradaValor}
+                            onChange={(e) => setEditCombinadoEntradaValor(e.target.value)}
+                            className="w-full bg-slate-50 text-slate-900 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Forma da Entrada</label>
+                          <select
+                            value={editCombinadoEntradaForma}
+                            onChange={(e) => setEditCombinadoEntradaForma(e.target.value as any)}
+                            className="w-full bg-white text-slate-900 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-bold"
+                          >
+                            <option value="PIX">PIX À Vista</option>
+                            <option value="DINHEIRO">Dinheiro</option>
+                            <option value="CARTAO_DEBITO">Débito</option>
+                            <option value="CARTAO_CREDITO">Crédito (1x)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">NSU / Comprovante</label>
+                          <input
+                            type="text"
+                            placeholder="Opcional"
+                            value={editCombinadoEntradaNsu}
+                            onChange={(e) => setEditCombinadoEntradaNsu(e.target.value)}
+                            className="w-full bg-white text-slate-900 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Saldo Restante */}
+                    <div className="p-3 bg-white rounded-xl border border-indigo-100 space-y-2.5">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                        <span>2. Saldo Restante a Cobrar</span>
+                        <span className="font-mono text-indigo-700 font-black">R$ {editRestante.toFixed(2)}</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {[
+                          { id: 'CARTAO', label: 'Cartão' },
+                          { id: 'BOLETO', label: 'Boleto' },
+                          { id: 'PIX', label: 'PIX' },
+                          { id: 'DINHEIRO', label: 'Dinheiro' },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setEditCombinadoRestanteForma(item.id as any)}
+                            className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                              editCombinadoRestanteForma === item.id
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {editCombinadoRestanteForma === 'BOLETO' && (
+                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-amber-900 mb-0.5">Parcelas do Carnê</label>
+                              <select
+                                value={editBoletoParcelas}
+                                onChange={(e) => setEditBoletoParcelas(parseInt(e.target.value) || 1)}
+                                className="w-full bg-white text-slate-900 border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs font-bold"
+                              >
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24].map((n) => (
+                                  <option key={n} value={n}>
+                                    {n}x de R$ {(editRestante / n).toFixed(2)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-amber-900 mb-0.5">1º Vencimento</label>
+                              <input
+                                type="date"
+                                value={editPrimeiroVencimento}
+                                onChange={(e) => setEditPrimeiroVencimento(e.target.value)}
+                                className="w-full bg-white text-slate-900 border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs font-bold"
+                              />
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-amber-800">
+                            ⚡ Os boletos serão gerados dividindo apenas o saldo restante de R$ {editRestante.toFixed(2)}.
+                          </p>
+                        </div>
+                      )}
+
+                      {editCombinadoRestanteForma === 'CARTAO' && (
+                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-emerald-900 mb-0.5">Parcelas Cartão</label>
+                              <select
+                                value={editCartaoParcelas}
+                                onChange={(e) => setEditCartaoParcelas(parseInt(e.target.value) || 1)}
+                                className="w-full bg-white text-slate-900 border border-emerald-300 rounded-xl px-2 py-1.5 text-xs font-bold"
+                              >
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                                  <option key={n} value={n}>
+                                    {n}x de R$ {(editRestante / n).toFixed(2)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-emerald-900 mb-0.5">Bandeira</label>
+                              <select
+                                value={editCartaoBandeira}
+                                onChange={(e) => setEditCartaoBandeira(e.target.value)}
+                                className="w-full bg-white text-slate-900 border border-emerald-300 rounded-xl px-2 py-1.5 text-xs font-bold"
+                              >
+                                <option value="Mastercard">Mastercard</option>
+                                <option value="Visa">Visa</option>
+                                <option value="Elo">Elo</option>
+                                <option value="Hipercard">Hipercard</option>
+                                <option value="American Express">American Express</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-emerald-900 mb-0.5">NSU</label>
+                              <input
+                                type="text"
+                                placeholder="Opcional"
+                                value={editCartaoNsu}
+                                onChange={(e) => setEditCartaoNsu(e.target.value)}
+                                className="w-full bg-white text-slate-900 border border-emerald-300 rounded-xl px-2 py-1.5 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {(editCombinadoRestanteForma === 'PIX' || editCombinadoRestanteForma === 'DINHEIRO') && (
+                        <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-700">
+                          Saldo de <strong>R$ {editRestante.toFixed(2)}</strong> quitado via {editCombinadoRestanteForma === 'PIX' ? 'PIX' : 'Dinheiro'}.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Rodapé com botões de ação */}

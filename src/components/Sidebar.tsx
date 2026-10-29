@@ -35,11 +35,18 @@ import {
   Check,
   User,
   Edit3,
+  Handshake,
 } from 'lucide-react';
 import { getUsuarios, salvarUsuarios } from '@/lib/usuarios';
 
 interface SidebarProps {
   paginaAtiva?: string;
+}
+
+interface SubMenuItem {
+  id: string;
+  titulo: string;
+  href: string;
 }
 
 interface MenuItem {
@@ -49,6 +56,7 @@ interface MenuItem {
   icone: React.ComponentType<{ className?: string }>;
   badge?: string;
   badgeCor?: string;
+  subItens?: SubMenuItem[];
 }
 
 export const menuItens: MenuItem[] = [
@@ -99,6 +107,18 @@ export const menuItens: MenuItem[] = [
     icone: Camera,
     badge: 'Novo',
     badgeCor: 'bg-fuchsia-400/30 text-fuchsia-200 border border-fuchsia-300/40',
+  },
+  {
+    id: 'parceiros',
+    titulo: 'PARCEIROS',
+    href: '/parceiros/index.html',
+    icone: Handshake,
+    badge: 'Novo',
+    badgeCor: 'bg-emerald-400/30 text-emerald-200 border border-emerald-300/40',
+    subItens: [
+      { id: 'profissionais', titulo: 'Profissionais Liberais', href: '/parceiros/index.html?aba=profissionais' },
+      { id: 'espacos', titulo: 'Espaços para Evento', href: '/parceiros/index.html?aba=espacos' },
+    ],
   },
   {
     id: 'metricas',
@@ -478,46 +498,64 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
           {menuItens.map((item) => {
             const Icone = item.icone;
             const isAtivo = paginaAtiva === item.id;
+            const hasSub = item.subItens && item.subItens.length > 0;
 
             return (
-              <a
-                key={item.id}
-                href={item.href}
-                className={`group relative flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-medium transition-all duration-150 ${
-                  isAtivo
-                    ? 'bg-white text-[#432CB8] font-bold shadow-[0_5px_0_0_#C7D2FE,0_10px_20px_rgba(0,0,0,0.18)] translate-y-[-1px]'
-                    : 'text-white/85 hover:text-white bg-white/5 hover:bg-white/15 border border-white/5 hover:border-white/20 shadow-[0_2px_0_0_rgba(0,0,0,0.15)] hover:translate-y-[-1px] active:translate-y-[1px]'
-                }`}
-              >
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div
-                    className={`p-1.5 rounded-xl transition-all duration-150 ${
-                      isAtivo
-                        ? 'bg-[#4F39F6]/10 text-[#4F39F6]'
-                        : 'bg-white/10 text-white group-hover:bg-white/20'
-                    }`}
-                  >
-                    <Icone className="w-4 h-4 shrink-0" />
+              <div key={item.id} className="space-y-1">
+                <a
+                  href={item.href}
+                  className={`group relative flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-medium transition-all duration-150 ${
+                    isAtivo
+                      ? 'bg-white text-[#432CB8] font-bold shadow-[0_5px_0_0_#C7D2FE,0_10px_20px_rgba(0,0,0,0.18)] translate-y-[-1px]'
+                      : 'text-white/85 hover:text-white bg-white/5 hover:bg-white/15 border border-white/5 hover:border-white/20 shadow-[0_2px_0_0_rgba(0,0,0,0.15)] hover:translate-y-[-1px] active:translate-y-[1px]'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div
+                      className={`p-1.5 rounded-xl transition-all duration-150 ${
+                        isAtivo
+                          ? 'bg-[#4F39F6]/10 text-[#4F39F6]'
+                          : 'bg-white/10 text-white group-hover:bg-white/20'
+                      }`}
+                    >
+                      <Icone className="w-4 h-4 shrink-0" />
+                    </div>
+                    <span className="text-sm truncate">{item.titulo}</span>
                   </div>
-                  <span className="text-sm truncate">{item.titulo}</span>
-                </div>
 
-                {item.id === 'fotos' && albunsAtrasadosCount > 0 ? (
-                  <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 bg-rose-600 text-white border border-rose-300 animate-pulse shadow-sm">
-                    🚨 {albunsAtrasadosCount} {albunsAtrasadosCount > 1 ? 'Atrasados' : 'Atrasado'}
-                  </span>
-                ) : item.badge ? (
-                  <span
-                    className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                      isAtivo
-                        ? 'bg-[#4F39F6] text-white shadow-xs'
-                        : item.badgeCor || 'bg-white/15 text-white/90'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                ) : null}
-              </a>
+                  {item.id === 'fotos' && albunsAtrasadosCount > 0 ? (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 bg-rose-600 text-white border border-rose-300 animate-pulse shadow-sm">
+                      🚨 {albunsAtrasadosCount} {albunsAtrasadosCount > 1 ? 'Atrasados' : 'Atrasado'}
+                    </span>
+                  ) : item.badge ? (
+                    <span
+                      className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                        isAtivo
+                          ? 'bg-[#4F39F6] text-white shadow-xs'
+                          : item.badgeCor || 'bg-white/15 text-white/90'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  ) : null}
+                </a>
+
+                {/* Submenu aninhado quando o item possui subItens */}
+                {hasSub && (
+                  <div className={`ml-3.5 pl-3 border-l-2 border-white/20 space-y-1 pt-1 pb-1 ${isAtivo ? 'block' : 'opacity-85 hover:opacity-100'}`}>
+                    {item.subItens?.map((sub) => (
+                      <a
+                        key={sub.id}
+                        href={sub.href}
+                        className="flex items-center space-x-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-purple-100 hover:text-white hover:bg-white/15 transition-all"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        <span className="truncate">{sub.titulo}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>

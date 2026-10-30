@@ -1,81 +1,156 @@
 <?php
-// API Centralizada de Usuários e Autenticação ON Eventos
+// API Centralizada de Usuários e Autenticação Segura ON Eventos
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
+require_once __DIR__ . '/auth_guard.php';
+
+$usuarios = carregar_usuarios_seguros();
+
+// Ações via GET
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = $_GET['action'] ?? '';
+
+    // Consulta de sessão ativa do usuário atual
+    if ($action === 'session' || $action === 'me') {
+        $user = get_authenticated_user();
+        if ($user) {
+            echo json_encode([
+                'sucesso' => true,
+                'autenticado' => true,
+                'usuario' => $user
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(401);
+            echo json_encode([
+                'sucesso' => false,
+                'autenticado' => false,
+                'erro' => 'Nenhuma sessão ativa encontrada.'
+            ], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    // Listagem de usuários exige autenticação no servidor
+    require_auth(['ADMIN', 'EQUIPE_INTERNA', 'BASICO']);
+
+    // Sanitiza todos os usuários para nunca expor senhas ou hashes
+    $usuariosSanitizados = array_values(array_map('sanitize_user_for_client', $usuarios));
+    echo json_encode($usuariosSanitizados, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$dataFile = __DIR__ . '/usuarios_db.json';
-
-function getUsuariosBase() {
-    return [
-        [
-            'id' => 'usr-1',
-            'nome' => 'Thiago Original',
-            'email' => 'thiago@onagenciadeeventos.com.br',
-            'senha' => 'On@2026',
-            'nivel' => 'ADMIN',
-            'cargo' => 'Diretor Geral & Executivo',
-            'departamento' => 'Diretoria',
-            'telefone' => '(11) 99876-5432',
-            'status' => 'ATIVO',
-            'criadoEm' => '2026-01-15T09:00:00.000Z',
-            'ultimoAcesso' => 'Hoje',
-            'avatarCor' => 'from-amber-400 to-amber-200 text-slate-900',
-        ],
-        [
-            'id' => 'usr-2',
-            'nome' => 'Administrador ON',
-            'email' => 'admin@formatura.com.br',
-            'senha' => 'On@2026',
-            'nivel' => 'ADMIN',
-            'cargo' => 'Administrador da Plataforma',
-            'departamento' => 'Tecnologia & Operações',
-            'telefone' => '(11) 98765-4321',
-            'status' => 'ATIVO',
-            'criadoEm' => '2026-01-15T10:00:00.000Z',
-            'ultimoAcesso' => 'Hoje',
-            'avatarCor' => 'from-purple-600 to-indigo-600 text-white',
-        ],
-        [
-            'id' => 'usr-valter',
-            'nome' => 'Valter Sá',
-            'email' => 'valter.sa@hotmail.com',
-            'senha' => '1gabriella5',
-            'nivel' => 'ADMIN',
-            'cargo' => 'Consultor Comercial',
-            'departamento' => 'Comercial & Vendas',
-            'telefone' => '(11) 91219-8389',
-            'status' => 'ATIVO',
-            'criadoEm' => '2026-10-14T20:00:00.000Z',
-            'ultimoAcesso' => 'Nunca acessou',
-            'avatarCor' => 'from-blue-600 to-indigo-600 text-white',
-        ],
-    ];
-}
-
-// Inicializa banco de dados centralizado se não existir
-if (!file_exists($dataFile)) {
-    $base = getUsuariosBase();
-    file_put_contents($dataFile, json_encode($base, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-}
-
-$content = file_get_contents($dataFile);
-$usuarios = json_decode($content, true);
-if (!is_array($usuarios) || empty($usuarios)) {
-    $usuarios = getUsuariosBase();
-    file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-}
-
+// Ações via POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true) ?: $_POST;
     $action = $payload['action'] ?? 'save';
+
+    // Ação: Login de Usuário (Protegido por Rate Limiter do Servidor)
+    if ($action === 'login') {
+        $email = strtolower(trim($payload['email'] ?? ''));
+        $senha = (string)($payload['senha'] ?? $payload['credencial'] ?? $payload['password'] ?? '');
+
+        if (empty($email) || empty($senha)) {
+            http_response_code(400);
+            echo json_encode(['sucesso' => false, 'erro' => 'Informe seu e-mail e senha de acesso.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // Verifica rate limit no servidor (5 tentativas / 60 segundos)
+        check_server_rate_limit('login', $email, 5, 60);
+
+        // Localiza usuário
+        $usuarioEncontrado = null;
+        $usuarioIndex = null;
+        foreach ($usuarios as $i => $u) {
+            if (strtolower(trim($u['email'] ?? '')) === $email) {
+                $usuarioEncontrado = $u;
+                $usuarioIndex = $i;
+                break;
+            }
+        }
+
+        if (!$usuarioEncontrado) {
+            record_failed_attempt('login', $email, 60);
+            http_response_code(401);
+            echo json_encode(['sucesso' => false, 'erro' => 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        if (($usuarioEncontrado['status'] ?? 'ATIVO') !== 'ATIVO') {
+            http_response_code(403);
+            echo json_encode(['sucesso' => false, 'erro' => 'Acesso bloqueado: este usuário foi inativado pela administração.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // Validação da senha com hash seguro
+        $senhaHash = $usuarioEncontrado['senhaHash'] ?? '';
+        $senhaValida = false;
+
+        if (!empty($senhaHash)) {
+            $senhaValida = verify_secure_password($senha, $senhaHash);
+        } elseif (!empty($usuarioEncontrado['senha'])) {
+            // Migração pontual caso ainda haja senha em texto claro
+            if (hash_equals($usuarioEncontrado['senha'], $senha)) {
+                $senhaValida = true;
+                $usuarios[$usuarioIndex]['senhaHash'] = hash_secure_password($senha);
+                unset($usuarios[$usuarioIndex]['senha']);
+                salvar_usuarios_seguros($usuarios);
+            }
+        }
+
+        if (!$senhaValida) {
+            record_failed_attempt('login', $email, 60);
+            http_response_code(401);
+            echo json_encode(['sucesso' => false, 'erro' => 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // Sucesso: reseta histórico de falhas
+        reset_rate_limit('login', $email);
+
+        // Inicializa sessão segura e regenera ID contra fixation
+        start_secure_session();
+        session_regenerate_id(true);
+
+        $_SESSION['usuario_id'] = $usuarioEncontrado['id'];
+        $_SESSION['usuario_nome'] = $usuarioEncontrado['nome'];
+        $_SESSION['usuario_email'] = $usuarioEncontrado['email'];
+        $_SESSION['usuario_nivel'] = $usuarioEncontrado['nivel'] ?? 'BASICO';
+        $_SESSION['logged_in_at'] = time();
+        $_SESSION['last_activity'] = time();
+
+        // Atualiza horário de último acesso
+        $usuarios[$usuarioIndex]['ultimoAcesso'] = 'Hoje às ' . date('H:i');
+        salvar_usuarios_seguros($usuarios);
+
+        $usuarioLimpo = sanitize_user_for_client($usuarios[$usuarioIndex]);
+
+        echo json_encode([
+            'sucesso' => true,
+            'mensagem' => 'Login realizado com sucesso.',
+            'usuario' => $usuarioLimpo,
+            'csrf_token' => $_SESSION['csrf_token'] ?? ''
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Ação: Logout de Usuário
+    if ($action === 'logout') {
+        start_secure_session();
+        $_SESSION = [];
+        if (session_id()) {
+            session_destroy();
+        }
+        if (isset($_COOKIE['ON_AUTH_SESSION'])) {
+            setcookie('ON_AUTH_SESSION', '', time() - 3600, '/', '', false, true);
+        }
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Sessão encerrada com sucesso.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Todas as ações de alteração de usuários a seguir requerem perfil ADMIN
+    require_auth(['ADMIN']);
 
     // Ação: Exclusão definitiva de um usuário
     if ($action === 'delete') {
@@ -95,7 +170,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $bateEmail = !empty($emailParaRemover) && $uEmail === $emailParaRemover;
 
             if ($bateId || $bateEmail) {
-                // Usuário excluído com sucesso (ignorado na nova lista)
                 continue;
             }
 
@@ -103,15 +177,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $usuarios = array_values($usuariosFiltrados);
-        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        echo json_encode(['sucesso' => true, 'mensagem' => 'Usuário excluído definitivamente', 'usuarios' => $usuarios]);
+        salvar_usuarios_seguros($usuarios);
+        $sanitizados = array_map('sanitize_user_for_client', $usuarios);
+        echo json_encode(['sucesso' => true, 'mensagem' => 'Usuário excluído definitivamente', 'usuarios' => $sanitizados], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // Ação: Adicionar novo usuário
+    // Ação: Adicionar novo usuário (com hash de senha seguro)
     if ($action === 'add' && !empty($payload['usuario'])) {
         $novo = $payload['usuario'];
         $novoEmail = strtolower(trim($novo['email'] ?? ''));
+
+        // Se veio senha em texto puro, converte em hash seguro
+        $senhaPura = !empty($novo['senha']) ? (string)$novo['senha'] : 'On@2026';
+        $novo['senhaHash'] = hash_secure_password($senhaPura);
+        unset($novo['senha']);
+
+        // Força nível seguro caso não seja admin válido
+        if (empty($novo['nivel']) || !in_array($novo['nivel'], ['ADMIN', 'BASICO', 'EQUIPE_INTERNA', 'VENDEDOR'])) {
+            $novo['nivel'] = 'BASICO';
+        }
+
         $usuariosFiltrados = [];
         foreach ($usuarios as $u) {
             if (strtolower(trim($u['email'] ?? '')) !== $novoEmail) {
@@ -120,18 +206,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         array_unshift($usuariosFiltrados, $novo);
         $usuarios = array_values($usuariosFiltrados);
-        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
-        echo json_encode(['sucesso' => true, 'usuario' => $novo, 'usuarios' => $usuarios], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        salvar_usuarios_seguros($usuarios);
+
+        $usuarioSanitizado = sanitize_user_for_client($novo);
+        $listaSanitizada = array_map('sanitize_user_for_client', $usuarios);
+        echo json_encode(['sucesso' => true, 'usuario' => $usuarioSanitizado, 'usuarios' => $listaSanitizada], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // Ação: Salvar lista inteira (sincronização)
+    // Ação: Salvar lista inteira (sincronização de administradores)
     if ($action === 'save' && isset($payload['usuarios']) && is_array($payload['usuarios'])) {
-        $usuarios = array_values($payload['usuarios']);
-        file_put_contents($dataFile, json_encode($usuarios, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
-        echo json_encode(['sucesso' => true, 'total' => count($usuarios), 'usuarios' => $usuarios], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        // Mapeia hashes já existentes para não perder senhas dos usuários
+        $mapaHashes = [];
+        foreach ($usuarios as $u) {
+            if (!empty($u['email']) && !empty($u['senhaHash'])) {
+                $mapaHashes[strtolower(trim($u['email']))] = $u['senhaHash'];
+            }
+        }
+
+        $novosUsuarios = [];
+        foreach ($payload['usuarios'] as $u) {
+            $uEmail = strtolower(trim($u['email'] ?? ''));
+            if (empty($uEmail)) continue;
+
+            if (!empty($u['senha'])) {
+                $u['senhaHash'] = hash_secure_password($u['senha']);
+                unset($u['senha']);
+            } elseif (!empty($mapaHashes[$uEmail])) {
+                $u['senhaHash'] = $mapaHashes[$uEmail];
+                unset($u['senha']);
+            } else {
+                $u['senhaHash'] = hash_secure_password('On@2026');
+                unset($u['senha']);
+            }
+
+            $novosUsuarios[] = $u;
+        }
+
+        $usuarios = array_values($novosUsuarios);
+        salvar_usuarios_seguros($usuarios);
+        $sanitizados = array_map('sanitize_user_for_client', $usuarios);
+        echo json_encode(['sucesso' => true, 'total' => count($sanitizados), 'usuarios' => $sanitizados], JSON_UNESCAPED_UNICODE);
         exit;
     }
 }
 
-echo json_encode(array_values($usuarios), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+// Fallback padrão sanitizado
+$usuariosSanitizados = array_values(array_map('sanitize_user_for_client', $usuarios));
+echo json_encode($usuariosSanitizados, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);

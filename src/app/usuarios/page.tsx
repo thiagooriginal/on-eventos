@@ -113,7 +113,7 @@ export default function UsuariosPage() {
       const novo = await adicionarUsuario({
         nome: formNome.trim(),
         email: formEmail.trim().toLowerCase(),
-        senha: formSenha || 'On@2026',
+        credencialAcesso: formSenha || 'On@2026',
         nivel: formNivel,
         cargo: formCargo.trim() || 'Colaborador',
         departamento: formDepartamento || 'Operações',
@@ -215,12 +215,11 @@ export default function UsuariosPage() {
   const enviarWhatsAppCredenciais = (u: UsuarioSistema) => {
     const tel = u.telefone.replace(/\D/g, '');
     const msg = encodeURIComponent(
-      `Olá ${u.nome}! Seguem suas credenciais de acesso ao sistema ON EVENTOS:\n\n` +
-      `🌐 Link: https://onagenciadeeventos.com.br/login/index.html\n` +
+      `Olá ${u.nome}! Seu acesso ao portal administrativo da ON Agência de Eventos foi habilitado:\n\n` +
+      `🌐 Link de Acesso: https://onagenciadeeventos.com.br/login/index.html\n` +
       `📧 E-mail: ${u.email}\n` +
-      `🔑 Senha Provisória: ${u.senha || 'On@2026'}\n` +
       `🛡️ Nível de Acesso: ${u.nivel === 'ADMIN' ? 'Administrador (Acesso Total)' : 'Básico (Operacional & Vendas)'}\n\n` +
-      `Por favor, efetue seu primeiro acesso e altere sua senha.`
+      `Por segurança institucional, sua senha temporária foi enviada pelo administrador. Altere-a no primeiro acesso.`
     );
     window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
   };

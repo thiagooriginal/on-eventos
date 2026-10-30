@@ -1,17 +1,12 @@
 <?php
 // API Centralizada de Vendas de Álbuns & Auditoria de Segurança ON Eventos
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+require_once __DIR__ . '/auth_guard.php';
+require_auth(['ADMIN', 'EQUIPE_INTERNA', 'VENDEDOR', 'BASICO']);
 
-$dataFile = __DIR__ . '/vendas_albuns_db.json';
-$logFile = __DIR__ . '/vendas_excluidas_db.json';
+$dataFile = get_secure_storage_path('vendas_albuns_db.json');
+$logFile = get_secure_storage_path('vendas_excluidas_db.json');
 
 // Inicializa arquivos de banco de dados se não existirem
 if (!file_exists($dataFile)) {
@@ -65,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $payload['action'] ?? 'save';
 
     if ($action === 'clear') {
+        require_auth(['ADMIN']);
         $vendas = [];
         file_put_contents($dataFile, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode(['sucesso' => true, 'total' => 0, 'vendas' => []], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -72,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'purge_mocks') {
+        require_auth(['ADMIN']);
         $vendas = filtrarApenasReais($vendas);
         file_put_contents($dataFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode(['sucesso' => true, 'total' => count($vendas), 'vendas' => $vendas], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -79,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'save' && isset($payload['vendas']) && is_array($payload['vendas'])) {
+        require_auth(['ADMIN', 'EQUIPE_INTERNA']);
         $vendas = filtrarApenasReais($payload['vendas']);
         file_put_contents($dataFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode(['sucesso' => true, 'total' => count($vendas), 'vendas' => $vendas], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -86,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'add' && !empty($payload['venda'])) {
+        require_auth(['ADMIN', 'EQUIPE_INTERNA', 'VENDEDOR']);
         if (filtrarApenasReais([$payload['venda']])) {
             array_unshift($vendas, $payload['venda']);
             file_put_contents($dataFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
@@ -96,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Exclusão com Registro de Segurança e Auditoria
     if ($action === 'delete_with_log' && !empty($payload['id'])) {
+        require_auth(['ADMIN']);
         $id = $payload['id'];
         $vendaRemovida = null;
         foreach ($vendas as $v) {
@@ -127,12 +127,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Obter logs de exclusões para a tela de segurança
     if ($action === 'get_deleted_logs') {
+        require_auth(['ADMIN']);
         echo json_encode(['sucesso' => true, 'logsExclusoes' => $logsExclusoes], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;
     }
 
     // Restaurar álbum excluído de volta para a lista ativa
     if ($action === 'restore' && !empty($payload['logId'])) {
+        require_auth(['ADMIN']);
         $logId = $payload['logId'];
         $logRestaurar = null;
 
@@ -167,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'delete' && !empty($payload['id'])) {
+        require_auth(['ADMIN']);
         $id = $payload['id'];
         $vendas = array_values(array_filter($vendas, function($v) use ($id) {
             return ($v['id'] ?? '') !== $id;

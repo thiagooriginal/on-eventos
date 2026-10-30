@@ -39,21 +39,30 @@ def upload_dir(ftp, local_dir, remote_dir):
 def conectar_ftp(server, user, password, max_retries=5):
     for tentativa in range(1, max_retries + 1):
         try:
-            print(f"[{tentativa}/{max_retries}] Conectando via FTP a {server}...")
-            ftp = ftplib.FTP(timeout=45)
+            print(f"[{tentativa}/{max_retries}] Conectando com transporte seguro TLS a {server}...")
+            ftp = ftplib.FTP_TLS(timeout=45)
             ftp.connect(server, 21)
             ftp.login(user, password)
+            ftp.prot_p()
             ftp.set_pasv(True)
-            print(" Conectado com sucesso em modo passivo!")
+            print(" Conectado com sucesso com criptografia TLS (FTPS)!")
             return ftp
         except Exception as err:
-            print(f"Falha na conexão (tentativa {tentativa}/{max_retries}): {err}")
-            if tentativa < max_retries:
-                espera = tentativa * 4
-                print(f"Aguardando {espera}s antes de tentar novamente...")
-                time.sleep(espera)
-            else:
-                raise err
+            print(f"FTPS TLS não disponível ({err}), tentando modo passivo padrão...")
+            try:
+                ftp = ftplib.FTP(timeout=45)
+                ftp.connect(server, 21)
+                ftp.login(user, password)
+                ftp.set_pasv(True)
+                print(" Conectado com sucesso em modo passivo!")
+                return ftp
+            except Exception as e2:
+                if tentativa < max_retries:
+                    espera = tentativa * 4
+                    print(f"Aguardando {espera}s antes de tentar novamente...")
+                    time.sleep(espera)
+                else:
+                    raise e2
 
 def main():
     server = os.environ.get("FTP_SERVER")

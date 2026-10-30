@@ -2,16 +2,11 @@
 // API Centralizada de Parceiros: Profissionais Liberais & Espaços para Eventos
 // ON Agência de Eventos & Formaturas
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+require_once __DIR__ . '/auth_guard.php';
+require_auth(['ADMIN', 'EQUIPE_INTERNA', 'BASICO']);
 
-$dataFile = __DIR__ . '/parceiros_db.json';
+$dataFile = get_secure_storage_path('parceiros_db.json');
 
 // Inicializa arquivo com estrutura caso não exista
 if (!file_exists($dataFile)) {
@@ -40,6 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    require_auth(['ADMIN', 'EQUIPE_INTERNA']);
+
     $raw = file_get_contents('php://input');
     $payload = json_decode($raw, true) ?: $_POST;
     $action = $payload['action'] ?? 'save_all';

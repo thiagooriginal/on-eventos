@@ -1,30 +1,25 @@
 <?php
 // API Oficial de Integração Sicredi Cobrança Online (OpenAPI v1/v2) - ON Eventos
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, x-api-key, cooperativa, posto');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+require_once __DIR__ . '/auth_guard.php';
+require_auth(['ADMIN']);
 
-$configFile = __DIR__ . '/sicredi_api_config.json';
-$tokenCacheFile = __DIR__ . '/sicredi_token_cache.json';
-$vendasFile = __DIR__ . '/vendas_albuns_db.json';
+$configFile = get_secure_storage_path('sicredi_api_config.json');
+$tokenCacheFile = get_secure_storage_path('sicredi_token_cache.json');
+$vendasFile = get_secure_storage_path('vendas_albuns_db.json');
 
-// Configuração padrão oficial fornecida pelo analista Luiz Henrique e gerada pelo Thiago
+// Configuração segura do Sicredi (valores padrão vazios para carregamento de cofre/ambiente)
 $defaultConfig = [
-    'ambiente' => 'producao', // 'producao' ou 'sandbox'
-    'username' => '042200726',
-    'x_api_key' => '8112a356-4953-439f-9767-50660649706b',
-    'password' => '9321D4CC1CA5BCE64E3DCBB74458C510DD11BA165F04D70C0B856A9267B907D1',
-    'cooperativa' => '0726',
-    'posto' => '86',
-    'beneficiario' => '04220',
-    'conta' => '26102-1',
-    'cnpj' => '30988070000160',
+    'ambiente' => getenv('SICREDI_AMBIENTE') ?: 'producao',
+    'username' => getenv('SICREDI_USERNAME') ?: '',
+    'x_api_key' => getenv('SICREDI_API_KEY') ?: '',
+    'password' => getenv('SICREDI_PASSWORD') ?: '',
+    'cooperativa' => getenv('SICREDI_COOPERATIVA') ?: '0726',
+    'posto' => getenv('SICREDI_POSTO') ?: '86',
+    'beneficiario' => getenv('SICREDI_BENEFICIARIO') ?: '04220',
+    'conta' => getenv('SICREDI_CONTA') ?: '26102-1',
+    'cnpj' => getenv('SICREDI_CNPJ') ?: '30988070000160',
     'razao_social' => 'ON AGENCIA DE EVENTOS LTDA'
 ];
 
@@ -33,14 +28,6 @@ if (!file_exists($configFile)) {
 }
 
 $config = json_decode(file_get_contents($configFile), true) ?: $defaultConfig;
-
-// Garante que campos essenciais nunca fiquem nulos
-if (empty($config['username'])) $config['username'] = '042200726';
-if (empty($config['x_api_key'])) $config['x_api_key'] = '8112a356-4953-439f-9767-50660649706b';
-if (empty($config['password'])) $config['password'] = '9321D4CC1CA5BCE64E3DCBB74458C510DD11BA165F04D70C0B856A9267B907D1';
-if (empty($config['cooperativa'])) $config['cooperativa'] = '0726';
-if (empty($config['posto'])) $config['posto'] = '86';
-if (empty($config['beneficiario'])) $config['beneficiario'] = '04220';
 
 function getSicrediBaseUrl($ambiente) {
     if ($ambiente === 'sandbox') {

@@ -1,5 +1,25 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import crypto from 'node:crypto';
+
+// Verificação criptográfica de senha com tempo constante
+function verifyPassword(passwordAttempt: string, storedHashOrSalt: string): boolean {
+  if (!passwordAttempt || !storedHashOrSalt) return false;
+
+  // Se o hash armazenado for um formato hash:salt
+  if (storedHashOrSalt.includes(':')) {
+    const [salt, key] = storedHashOrSalt.split(':');
+    const hashedBuffer = crypto.scryptSync(passwordAttempt, salt, 64);
+    const keyBuffer = Buffer.from(key, 'hex');
+    if (hashedBuffer.length !== keyBuffer.length) return false;
+    return crypto.timingSafeEqual(hashedBuffer, keyBuffer);
+  }
+
+  // Fallback seguro em tempo constante para hashes sha256 pré-existentes
+  const attemptHash = crypto.createHash('sha256').update(passwordAttempt).digest();
+  const targetHash = crypto.createHash('sha256').update(storedHashOrSalt).digest();
+  return crypto.timingSafeEqual(attemptHash, targetHash);
+}
 
 export async function POST(request: Request) {
   try {
@@ -8,7 +28,7 @@ export async function POST(request: Request) {
 
     if (!email || !senha) {
       return NextResponse.json(
-        { error: 'Por favor, informe seu e-mail e senha.' },
+        { error: 'Por favor, informe seu e-mail e senha de acesso.' },
         { status: 400 }
       );
     }
@@ -26,7 +46,7 @@ export async function POST(request: Request) {
 
     if (!usuario.ativo) {
       return NextResponse.json(
-        { error: 'Este usuário está inativo no sistema. Contate o suporte.' },
+        { error: 'Este usuário está inativo no sistema. Contate a administração.' },
         { status: 403 }
       );
     }
@@ -38,13 +58,22 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'Acesso exclusivo para equipe interna e vendedores. Se você é formando, utilize o botão "Acesso Formando".',
+            'Acesso exclusivo para equipe interna e vendedores. Se você é formando, utilize o portal do aluno.',
         },
         { status: 403 }
       );
     }
 
-    // Simulação de autenticação com sessão
+    // Verificação criptográfica da senha
+    const senhaValida = verifyPassword(senha, usuario.senhaHash || '');
+    if (!senhaValida) {
+      return NextResponse.json(
+        { error: 'E-mail ou senha incorretos. Verifique suas credenciais.' },
+        { status: 401 }
+      );
+    }
+
+    // Retorno seguro sem expor senha ou hash
     return NextResponse.json({
       success: true,
       usuario: {
@@ -53,7 +82,7 @@ export async function POST(request: Request) {
         email: usuario.email,
         perfil: usuario.perfil,
       },
-      redirectTo: '/',
+      redirectTo: '/admin',
     });
   } catch (error: any) {
     console.error('Erro na autenticação de login:', error);

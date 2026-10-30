@@ -3,26 +3,20 @@
 // ON Agência de Eventos - Envio Direto de Boletos & Lembrete de Vencimento de 1 Dia
 date_default_timezone_set('America/Sao_Paulo');
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, x-api-key');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+require_once __DIR__ . '/auth_guard.php';
 
-$configFile = __DIR__ . '/whatsapp_config.json';
-$vendasFile = __DIR__ . '/vendas_albuns_db.json';
-$logsFile = __DIR__ . '/whatsapp_disparos_log.json';
+$configFile = get_secure_storage_path('whatsapp_config.json');
+$vendasFile = get_secure_storage_path('vendas_albuns_db.json');
+$logsFile = get_secure_storage_path('whatsapp_disparos_log.json');
 
 $defaultConfig = [
     'ativo' => true,
     'status' => 'conectado',
     'provedor' => 'evolution',
-    'apiUrl' => 'https://api.oneventos.com.br',
-    'apiKey' => 'on_whatsapp_secret_key_2026',
-    'instancia' => 'on-eventos-oficial',
+    'apiUrl' => getenv('WHATSAPP_API_URL') ?: 'https://api.oneventos.com.br',
+    'apiKey' => getenv('WHATSAPP_API_KEY') ?: '',
+    'instancia' => getenv('WHATSAPP_INSTANCE') ?: 'on-eventos-oficial',
     'numeroConectado' => '(11) 98765-4321',
     'nomeAgencia' => 'ON Agência de Eventos',
     'lembreteAutomaticoAtivo' => true,
@@ -365,34 +359,60 @@ $rawInput = file_get_contents('php://input');
 $payload = json_decode($rawInput, true) ?: $_POST;
 $action = $payload['action'] ?? $_GET['action'] ?? '';
 
-// Suporte para execução via Cron da Hostinger
+// Suporte para execução via Cron da Hostinger (com verificação de token ou CLI)
 if (isset($_GET['cron']) || (php_sapi_name() === 'cli' && in_array('cron', $argv ?? []))) {
+    if (php_sapi_name() !== 'cli') {
+        $cronSecret = getenv('CRON_SECRET') ?: '';
+        $tokenEnviado = $_GET['cron_token'] ?? '';
+        if (empty($cronSecret) || !hash_equals($cronSecret, $tokenEnviado)) {
+            require_auth(['ADMIN']);
+        }
+    }
     $action = 'enviar_lembretes_vencimento';
+} else {
+    // Todas as outras ações administrativas exigem autenticação
+    require_auth(['ADMIN', 'EQUIPE_INTERNA']);
 }
 
-// 1. Obter Configuração do WhatsApp
+// 1. Obter Configuração do WhatsApp (Com Mascaramento de Segredos)
 if ($action === 'get_config') {
+    $safeConfig = $config;
+    if (!empty($safeConfig['apiKey'])) {
+        $tam = strlen($safeConfig['apiKey']);
+        $safeConfig['apiKey'] = substr($safeConfig['apiKey'], 0, 4) . str_repeat('*', max(0, $tam - 8)) . substr($safeConfig['apiKey'], -4);
+    }
+    if (!empty($safeConfig['metaAccessToken'])) {
+        $safeConfig['metaAccessToken'] = '********************';
+    }
+    if (!empty($safeConfig['zapiToken'])) {
+        $safeConfig['zapiToken'] = '********************';
+    }
+
     echo json_encode([
         'sucesso' => true,
-        'config' => $config
+        'config' => $safeConfig
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// 2. Salvar Configuração do WhatsApp
+// 2. Salvar Configuração do WhatsApp (Exclusivo ADMIN)
 if ($action === 'save_config') {
+    require_auth(['ADMIN']);
     $novosDados = $payload['config'] ?? $payload;
     if (is_array($novosDados)) {
         foreach (['ativo', 'status', 'provedor', 'apiUrl', 'apiKey', 'instancia', 'numeroConectado', 'nomeAgencia', 'chavePix', 'nomeBeneficiarioPix', 'cidadePix', 'lembreteAutomaticoAtivo', 'horarioLembrete', 'diasAntesLembrete', 'mensagemApenasEnvio', 'rodapeAviso', 'metaPhoneNumberId', 'metaAccessToken', 'zapiInstanceId', 'zapiToken'] as $campo) {
             if (isset($novosDados[$campo])) {
+                // Se enviou mascarado, mantém o valor original
+                if (in_array($campo, ['apiKey', 'metaAccessToken', 'zapiToken']) && strpos($novosDados[$campo], '***') !== false) {
+                    continue;
+                }
                 $config[$campo] = $novosDados[$campo];
             }
         }
         @file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode([
             'sucesso' => true,
-            'mensagem' => 'Configurações do WhatsApp da agência salvas com sucesso!',
-            'config' => $config
+            'mensagem' => 'Configurações do WhatsApp da agência salvas com sucesso!'
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;
     }

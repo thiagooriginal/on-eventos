@@ -1,4 +1,4 @@
-// Gerenciador de Usuários, Permissões e Autenticação Segura ON Eventos
+// Gerenciador Central de Usuários e Autenticação Segura - ON Agência de Eventos
 
 export type NivelUsuario = 'ADMIN' | 'BASICO';
 
@@ -6,7 +6,6 @@ export interface UsuarioSistema {
   id: string;
   nome: string;
   email: string;
-  senha?: string;
   nivel: NivelUsuario; // 'ADMIN' = Acesso Total | 'BASICO' = Operacional / Vendas
   cargo: string;
   departamento: string;
@@ -24,7 +23,6 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     id: 'usr-1',
     nome: 'Thiago Original',
     email: 'thiago@onagenciadeeventos.com.br',
-    senha: 'On@2026',
     nivel: 'ADMIN',
     cargo: 'Diretor Geral & Executivo',
     departamento: 'Diretoria',
@@ -38,7 +36,6 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     id: 'usr-2',
     nome: 'Administrador ON',
     email: 'admin@formatura.com.br',
-    senha: 'On@2026',
     nivel: 'ADMIN',
     cargo: 'Administrador da Plataforma',
     departamento: 'Tecnologia & Operações',
@@ -52,7 +49,6 @@ export const USUARIOS_INICIAIS: UsuarioSistema[] = [
     id: 'usr-valter',
     nome: 'Valter Sá',
     email: 'valter.sa@hotmail.com',
-    senha: '1gabriella5',
     nivel: 'ADMIN',
     cargo: 'Consultor Comercial',
     departamento: 'Comercial & Vendas',
@@ -87,7 +83,6 @@ export function getUsuarios(): UsuarioSistema[] {
         return parsed;
       }
     }
-    // Inicializa com os usuários padrão se não houver nada salvo
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(USUARIOS_INICIAIS));
     return USUARIOS_INICIAIS;
   } catch (e) {
@@ -99,10 +94,10 @@ export async function salvarUsuarios(usuarios: UsuarioSistema[]): Promise<boolea
   if (typeof window === 'undefined') return true;
   try {
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(usuarios));
-    // Sincroniza diretamente com o servidor Hostinger
     const res = await fetch('/usuarios.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         action: 'save',
         usuarios,
@@ -125,32 +120,39 @@ export async function sincronizarUsuariosServidor(): Promise<UsuarioSistema[]> {
   if (typeof window === 'undefined') return USUARIOS_INICIAIS;
 
   try {
-    const res = await fetch('/usuarios.php?t=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch('/usuarios.php?t=' + Date.now(), {
+      cache: 'no-store',
+      credentials: 'include',
+    });
     if (res.ok) {
       const serverUsers = await res.json();
       if (Array.isArray(serverUsers) && serverUsers.length > 0) {
-        // O servidor é a autoridade central: reflete exclusões e cadastros com exatidão
         localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(serverUsers));
         return serverUsers;
       }
     }
   } catch (e) {
-    console.warn('Servidor inacessível, mantendo dados locais:', e);
+    console.warn('Servidor indisponível, usando dados locais seguros:', e);
   }
 
   return getUsuarios();
 }
 
 export async function adicionarUsuario(
-  dados: Omit<UsuarioSistema, 'id' | 'criadoEm' | 'ultimoAcesso' | 'avatarCor'>
+  dados: Omit<UsuarioSistema, 'id' | 'criadoEm' | 'ultimoAcesso' | 'avatarCor'> & { credencialAcesso?: string }
 ): Promise<UsuarioSistema> {
   const usuarios = getUsuarios();
   const avatarCor = CORES_AVATAR[Math.floor(Math.random() * CORES_AVATAR.length)];
 
   const novoUsuario: UsuarioSistema = {
-    ...dados,
     id: 'usr-' + Date.now(),
-    senha: dados.senha || 'On@2026',
+    nome: dados.nome,
+    email: dados.email,
+    nivel: dados.nivel,
+    cargo: dados.cargo,
+    departamento: dados.departamento,
+    telefone: dados.telefone,
+    status: dados.status,
     criadoEm: new Date().toISOString(),
     ultimoAcesso: 'Nunca acessou',
     avatarCor,
@@ -160,17 +162,19 @@ export async function adicionarUsuario(
   const novaLista = [novoUsuario, ...usuarios.filter((u) => u.email.toLowerCase().trim() !== emailLimpo)];
 
   if (typeof window !== 'undefined') {
-    // 1. Salva imediatamente no localStorage
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(novaLista));
 
-    // 2. Persiste atomicamente no servidor Hostinger e aguarda confirmação
     try {
       const res = await fetch('/usuarios.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           action: 'add',
-          usuario: novoUsuario,
+          usuario: {
+            ...novoUsuario,
+            credencial: dados.credencialAcesso || '',
+          },
         }),
       });
 
@@ -181,7 +185,7 @@ export async function adicionarUsuario(
         }
       }
     } catch (e) {
-      console.warn('Salvo localmente, servidor offline:', e);
+      console.warn('Persistido localmente, sincronizando com servidor:', e);
     }
   }
 
@@ -242,12 +246,12 @@ export async function removerUsuario(id: string): Promise<boolean> {
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(novaLista));
   }
 
-  // Dispara exclusão direta no servidor central Hostinger
   try {
     if (typeof window !== 'undefined') {
       const res = await fetch('/usuarios.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           action: 'delete',
           id,
@@ -266,39 +270,61 @@ export async function removerUsuario(id: string): Promise<boolean> {
   return true;
 }
 
-// Autenticação rigorosa e segura
-export function autenticarUsuario(email: string, senhaDigitada: string): {
+// Autenticação Segura 100% no Servidor (PHP com Sessões HttpOnly e Rate Limit)
+export async function autenticarUsuario(
+  email: string,
+  codigoAcesso: string
+): Promise<{
   sucesso: boolean;
   usuario?: UsuarioSistema;
   erro?: string;
-} {
+  csrf_token?: string;
+}> {
   const emailLimpo = email.trim().toLowerCase();
-  const senhaLimpa = senhaDigitada.trim();
+  const codigoLimpo = codigoAcesso.trim();
 
-  if (!emailLimpo || !senhaLimpa) {
-    return { sucesso: false, erro: 'Por favor, informe seu e-mail e senha de acesso.' };
+  if (!emailLimpo || !codigoLimpo) {
+    return { sucesso: false, erro: 'Por favor, informe seu e-mail e chave de acesso.' };
   }
 
-  const usuarios = getUsuarios();
-  const usuario = usuarios.find((u) => u.email.toLowerCase() === emailLimpo);
+  try {
+    const res = await fetch('/usuarios.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        action: 'login',
+        email: emailLimpo,
+        credencial: codigoLimpo,
+      }),
+    });
 
-  if (!usuario) {
-    return { sucesso: false, erro: 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.' };
+    const data = await res.json().catch(() => null);
+
+    if (res.status === 429) {
+      return {
+        sucesso: false,
+        erro: data?.erro || 'Muitas tentativas incorretas. Acesso temporariamente bloqueado por segurança.',
+      };
+    }
+
+    if (!res.ok || !data?.sucesso) {
+      return {
+        sucesso: false,
+        erro: data?.erro || 'E-mail ou chave de acesso incorretos. Acesso restrito a usuários autorizados.',
+      };
+    }
+
+    return {
+      sucesso: true,
+      usuario: data.usuario,
+      csrf_token: data.csrf_token,
+    };
+  } catch (e) {
+    console.warn('Falha na comunicação direta com o servidor de autenticação:', e);
+    return {
+      sucesso: false,
+      erro: 'Servidor de autenticação indisponível no momento. Verifique sua conexão.',
+    };
   }
-
-  if (usuario.status !== 'ATIVO') {
-    return { sucesso: false, erro: 'Acesso bloqueado: este usuário foi inativado pelo administrador.' };
-  }
-
-  const senhaCadastrada = usuario.senha || 'On@2026';
-  if (senhaLimpa !== senhaCadastrada) {
-    return { sucesso: false, erro: 'E-mail ou senha incorretos. Acesso restrito a usuários autorizados.' };
-  }
-
-  // Registra horário do login (sem bloquear o retorno)
-  atualizarUsuario(usuario.id, {
-    ultimoAcesso: 'Hoje às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-  }).catch(() => {});
-
-  return { sucesso: true, usuario };
 }

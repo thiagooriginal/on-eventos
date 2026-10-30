@@ -115,13 +115,7 @@ export default function AdminPortalPage() {
         throw new Error('Por favor, informe seu e-mail corporativo e senha.');
       }
 
-      let auth = autenticarUsuario(emailLimpo, senhaLimpa);
-      if (!auth.sucesso) {
-        try {
-          await sincronizarUsuariosServidor();
-          auth = autenticarUsuario(emailLimpo, senhaLimpa);
-        } catch (e) {}
-      }
+      const auth = await autenticarUsuario(emailLimpo, senhaLimpa);
 
       if (!auth.sucesso || !auth.usuario) {
         const novasFalhas = tentativasFalhas + 1;

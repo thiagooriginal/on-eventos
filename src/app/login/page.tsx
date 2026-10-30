@@ -73,16 +73,8 @@ export default function LoginPage() {
         throw new Error('Por favor, informe seu e-mail corporativo e senha de acesso.');
       }
 
-      // Validação estrita e segura
-      let auth = autenticarUsuario(emailLimpo, senhaLimpa);
-
-      // Se falhou inicialmente, tenta sincronizar imediatamente com o servidor central
-      if (!auth.sucesso) {
-        try {
-          await sincronizarUsuariosServidor();
-          auth = autenticarUsuario(emailLimpo, senhaLimpa);
-        } catch (e) {}
-      }
+      // Validação estrita e segura no servidor
+      const auth = await autenticarUsuario(emailLimpo, senhaLimpa);
 
       if (!auth.sucesso || !auth.usuario) {
         const novasFalhas = tentativasFalhas + 1;
@@ -106,6 +98,7 @@ export default function LoginPage() {
         email: auth.usuario.email,
         perfil: auth.usuario.nivel, // 'ADMIN' ou 'BASICO'
         token,
+        csrf_token: auth.csrf_token || '',
         expiraEm: Date.now() + 24 * 60 * 60 * 1000, // 24 horas
         logadoEm: new Date().toISOString(),
       };

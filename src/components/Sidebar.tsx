@@ -215,7 +215,6 @@ export interface UsuarioSessao {
   perfil: string;
   telefone?: string;
   foto?: string;
-  senha?: string;
   cargo?: string;
 }
 
@@ -305,7 +304,6 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
           perfil: parsed.perfil || 'ADMIN',
           telefone: parsed.telefone || '',
           foto: parsed.foto || parsed.avatarUrl || '',
-          senha: parsed.senha || '',
           cargo: parsed.cargo || '',
         };
         setUsuario(usrAtual);
@@ -444,7 +442,6 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
         email: formEmail.trim(),
         telefone: formTelefone.trim(),
         foto: formFoto || undefined,
-        senha: formSenha.trim() || sessaoAtual.senha,
       };
 
       localStorage.setItem('on_usuario_logado', JSON.stringify(novaSessao));
@@ -463,8 +460,7 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
             nome: formNome.trim(),
             email: formEmail.trim(),
             telefone: formTelefone.trim() || u.telefone,
-            senha: formSenha.trim() || u.senha,
-            avatarUrl: formFoto || u.avatarUrl,
+            avatarUrl: formFoto || (u as any).avatarUrl,
           };
         }
         return u;

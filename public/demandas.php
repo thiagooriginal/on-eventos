@@ -1,18 +1,13 @@
 <?php
 // API Centralizada de Demandas Internas & Tarefas de Equipe ON Eventos
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+require_once __DIR__ . '/auth_guard.php';
+require_auth(['ADMIN', 'EQUIPE_INTERNA', 'BASICO']);
 
-$dataFile = __DIR__ . '/demandas_db.json';
+$dataFile = get_secure_storage_path('demandas_db.json');
 
-// Inicializa banco de dados centralizado limpo (início do zero)
+// Inicializa banco de dados centralizado se não existir
 if (!file_exists($dataFile)) {
     file_put_contents($dataFile, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 }
@@ -30,6 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $payload['action'] ?? 'save';
 
     if ($action === 'clear') {
+        require_auth(['ADMIN']); // Somente ADMIN pode limpar tudo
         $demandas = [];
         file_put_contents($dataFile, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode(['sucesso' => true, 'demandas' => []]);

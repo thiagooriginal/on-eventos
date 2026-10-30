@@ -388,6 +388,7 @@ export async function salvarInstituicoes(lista: Instituicao[]): Promise<boolean>
   if (typeof window === 'undefined') return true;
   try {
     localStorage.setItem(STORAGE_KEY_INSTITUICOES, JSON.stringify(lista));
+    window.dispatchEvent(new Event('on_instituicoes_atualizadas'));
     const res = await fetch('/instituicoes.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -416,6 +417,7 @@ export async function adicionarInstituicao(
   const novaLista = [nova, ...lista];
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY_INSTITUICOES, JSON.stringify(novaLista));
+    window.dispatchEvent(new Event('on_instituicoes_atualizadas'));
     try {
       await fetch('/instituicoes.php', {
         method: 'POST',
@@ -469,6 +471,7 @@ export async function removerInstituicao(id: string): Promise<boolean> {
     localStorage.setItem(STORAGE_KEY_INSTITUICOES, JSON.stringify(filtrada));
     const cursos = getCursos().filter((c) => c.instituicaoId !== id);
     localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(cursos));
+    window.dispatchEvent(new Event('on_instituicoes_atualizadas'));
 
     try {
       await fetch('/instituicoes.php', {
@@ -506,6 +509,7 @@ export async function salvarCursos(lista: Curso[]): Promise<boolean> {
   if (typeof window === 'undefined') return true;
   try {
     localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(lista));
+    window.dispatchEvent(new Event('on_instituicoes_atualizadas'));
     const res = await fetch('/instituicoes.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -534,6 +538,7 @@ export async function adicionarCurso(
   const novaLista = [novo, ...lista];
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(novaLista));
+    window.dispatchEvent(new Event('on_instituicoes_atualizadas'));
     try {
       await fetch('/instituicoes.php', {
         method: 'POST',
@@ -568,6 +573,7 @@ export async function removerCurso(id: string): Promise<boolean> {
 
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY_CURSOS, JSON.stringify(filtrada));
+    window.dispatchEvent(new Event('on_instituicoes_atualizadas'));
     try {
       await fetch('/instituicoes.php', {
         method: 'POST',

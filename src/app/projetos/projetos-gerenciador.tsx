@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   GraduationCap,
@@ -21,7 +21,13 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { INSTITUICOES_INICIAIS } from '@/lib/instituicoes';
+import {
+  Instituicao,
+  Curso,
+  getInstituicoes,
+  getCursos,
+  INSTITUICOES_INICIAIS,
+} from '@/lib/instituicoes';
 
 export interface ProjetoItem {
   id: string;
@@ -93,6 +99,33 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
   const [cursos, setCursos] = useState<string[]>([]);
   const [novoCursoInput, setNovoCursoInput] = useState('');
 
+  // Estados com Instituições e Cursos cadastrados no sistema (sincronizados com /instituicoes)
+  const [instituicoesCadastradas, setInstituicoesCadastradas] = useState<Instituicao[]>([]);
+  const [cursosCadastrados, setCursosCadastrados] = useState<Curso[]>([]);
+
+  // Carrega e sincroniza instituições e cursos do storage/banco
+  useEffect(() => {
+    const carregarCadastros = () => {
+      setInstituicoesCadastradas(getInstituicoes());
+      setCursosCadastrados(getCursos());
+    };
+
+    carregarCadastros();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('on_instituicoes_atualizadas', carregarCadastros);
+      return () => window.removeEventListener('on_instituicoes_atualizadas', carregarCadastros);
+    }
+  }, []);
+
+  // Sempre que o modal for aberto, recarrega para pegar cursos novos cadastrados recentemente
+  useEffect(() => {
+    if (modalAberto) {
+      setInstituicoesCadastradas(getInstituicoes());
+      setCursosCadastrados(getCursos());
+    }
+  }, [modalAberto]);
+
   const adicionarInstituicao = () => {
     setInstituicoes((prev) => [...prev, { faculdade: '', campus: '' }]);
   };
@@ -107,12 +140,25 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
     setInstituicoes((prev) => {
       const nova = [...prev];
       nova[index] = { ...nova[index], [campo]: valor };
+
+      // Se alterou a faculdade, tenta auto-preencher o campus caso exista no cadastro
+      if (campo === 'faculdade' && valor.trim()) {
+        const inst = instituicoesCadastradas.find(
+          (i) =>
+            i.nome.toLowerCase().trim() === valor.toLowerCase().trim() ||
+            (i.sigla && i.sigla.toLowerCase().trim() === valor.toLowerCase().trim())
+        );
+        if (inst && inst.campus && !nova[index].campus) {
+          nova[index].campus = inst.campus;
+        }
+      }
+
       return nova;
     });
   };
 
-  const adicionarCurso = () => {
-    const texto = novoCursoInput.trim();
+  const adicionarCurso = (nomeCurso?: string) => {
+    const texto = (nomeCurso || novoCursoInput).trim();
     if (!texto) return;
     const partes = texto
       .split(/[,;\n]/)
@@ -129,6 +175,42 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
   const removerCurso = (index: number) => {
     setCursos((prev) => prev.filter((_, i) => i !== index));
   };
+
+  // Cursos sugeridos dinamicamente priorizando as faculdades selecionadas + todos os cursos cadastrados
+  const cursosSugeridos = useMemo(() => {
+    const faculdadesPreenchidas = instituicoes
+      .map((i) => i.faculdade.toLowerCase().trim())
+      .filter(Boolean);
+
+    // Cursos cadastrados vinculados a essas faculdades
+    const cursosDaFaculdade = cursosCadastrados.filter((c) =>
+      faculdadesPreenchidas.some(
+        (f) =>
+          c.instituicaoNome?.toLowerCase().includes(f) ||
+          (c.instituicaoSigla && c.instituicaoSigla.toLowerCase().includes(f)) ||
+          f.includes(c.instituicaoNome?.toLowerCase() || '')
+      )
+    );
+
+    const outrosCursos = cursosCadastrados.filter(
+      (c) => !cursosDaFaculdade.some((cf) => cf.id === c.id)
+    );
+
+    const listaNomes = [
+      ...cursosDaFaculdade.map((c) => c.nome),
+      ...outrosCursos.map((c) => c.nome),
+      'Medicina',
+      'Direito',
+      'Enfermagem',
+      'Administração',
+      'Biomedicina',
+      'Engenharia Civil',
+      'Odontologia',
+      'Psicologia',
+    ];
+
+    return Array.from(new Set(listaNomes.filter(Boolean)));
+  }, [cursosCadastrados, instituicoes]);
 
   // Filtro Dinâmico abrangente por nome, código da turma, semestre, faculdade ou curso
   const projetosFiltrados = useMemo(() => {
@@ -538,9 +620,19 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
 
               {/* Datalist com sugestões de Instituições Cadastradas */}
               <datalist id="sugestoes-faculdades">
-                {INSTITUICOES_INICIAIS.map((inst) => (
+                {(instituicoesCadastradas.length > 0 ? instituicoesCadastradas : INSTITUICOES_INICIAIS).map((inst) => (
                   <option key={inst.id} value={inst.nome}>
                     {inst.sigla ? `${inst.sigla} - ${inst.campus}` : inst.campus}
+                  </option>
+                ))}
+              </datalist>
+
+              {/* Datalist com sugestões de Cursos Cadastrados no Sistema */}
+              <datalist id="sugestoes-cursos">
+                {cursosCadastrados.map((curso) => (
+                  <option key={curso.id} value={curso.nome}>
+                    {curso.instituicaoSigla ? `${curso.instituicaoSigla} - ` : curso.instituicaoNome ? `${curso.instituicaoNome} - ` : ''}
+                    {curso.nome} ({curso.periodo || curso.grau || 'Graduação'})
                   </option>
                 ))}
               </datalist>
@@ -618,7 +710,7 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
                 ))}
               </div>
 
-              {/* SEÇÃO 2: VÁRIOS CURSOS ASSOCIADOS À TURMA */}
+              {/* SEÇÃO 2: VÁRIOS CURSOS ASSOCIADOS À TURMA (COM PUXAMENTO AUTOMÁTICO DOS CURSOS CADASTRADOS) */}
               <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -627,15 +719,24 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
                       Cursos Associados à Turma (Vários Cursos)
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                      {cursos.length} {cursos.length === 1 ? 'curso' : 'cursos'}
+                      {cursos.length} {cursos.length === 1 ? 'curso incluído' : 'cursos incluídos'}
                     </span>
                   </div>
+
+                  <Link
+                    href="/instituicoes"
+                    target="_blank"
+                    className="text-[11px] font-bold text-purple-700 hover:text-purple-900 flex items-center space-x-1"
+                  >
+                    <span>+ Gerenciar Cursos no Sistema</span>
+                  </Link>
                 </div>
 
-                {/* Campo de Inclusão de Curso */}
+                {/* Campo de Inclusão de Curso com Autocomplete */}
                 <div className="flex items-center space-x-2">
                   <input
                     type="text"
+                    list="sugestoes-cursos"
                     value={novoCursoInput}
                     onChange={(e) => setNovoCursoInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -644,12 +745,12 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
                         adicionarCurso();
                       }
                     }}
-                    placeholder="Digite o curso (ex: Medicina, Direito, Enfermagem...) e clique em Adicionar"
+                    placeholder="Digite o curso ou escolha uma das sugestões cadastradas..."
                     className="flex-1 text-xs rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-emerald-500 bg-white"
                   />
                   <button
                     type="button"
-                    onClick={adicionarCurso}
+                    onClick={() => adicionarCurso()}
                     className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1 transition cursor-pointer shrink-0 shadow-2xs"
                   >
                     <Plus className="w-4 h-4" />
@@ -657,7 +758,36 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
                   </button>
                 </div>
 
-                {/* Chips com os Cursos Já Adicionados */}
+                {/* Dropdown Seletor de Cursos Cadastrados no Sistema */}
+                {cursosCadastrados.length > 0 && (
+                  <div className="pt-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                      ⚡ Selecionar curso cadastrado no sistema ({cursosCadastrados.length} disponíveis):
+                    </label>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const nome = e.target.value;
+                        if (nome) {
+                          adicionarCurso(nome);
+                        }
+                        e.target.value = '';
+                      }}
+                      className="w-full text-xs rounded-lg border border-emerald-300 bg-emerald-50/40 p-2 text-slate-800 font-semibold cursor-pointer focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="" disabled>
+                        Clique para escolher um curso já cadastrado...
+                      </option>
+                      {cursosCadastrados.map((c) => (
+                        <option key={c.id} value={c.nome}>
+                          {c.nome} {c.instituicaoSigla ? `(${c.instituicaoSigla})` : c.instituicaoNome ? `(${c.instituicaoNome})` : ''} - {c.periodo || c.grau || 'Graduação'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Chips com os Cursos Já Adicionados ao Projeto */}
                 {cursos.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {cursos.map((c, i) => (
@@ -682,33 +812,21 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
                   </p>
                 )}
 
-                {/* Atalhos Rápidos de Cursos Comuns */}
+                {/* Atalhos Rápidos Dinâmicos com os Cursos Cadastrados */}
                 <div className="flex flex-wrap gap-1 pt-1">
-                  {[
-                    'Medicina',
-                    'Direito',
-                    'Enfermagem',
-                    'Administração',
-                    'Biomedicina',
-                    'Engenharia Civil',
-                    'Odontologia',
-                    'Psicologia',
-                    'Fisioterapia',
-                    'Nutrição',
-                    'Relações Internacionais',
-                    'Arquitetura',
-                  ].map((sugestao) => (
+                  {cursosSugeridos.slice(0, 16).map((sugestao) => (
                     <button
                       key={sugestao}
                       type="button"
-                      onClick={() => {
-                        if (!cursos.includes(sugestao)) {
-                          setCursos([...cursos, sugestao]);
-                        }
-                      }}
-                      className="text-[10px] font-semibold text-slate-600 bg-white hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200 rounded-md px-2 py-0.5 transition cursor-pointer"
+                      onClick={() => adicionarCurso(sugestao)}
+                      className={`text-[10px] font-semibold border rounded-md px-2 py-0.5 transition cursor-pointer ${
+                        cursos.includes(sugestao)
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border-slate-200'
+                      }`}
                     >
-                      + {sugestao}
+                      {cursos.includes(sugestao) ? '✓ ' : '+ '}
+                      {sugestao}
                     </button>
                   ))}
                 </div>

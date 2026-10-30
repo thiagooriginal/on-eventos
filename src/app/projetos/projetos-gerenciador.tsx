@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import Link from 'next/link';
 import {
   GraduationCap,
   Search,
   Plus,
   Building,
+  Building2,
   School,
   MapPin,
   BookOpen,
@@ -16,7 +18,10 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  Trash2,
+  Upload,
 } from 'lucide-react';
+import { INSTITUICOES_INICIAIS } from '@/lib/instituicoes';
 
 export interface ProjetoItem {
   id: string;
@@ -63,7 +68,7 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
   const [salvando, setSalvando] = useState(false);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
-  // Formulário de Novo Projeto com suporte a Campus e múltiplos atributos acadêmicos
+  // Formulário de Novo Projeto com suporte a MÚLTIPLAS Instituições e VÁRIOS Cursos
   const [form, setForm] = useState({
     nomeProjeto: '',
     tipo: 'BAILE',
@@ -78,6 +83,52 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
     planoInicialNome: 'Plano Principal Completo',
     planoInicialValor: 5000,
   });
+
+  // Lista dinâmica de Instituições & Câmpus vinculados (suporte a mais de uma instituição)
+  const [instituicoes, setInstituicoes] = useState<Array<{ faculdade: string; campus: string }>>([
+    { faculdade: '', campus: '' },
+  ]);
+
+  // Lista dinâmica de Cursos associados à turma (suporte a vários cursos)
+  const [cursos, setCursos] = useState<string[]>([]);
+  const [novoCursoInput, setNovoCursoInput] = useState('');
+
+  const adicionarInstituicao = () => {
+    setInstituicoes((prev) => [...prev, { faculdade: '', campus: '' }]);
+  };
+
+  const removerInstituicao = (index: number) => {
+    if (instituicoes.length > 1) {
+      setInstituicoes((prev) => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const atualizarInstituicao = (index: number, campo: 'faculdade' | 'campus', valor: string) => {
+    setInstituicoes((prev) => {
+      const nova = [...prev];
+      nova[index] = { ...nova[index], [campo]: valor };
+      return nova;
+    });
+  };
+
+  const adicionarCurso = () => {
+    const texto = novoCursoInput.trim();
+    if (!texto) return;
+    const partes = texto
+      .split(/[,;\n]/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    const novos = partes.filter((p) => !cursos.includes(p));
+    if (novos.length > 0) {
+      setCursos((prev) => [...prev, ...novos]);
+    }
+    setNovoCursoInput('');
+  };
+
+  const removerCurso = (index: number) => {
+    setCursos((prev) => prev.filter((_, i) => i !== index));
+  };
 
   // Filtro Dinâmico abrangente por nome, código da turma, semestre, faculdade ou curso
   const projetosFiltrados = useMemo(() => {
@@ -102,10 +153,30 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
     setMensagemErro(null);
 
     try {
+      // Agrega múltiplas faculdades e câmpus em strings estruturadas
+      const faculdadesValidas = instituicoes.map((i) => i.faculdade.trim()).filter(Boolean);
+      const faculdadeNomeFinal = faculdadesValidas.join(', ') || form.faculdadeNome || 'Instituição Unificada';
+
+      const campusValidos = instituicoes
+        .filter((i) => i.faculdade.trim() || i.campus.trim())
+        .map((i) => (i.campus.trim() ? `${i.faculdade.trim() ? `${i.faculdade.trim()} - ` : ''}${i.campus.trim()}` : i.faculdade.trim()))
+        .filter(Boolean);
+      const campusNomeFinal = campusValidos.join(', ') || form.campusNome || 'Campus Principal';
+
+      // Agrega os múltiplos cursos
+      const cursoNomeFinal = cursos.length > 0 ? cursos.join(', ') : form.cursoNome || 'Geral';
+
+      const payload = {
+        ...form,
+        faculdadeNome: faculdadeNomeFinal,
+        campusNome: campusNomeFinal,
+        cursoNome: cursoNomeFinal,
+      };
+
       const res = await fetch('/api/projetos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -116,6 +187,9 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
       // Adiciona o novo projeto à lista local
       const novoFormatado: ProjetoItem = {
         ...data.projeto,
+        faculdadeNome: faculdadeNomeFinal,
+        campusNome: campusNomeFinal,
+        cursoNome: cursoNomeFinal,
         planos: form.planoInicialNome
           ? [
               {
@@ -130,8 +204,10 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
         custos: [],
       };
 
-      setProjetos([novoFormatado, ...projetos]);
+      const novaLista = [novoFormatado, ...projetos];
+      setProjetos(novaLista);
       setModalAberto(false);
+
       // Reset formulário
       setForm({
         nomeProjeto: '',
@@ -147,6 +223,9 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
         planoInicialNome: 'Plano Principal Completo',
         planoInicialValor: 5000,
       });
+      setInstituicoes([{ faculdade: '', campus: '' }]);
+      setCursos([]);
+      setNovoCursoInput('');
     } catch (err: any) {
       setMensagemErro(err.message);
     } finally {
@@ -177,13 +256,24 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
           )}
         </div>
 
-        <button
-          onClick={() => setModalAberto(true)}
-          className="w-full md:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold rounded-lg text-sm flex items-center justify-center transition shadow-xs shrink-0"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Cadastrar Novo Projeto
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <Link
+            href="/alunos"
+            className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-300 rounded-lg text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition shadow-2xs shrink-0 cursor-pointer"
+            title="Importar lista de formandos via planilha Excel / CSV"
+          >
+            <Upload className="w-4 h-4 text-emerald-600" />
+            <span>Importar Alunos Excel</span>
+          </Link>
+
+          <button
+            onClick={() => setModalAberto(true)}
+            className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold rounded-lg text-sm flex items-center justify-center transition shadow-xs shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Cadastrar Novo Projeto
+          </button>
+        </div>
       </div>
 
       {/* Contador de Resultados */}
@@ -446,39 +536,189 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
                 </div>
               </div>
 
-              {/* Campos Acadêmicos Solicitados: Faculdade, Campus e Cursos */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Faculdade / Instituição
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={form.faculdadeNome}
-                    onChange={(e) => setForm({ ...form, faculdadeNome: e.target.value })}
-                    placeholder="Ex: Universidade Mackenzie"
-                    className="w-full text-sm rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-emerald-500"
-                  />
+              {/* Datalist com sugestões de Instituições Cadastradas */}
+              <datalist id="sugestoes-faculdades">
+                {INSTITUICOES_INICIAIS.map((inst) => (
+                  <option key={inst.id} value={inst.nome}>
+                    {inst.sigla ? `${inst.sigla} - ${inst.campus}` : inst.campus}
+                  </option>
+                ))}
+              </datalist>
+
+              {/* SEÇÃO 1: MÚLTIPLAS INSTITUIÇÕES E CÂMPUS */}
+              <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Building2 className="w-4 h-4 text-emerald-700" />
+                    <span className="text-xs font-bold text-slate-800">
+                      Faculdades / Instituições & Câmpus Vinculados
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      {instituicoes.length} {instituicoes.length === 1 ? 'instituição' : 'instituições'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={adicionarInstituicao}
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-white hover:bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 flex items-center space-x-1 transition cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Adicionar Outra Faculdade</span>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1 text-emerald-800">
-                    Campus Associado *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={form.campusNome}
-                    onChange={(e) => setForm({ ...form, campusNome: e.target.value })}
-                    placeholder="Ex: Campus Higienópolis"
-                    className="w-full text-sm rounded-lg border border-emerald-300 bg-emerald-50/20 p-2.5 focus:ring-2 focus:ring-emerald-500 font-medium"
-                  />
+                {instituicoes.map((inst, index) => (
+                  <div
+                    key={index}
+                    className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs"
+                  >
+                    <div className="md:col-span-6">
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        {instituicoes.length > 1 ? `Instituição #${index + 1}` : 'Faculdade / Instituição *'}
+                      </label>
+                      <input
+                        type="text"
+                        list="sugestoes-faculdades"
+                        required
+                        value={inst.faculdade}
+                        onChange={(e) => atualizarInstituicao(index, 'faculdade', e.target.value)}
+                        placeholder="Ex: Universidade Mackenzie, USP, PUC..."
+                        className="w-full text-xs rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-emerald-500 font-medium"
+                      />
+                    </div>
+
+                    <div className={instituicoes.length > 1 ? 'md:col-span-5' : 'md:col-span-6'}>
+                      <label className="text-[11px] font-bold text-emerald-800 block mb-1">
+                        Campus Associado *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={inst.campus}
+                        onChange={(e) => atualizarInstituicao(index, 'campus', e.target.value)}
+                        placeholder="Ex: Campus Higienópolis, Perdizes..."
+                        className="w-full text-xs rounded-lg border border-emerald-300 bg-emerald-50/20 p-2.5 focus:ring-2 focus:ring-emerald-500 font-medium"
+                      />
+                    </div>
+
+                    {instituicoes.length > 1 && (
+                      <div className="md:col-span-1 flex justify-center pb-1">
+                        <button
+                          type="button"
+                          onClick={() => removerInstituicao(index)}
+                          className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                          title="Remover esta instituição"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* SEÇÃO 2: VÁRIOS CURSOS ASSOCIADOS À TURMA */}
+              <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <BookOpen className="w-4 h-4 text-emerald-700" />
+                    <span className="text-xs font-bold text-slate-800">
+                      Cursos Associados à Turma (Vários Cursos)
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      {cursos.length} {cursos.length === 1 ? 'curso' : 'cursos'}
+                    </span>
+                  </div>
                 </div>
 
+                {/* Campo de Inclusão de Curso */}
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={novoCursoInput}
+                    onChange={(e) => setNovoCursoInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        adicionarCurso();
+                      }
+                    }}
+                    placeholder="Digite o curso (ex: Medicina, Direito, Enfermagem...) e clique em Adicionar"
+                    className="flex-1 text-xs rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-emerald-500 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={adicionarCurso}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1 transition cursor-pointer shrink-0 shadow-2xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Adicionar Curso</span>
+                  </button>
+                </div>
+
+                {/* Chips com os Cursos Já Adicionados */}
+                {cursos.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {cursos.map((c, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white border border-emerald-300 text-emerald-900 rounded-lg text-xs font-bold shadow-2xs"
+                      >
+                        <span>{c}</span>
+                        <button
+                          type="button"
+                          onClick={() => removerCurso(i)}
+                          className="text-emerald-500 hover:text-rose-600 transition cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic">
+                    Nenhum curso incluído ainda. Digite acima ou clique nos atalhos rápidos abaixo:
+                  </p>
+                )}
+
+                {/* Atalhos Rápidos de Cursos Comuns */}
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {[
+                    'Medicina',
+                    'Direito',
+                    'Enfermagem',
+                    'Administração',
+                    'Biomedicina',
+                    'Engenharia Civil',
+                    'Odontologia',
+                    'Psicologia',
+                    'Fisioterapia',
+                    'Nutrição',
+                    'Relações Internacionais',
+                    'Arquitetura',
+                  ].map((sugestao) => (
+                    <button
+                      key={sugestao}
+                      type="button"
+                      onClick={() => {
+                        if (!cursos.includes(sugestao)) {
+                          setCursos([...cursos, sugestao]);
+                        }
+                      }}
+                      className="text-[10px] font-semibold text-slate-600 bg-white hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200 rounded-md px-2 py-0.5 transition cursor-pointer"
+                    >
+                      + {sugestao}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Semestre e Código de Adesão */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Semestre (Ano.Período)
+                    Semestre (Ano.Período) *
                   </label>
                   <input
                     type="text"
@@ -486,44 +726,30 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
                     value={form.semestre}
                     onChange={(e) => setForm({ ...form, semestre: e.target.value })}
                     placeholder="Ex: 2026.2, 2027.1, 2028.2"
-                    className="w-full text-sm rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-emerald-500 font-mono"
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-emerald-500 font-mono font-bold"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Cursos Associados à Turma
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.cursoNome}
-                  onChange={(e) => setForm({ ...form, cursoNome: e.target.value })}
-                  placeholder="Ex: Direito Matutino e Noturno, Relações Internacionais"
-                  className="w-full text-sm rounded-lg border border-slate-300 p-2.5 focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              {/* Código Exclusivo de Adesão e Valores */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Código Exclusivo de Adesão
+                    Código Exclusivo de Adesão *
                   </label>
                   <input
                     type="text"
                     required
                     value={form.codigoAdesao}
                     onChange={(e) => setForm({ ...form, codigoAdesao: e.target.value.toUpperCase() })}
-                    placeholder="Ex: MACK-DIR-2027-1"
-                    className="w-full text-sm rounded-lg border border-slate-300 p-2.5 font-mono font-bold focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Ex: MACK-DIR-2027-1 ou UNIF-SAUDE-26"
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2.5 font-mono font-bold focus:ring-2 focus:ring-emerald-500 uppercase"
                   />
                 </div>
+              </div>
 
+              {/* Quantidade e Valor Previsto por Aluno */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Quantidade Prevista de Alunos
+                    Quantidade Prevista de Alunos *
                   </label>
                   <input
                     type="number"
@@ -537,7 +763,7 @@ export function ProjetosGerenciador({ initialProjetos }: { initialProjetos: Proj
 
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Valor Previsto por Aluno (R$)
+                    Valor Previsto por Aluno (R$) *
                   </label>
                   <input
                     type="number"

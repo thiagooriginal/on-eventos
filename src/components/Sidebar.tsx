@@ -21,6 +21,7 @@ import {
   Sparkles,
   ShieldCheck,
   ChevronRight,
+  ChevronDown,
   Menu,
   X,
   Building2,
@@ -36,163 +37,177 @@ import {
   User,
   Edit3,
   Handshake,
+  Search,
+  ExternalLink,
 } from 'lucide-react';
 import { getUsuarios, salvarUsuarios } from '@/lib/usuarios';
 
-interface SidebarProps {
+export interface SidebarProps {
   paginaAtiva?: string;
 }
 
-interface SubMenuItem {
+export interface SubMenuItem {
   id: string;
   titulo: string;
   href: string;
+  badge?: string;
+  badgeCor?: string;
 }
 
-interface MenuItem {
+export interface MenuItem {
   id: string;
   titulo: string;
   href: string;
   icone: React.ComponentType<{ className?: string }>;
   badge?: string;
   badgeCor?: string;
+  matchIds?: string[];
   subItens?: SubMenuItem[];
 }
 
-export const menuItens: MenuItem[] = [
+export interface MenuSection {
+  secao: string;
+  itens: MenuItem[];
+}
+
+export const menuSections: MenuSection[] = [
   {
-    id: 'dashboard',
-    titulo: 'Dashboard',
-    href: '/sistema/index.html',
-    icone: LayoutDashboard,
-    badge: 'Ao Vivo',
-    badgeCor: 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/40',
-  },
-  {
-    id: 'crm',
-    titulo: 'CRM de Turmas',
-    href: '/crm/index.html',
-    icone: Kanban,
-    badge: '14',
-    badgeCor: 'bg-amber-400/30 text-amber-200 border border-amber-300/40',
-  },
-  {
-    id: 'projetos',
-    titulo: 'Projetos Formatura',
-    href: '/projetos/index.html',
-    icone: GraduationCap,
-    badge: '8',
-    badgeCor: 'bg-teal-400/30 text-teal-200 border border-teal-300/40',
-  },
-  {
-    id: 'demandas',
-    titulo: 'Demandas Internas',
-    href: '/demandas/index.html',
-    icone: ClipboardList,
-    badge: 'Equipe',
-    badgeCor: 'bg-purple-400/30 text-purple-200 border border-purple-300/40',
-  },
-  {
-    id: 'instituicoes',
-    titulo: 'Instituição / Cursos',
-    href: '/instituicoes/index.html',
-    icone: Building2,
-    badge: 'Novo',
-    badgeCor: 'bg-indigo-400/30 text-indigo-200 border border-indigo-300/40',
-  },
-  {
-    id: 'fotos',
-    titulo: 'Vendas de Álbuns',
-    href: '/fotos/index.html',
-    icone: Camera,
-    badge: 'Novo',
-    badgeCor: 'bg-fuchsia-400/30 text-fuchsia-200 border border-fuchsia-300/40',
-  },
-  {
-    id: 'parceiros',
-    titulo: 'PARCEIROS',
-    href: '/parceiros/index.html',
-    icone: Handshake,
-    badge: 'Novo',
-    badgeCor: 'bg-emerald-400/30 text-emerald-200 border border-emerald-300/40',
-    subItens: [
-      { id: 'profissionais', titulo: 'Profissionais Liberais', href: '/parceiros/index.html?aba=profissionais' },
-      { id: 'espacos', titulo: 'Espaços para Evento', href: '/parceiros/index.html?aba=espacos' },
+    secao: 'VISÃO GERAL',
+    itens: [
+      {
+        id: 'admin',
+        titulo: 'Menu Principal',
+        href: '/admin/index.html',
+        icone: LayoutDashboard,
+        badge: 'Início',
+        badgeCor: 'bg-slate-100 text-slate-600 border border-slate-200',
+      },
+      {
+        id: 'dashboard',
+        titulo: 'Central do Sistema',
+        href: '/sistema/index.html',
+        icone: Activity,
+        badge: 'Ao Vivo',
+        badgeCor: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      },
     ],
   },
   {
-    id: 'metricas',
-    titulo: 'Métricas do Site',
-    href: '/metricas/index.html',
-    icone: Activity,
-    badge: 'Ao Vivo',
-    badgeCor: 'bg-emerald-400/30 text-emerald-200 border border-emerald-300/40',
+    secao: 'EVENTOS & VENDAS',
+    itens: [
+      {
+        id: 'fotos',
+        titulo: 'Vendas de Álbuns',
+        href: '/fotos/index.html',
+        icone: Camera,
+        matchIds: ['fotos'],
+        subItens: [
+          { id: 'fotos-painel', titulo: 'Painel de Vendas', href: '/fotos/index.html' },
+          { id: 'fotos-carnes', titulo: 'Boletos & Carnês Sicredi', href: '/fotos/index.html' },
+        ],
+      },
+      {
+        id: 'parceiros',
+        titulo: 'Parceiros & Locais',
+        href: '/parceiros/index.html',
+        icone: Handshake,
+        badge: 'Novo',
+        badgeCor: 'bg-purple-100 text-purple-700 border border-purple-200',
+        matchIds: ['parceiros'],
+        subItens: [
+          { id: 'profissionais', titulo: 'Profissionais Liberais', href: '/parceiros/index.html?aba=profissionais' },
+          { id: 'espacos', titulo: 'Espaços para Evento', href: '/parceiros/index.html?aba=espacos' },
+        ],
+      },
+      {
+        id: 'comercial',
+        titulo: 'Comercial & Turmas',
+        href: '/crm/index.html',
+        icone: GraduationCap,
+        matchIds: ['crm', 'projetos', 'alunos'],
+        subItens: [
+          { id: 'crm', titulo: 'CRM de Turmas', href: '/crm/index.html' },
+          { id: 'projetos', titulo: 'Projetos Formatura', href: '/projetos/index.html' },
+          { id: 'alunos', titulo: 'Pesquisa de Alunos', href: '/alunos/index.html' },
+        ],
+      },
+      {
+        id: 'operacoes',
+        titulo: 'Operações & Tarefas',
+        href: '/demandas/index.html',
+        icone: ClipboardList,
+        matchIds: ['demandas', 'instituicoes'],
+        subItens: [
+          { id: 'demandas', titulo: 'Demandas & Kanban', href: '/demandas/index.html' },
+          { id: 'instituicoes', titulo: 'Instituições / Cursos', href: '/instituicoes/index.html' },
+        ],
+      },
+    ],
   },
   {
-    id: 'usuarios',
-    titulo: 'Usuários & Níveis',
-    href: '/usuarios/index.html',
-    icone: UserCheck,
-    badge: 'Admin/Básico',
-    badgeCor: 'bg-indigo-400/30 text-indigo-200 border border-indigo-300/40',
+    secao: 'GESTÃO & FINANCEIRO',
+    itens: [
+      {
+        id: 'financas',
+        titulo: 'Módulo Financeiro',
+        href: '/financeiro/index.html',
+        icone: Wallet,
+        matchIds: ['financeiro', 'comissoes', 'relatorios'],
+        subItens: [
+          { id: 'financeiro', titulo: 'Financeiro & Custos', href: '/financeiro/index.html' },
+          { id: 'comissoes', titulo: 'Comissões (Regra 4%)', href: '/comissoes/index.html' },
+          { id: 'relatorios', titulo: 'Relatórios Gerenciais', href: '/relatorios/index.html' },
+        ],
+      },
+      {
+        id: 'campanhas',
+        titulo: 'Campanhas WhatsApp',
+        href: '/campanhas/index.html',
+        icone: Megaphone,
+        badge: 'Disparos',
+        badgeCor: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      },
+    ],
   },
   {
-    id: 'comissoes',
-    titulo: 'Comissões (Regra 4%)',
-    href: '/comissoes/index.html',
-    icone: BadgePercent,
-    badge: '4%',
-    badgeCor: 'bg-purple-400/30 text-purple-200 border border-purple-300/40',
-  },
-  {
-    id: 'alunos',
-    titulo: 'Pesquisa Alunos',
-    href: '/alunos/index.html',
-    icone: Users,
-    badge: '420',
-    badgeCor: 'bg-blue-400/30 text-blue-200 border border-blue-300/40',
-  },
-  {
-    id: 'financeiro',
-    titulo: 'Financeiro & Custos',
-    href: '/financeiro/index.html',
-    icone: Wallet,
-    badge: 'R$',
-    badgeCor: 'bg-emerald-400/30 text-emerald-200 border border-emerald-300/40',
-  },
-  {
-    id: 'relatorios',
-    titulo: 'Relatórios Gerenciais',
-    href: '/relatorios/index.html',
-    icone: FileBarChart2,
-    badge: 'Tempo Real',
-    badgeCor: 'bg-rose-400/30 text-rose-200 border border-rose-300/40',
-  },
-  {
-    id: 'campanhas',
-    titulo: 'Campanhas WhatsApp',
-    href: '/campanhas/index.html',
-    icone: Megaphone,
-    badge: 'Fila',
-    badgeCor: 'bg-cyan-400/30 text-cyan-200 border border-cyan-300/40',
-  },
-  {
-    id: 'app-aluno',
-    titulo: 'Portal do Aluno',
-    href: '/app-aluno/index.html',
-    icone: Smartphone,
-    badge: 'App',
-    badgeCor: 'bg-violet-400/30 text-violet-200 border border-violet-300/40',
-  },
-  {
-    id: 'site',
-    titulo: 'Site Institucional',
-    href: '/',
-    icone: Globe,
-    badge: 'Web',
-    badgeCor: 'bg-white/20 text-white border border-white/30',
+    secao: 'SISTEMA & PORTAIS',
+    itens: [
+      {
+        id: 'usuarios',
+        titulo: 'Usuários & Permissões',
+        href: '/usuarios/index.html',
+        icone: UserCheck,
+      },
+      {
+        id: 'metricas',
+        titulo: 'Métricas do Site',
+        href: '/metricas/index.html',
+        icone: Activity,
+        badge: 'Ao Vivo',
+        badgeCor: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      },
+      {
+        id: 'app-aluno',
+        titulo: 'Portal do Aluno (App)',
+        href: '/app-aluno/index.html',
+        icone: Smartphone,
+        badge: 'App',
+        badgeCor: 'bg-purple-100 text-purple-700 border border-purple-200',
+      },
+      {
+        id: 'site',
+        titulo: 'Site Institucional',
+        href: '/',
+        icone: Globe,
+        badge: 'Web',
+        badgeCor: 'bg-slate-100 text-slate-600 border border-slate-200',
+      },
+    ],
   },
 ];
+
+// Compatibilidade retroativa caso algum arquivo acesse menuItens plano
+export const menuItens: MenuItem[] = menuSections.flatMap((s) => s.itens);
 
 export interface UsuarioSessao {
   nome: string;
@@ -207,6 +222,8 @@ export interface UsuarioSessao {
 export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
   const [mobileAberto, setMobileAberto] = useState(false);
   const [albunsAtrasadosCount, setAlbunsAtrasadosCount] = useState<number>(0);
+  const [currentSearch, setCurrentSearch] = useState('');
+  const [buscaMenu, setBuscaMenu] = useState('');
   const [usuario, setUsuario] = useState<UsuarioSessao>({
     nome: 'Administrador ON',
     email: 'admin@formatura.com.br',
@@ -214,6 +231,36 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
     telefone: '',
     foto: '',
   });
+
+  // Estado de controle de abertura dos menus expansíveis
+  const [menusAbertos, setMenusAbertos] = useState<Record<string, boolean>>(() => {
+    const iniciais: Record<string, boolean> = {};
+    menuSections.forEach((sec) => {
+      sec.itens.forEach((item) => {
+        if (item.subItens && item.subItens.length > 0) {
+          const isAtivo =
+            paginaAtiva === item.id ||
+            (item.matchIds && item.matchIds.includes(paginaAtiva)) ||
+            item.subItens.some((s) => s.id === paginaAtiva);
+          if (isAtivo) {
+            iniciais[item.id] = true;
+          }
+        }
+      });
+    });
+    return iniciais;
+  });
+
+  const toggleSubmenu = (itemId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setMenusAbertos((prev) => ({
+      ...prev,
+      [itemId]: !prev[itemId],
+    }));
+  };
 
   // Estados do Modal "Meu Perfil"
   const [modalPerfilAberto, setModalPerfilAberto] = useState(false);
@@ -229,6 +276,7 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      setCurrentSearch(window.location.search || '');
       try {
         const salvo = localStorage.getItem('on_usuario_logado');
         if (!salvo) {
@@ -300,7 +348,6 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
                 prazoAtivo = v.prazoProducao;
               }
 
-              // Se a etapa ativa estiver em branco (sem prazo definido ainda), não gera falso atraso
               if (!prazoAtivo) return false;
 
               const p = String(prazoAtivo).split('-');
@@ -446,115 +493,221 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
     }
   };
 
+  // Renderização do Conteúdo de Navegação (Estilo Cartpanda Minimalista e Limpo)
   const navContent = (
-    <div className="flex flex-col h-full justify-between">
-      {/* Topo / Marca ON EVENTOS */}
-      <div>
-        <div className="flex items-center space-x-3 px-3 py-3.5 mb-4 border-b border-white/10">
-          <div className="relative shrink-0">
-            <div className="w-12 h-12 rounded-2xl bg-white shadow-[0_5px_0_0_#C7D2FE,0_10px_20px_rgba(0,0,0,0.2)] flex items-center justify-center p-1.5 transform hover:scale-105 transition-transform duration-200 border border-white/40">
+    <div className="flex flex-col h-full justify-between bg-white select-none">
+      <div className="flex flex-col min-h-0">
+        {/* Topo / Marca ON EVENTOS */}
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <Link
+            href="/admin/index.html"
+            className="flex items-center space-x-3 group cursor-pointer transition min-w-0"
+          >
+            <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center p-1.5 shrink-0 group-hover:scale-105 transition-transform duration-200">
               <Image
                 src="/images/logo-on-agencia.png"
                 alt="ON Agência Oficial"
-                width={38}
-                height={38}
+                width={30}
+                height={30}
                 className="object-contain"
                 priority
               />
             </div>
-            <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-[#432CB8]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-1.5">
-              <span className="text-lg font-black tracking-tight text-white drop-shadow-sm font-sans truncate">
-                ON AGÊNCIA
-              </span>
-              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse shrink-0" />
+            <div className="min-w-0">
+              <div className="flex items-center space-x-1.5">
+                <span className="text-sm font-extrabold tracking-tight text-slate-900 group-hover:text-purple-700 transition-colors truncate">
+                  ON AGÊNCIA
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-slate-400 truncate">
+                Portal de Gestão SaaS
+              </p>
             </div>
-            <p className="text-[10px] font-bold tracking-wider text-purple-200 uppercase truncate">
-              Eventos & Formaturas
-            </p>
-          </div>
-        </div>
-
-        {/* Status Pills */}
-        <div className="px-3 mb-5">
-          <div className="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl px-3 py-2 flex items-center justify-between text-xs text-white/90 shadow-[0_2px_0_0_rgba(0,0,0,0.1)]">
-            <div className="flex items-center space-x-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="font-semibold text-[11px]">Nuvem Hostinger</span>
-            </div>
-            <span className="text-[10px] bg-emerald-500/20 text-emerald-200 px-2 py-0.5 rounded-full font-bold border border-emerald-400/30">
-              100% Online
+          </Link>
+          <div className="flex items-center space-x-1.5 shrink-0">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
           </div>
         </div>
 
-        {/* Lista de Navegação com Efeito Tátil */}
-        <nav className="space-y-1.5 px-1">
-          {menuItens.map((item) => {
-            const Icone = item.icone;
-            const isAtivo = paginaAtiva === item.id;
-            const hasSub = item.subItens && item.subItens.length > 0;
+        {/* Campo de Busca Rápida no Menu */}
+        <div className="px-3 pt-3 pb-1">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar no menu..."
+              value={buscaMenu}
+              onChange={(e) => setBuscaMenu(e.target.value)}
+              className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200/80 rounded-lg text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:bg-white focus:border-purple-500 focus:outline-none transition"
+            />
+          </div>
+        </div>
+
+        {/* Lista de Navegação com Seções e Submenus Estilo Cartpanda */}
+        <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-4 scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
+          {menuSections.map((secao, idx) => {
+            const itensFiltrados = secao.itens.filter((item) => {
+              if (!buscaMenu.trim()) return true;
+              const termo = buscaMenu.toLowerCase();
+              const matchItem = item.titulo.toLowerCase().includes(termo);
+              const matchSub = item.subItens?.some((s) => s.titulo.toLowerCase().includes(termo));
+              return matchItem || matchSub;
+            });
+
+            if (itensFiltrados.length === 0) return null;
 
             return (
-              <div key={item.id} className="space-y-1">
-                <a
-                  href={item.href}
-                  className={`group relative flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-medium transition-all duration-150 ${
-                    isAtivo
-                      ? 'bg-white text-[#432CB8] font-bold shadow-[0_5px_0_0_#C7D2FE,0_10px_20px_rgba(0,0,0,0.18)] translate-y-[-1px]'
-                      : 'text-white/85 hover:text-white bg-white/5 hover:bg-white/15 border border-white/5 hover:border-white/20 shadow-[0_2px_0_0_rgba(0,0,0,0.15)] hover:translate-y-[-1px] active:translate-y-[1px]'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3 min-w-0">
-                    <div
-                      className={`p-1.5 rounded-xl transition-all duration-150 ${
-                        isAtivo
-                          ? 'bg-[#4F39F6]/10 text-[#4F39F6]'
-                          : 'bg-white/10 text-white group-hover:bg-white/20'
-                      }`}
-                    >
-                      <Icone className="w-4 h-4 shrink-0" />
-                    </div>
-                    <span className="text-sm truncate">{item.titulo}</span>
-                  </div>
+              <div key={idx} className="space-y-0.5">
+                {/* Cabeçalho da Seção */}
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 pt-2 pb-1">
+                  {secao.secao}
+                </p>
 
-                  {item.id === 'fotos' && albunsAtrasadosCount > 0 ? (
-                    <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 bg-rose-600 text-white border border-rose-300 animate-pulse shadow-sm">
-                      🚨 {albunsAtrasadosCount} {albunsAtrasadosCount > 1 ? 'Atrasados' : 'Atrasado'}
-                    </span>
-                  ) : item.badge ? (
-                    <span
-                      className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                        isAtivo
-                          ? 'bg-[#4F39F6] text-white shadow-xs'
-                          : item.badgeCor || 'bg-white/15 text-white/90'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  ) : null}
-                </a>
+                {/* Itens da Seção */}
+                <div className="space-y-0.5">
+                  {itensFiltrados.map((item) => {
+                    const Icone = item.icone;
+                    const hasSub = !!(item.subItens && item.subItens.length > 0);
+                    const isAtivoDireto = paginaAtiva === item.id;
+                    const isSubAtivoGeral =
+                      item.matchIds?.includes(paginaAtiva) ||
+                      item.subItens?.some((s) => s.id === paginaAtiva);
+                    const isParentAtivo = isAtivoDireto || isSubAtivoGeral;
+                    const estaAberto = !!menusAbertos[item.id] || (!!buscaMenu.trim() && hasSub);
 
-                {/* Submenu aninhado quando o item possui subItens */}
-                {hasSub && (
-                  <div className={`ml-3.5 pl-3 border-l-2 border-white/20 space-y-1 pt-1 pb-1 ${isAtivo ? 'block' : 'opacity-85 hover:opacity-100'}`}>
-                    {item.subItens?.map((sub) => (
-                      <a
-                        key={sub.id}
-                        href={sub.href}
-                        className="flex items-center space-x-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-purple-100 hover:text-white hover:bg-white/15 transition-all"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                        <span className="truncate">{sub.titulo}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
+                    return (
+                      <div key={item.id} className="space-y-0.5">
+                        {/* Linha Principal do Item */}
+                        {hasSub ? (
+                          <div
+                            onClick={() => toggleSubmenu(item.id)}
+                            className={`group flex items-center justify-between px-2.5 py-2 rounded-xl text-[13px] font-medium transition cursor-pointer select-none ${
+                              isParentAtivo
+                                ? 'bg-purple-50/90 text-purple-800 font-bold'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2.5 min-w-0">
+                              <Icone
+                                className={`w-4 h-4 shrink-0 transition-colors ${
+                                  isParentAtivo
+                                    ? 'text-purple-600'
+                                    : 'text-slate-400 group-hover:text-slate-600'
+                                }`}
+                              />
+                              <span className="truncate">{item.titulo}</span>
+                            </div>
+
+                            <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                              {item.id === 'fotos' && albunsAtrasadosCount > 0 ? (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-600 text-white animate-pulse">
+                                  🚨 {albunsAtrasadosCount}
+                                </span>
+                              ) : item.badge ? (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                                    item.badgeCor || 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {item.badge}
+                                </span>
+                              ) : null}
+
+                              <ChevronRight
+                                className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                                  estaAberto ? 'rotate-90 text-purple-600' : 'group-hover:text-slate-600'
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <Link
+                            href={item.href}
+                            className={`group flex items-center justify-between px-2.5 py-2 rounded-xl text-[13px] font-medium transition select-none ${
+                              isAtivoDireto
+                                ? 'bg-purple-50/90 text-purple-800 font-bold shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2.5 min-w-0">
+                              <Icone
+                                className={`w-4 h-4 shrink-0 transition-colors ${
+                                  isAtivoDireto
+                                    ? 'text-purple-600'
+                                    : 'text-slate-400 group-hover:text-slate-600'
+                                }`}
+                              />
+                              <span className="truncate">{item.titulo}</span>
+                            </div>
+
+                            {item.badge && (
+                              <span
+                                className={`ml-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold shrink-0 ${
+                                  item.badgeCor || 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {item.badge}
+                              </span>
+                            )}
+                          </Link>
+                        )}
+
+                        {/* Submenus Recuados com Linha Guia Estilo Cartpanda */}
+                        {hasSub && estaAberto && (
+                          <div className="ml-4 pl-3.5 border-l-2 border-slate-100 space-y-0.5 py-0.5 animate-in fade-in-50 duration-150">
+                            {item.subItens?.map((sub) => {
+                              // Determina se este subitem específico é o ativo
+                              let isSubAtivo = false;
+                              if (item.id === 'parceiros') {
+                                if (sub.id === 'espacos') {
+                                  isSubAtivo = paginaAtiva === 'parceiros' && currentSearch.includes('aba=espacos');
+                                } else if (sub.id === 'profissionais') {
+                                  isSubAtivo =
+                                    paginaAtiva === 'parceiros' &&
+                                    (!currentSearch || currentSearch.includes('aba=profissionais'));
+                                }
+                              } else if (item.id === 'fotos') {
+                                isSubAtivo = paginaAtiva === 'fotos' && sub.id === 'fotos-painel';
+                              } else {
+                                isSubAtivo = paginaAtiva === sub.id;
+                              }
+
+                              return (
+                                <Link
+                                  key={sub.id}
+                                  href={sub.href}
+                                  className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition ${
+                                    isSubAtivo
+                                      ? 'bg-purple-100/80 text-purple-900 font-bold'
+                                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-2 min-w-0">
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                                        isSubAtivo ? 'bg-purple-600' : 'bg-slate-300'
+                                      }`}
+                                    />
+                                    <span className="truncate">{sub.titulo}</span>
+                                  </div>
+
+                                  {sub.badge && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                      {sub.badge}
+                                    </span>
+                                  )}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
@@ -562,52 +715,42 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
       </div>
 
       {/* Rodapé da Sidebar: Perfil do Usuário e Logout */}
-      <div className="pt-4 mt-6 border-t border-white/15 px-2">
-        <div className="bg-white/10 backdrop-blur-xs rounded-2xl p-3 border border-white/15 shadow-[0_3px_0_0_rgba(0,0,0,0.12)] mb-3">
-          <div className="flex items-center space-x-3">
+      <div className="p-3 border-t border-slate-100 shrink-0 bg-slate-50/60">
+        <div className="bg-white rounded-xl p-2.5 border border-slate-200/80 shadow-xs mb-2">
+          <div className="flex items-center space-x-2.5">
             <div className="relative shrink-0">
               {usuario.foto ? (
                 <img
                   src={usuario.foto}
                   alt={usuario.nome}
-                  className="w-10 h-10 rounded-xl object-cover border border-white/30 shadow-[0_2px_6px_rgba(0,0,0,0.2)]"
+                  className="w-8 h-8 rounded-lg object-cover border border-slate-200 shadow-2xs"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-900 font-extrabold flex items-center justify-center text-sm shadow-[0_2px_6px_rgba(0,0,0,0.2)]">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 text-white font-extrabold flex items-center justify-center text-xs shadow-2xs">
                   {usuario.nome.slice(0, 2).toUpperCase()}
                 </div>
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-white truncate">{usuario.nome}</p>
-              <p className="text-[10px] text-purple-200 truncate">{usuario.email}</p>
-              <div className="flex items-center space-x-1.5 mt-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${usuario.perfil.toUpperCase().includes('ADMIN') ? 'bg-amber-400 animate-pulse' : 'bg-cyan-400'}`}></span>
-                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                  usuario.perfil.toUpperCase().includes('ADMIN')
-                    ? 'bg-amber-400/20 text-amber-200 border-amber-300/40'
-                    : 'bg-cyan-400/20 text-cyan-200 border-cyan-300/40'
-                }`}>
-                  {usuario.perfil.toUpperCase().includes('ADMIN') ? '👑 ADMIN (TOTAL)' : '👤 BÁSICO (OPERACIONAL)'}
-                </span>
-              </div>
+              <p className="text-xs font-bold text-slate-800 truncate">{usuario.nome}</p>
+              <p className="text-[10px] text-slate-400 truncate">{usuario.email}</p>
             </div>
           </div>
 
           {/* Botão Meu Perfil */}
           <button
             onClick={abrirModalPerfil}
-            className="w-full mt-2.5 flex items-center justify-center space-x-1.5 py-1.5 px-3 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-bold transition shadow-xs cursor-pointer active:scale-98"
+            className="w-full mt-2 flex items-center justify-center space-x-1 py-1 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition cursor-pointer"
           >
-            <Edit3 className="w-3.5 h-3.5 text-amber-300" />
-            <span>Editar Meu Perfil</span>
+            <Edit3 className="w-3 h-3 text-slate-500" />
+            <span>Editar Perfil</span>
           </button>
         </div>
 
-        {/* Botão Sair com Relevo */}
+        {/* Botão Sair */}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 hover:text-white border border-red-400/30 text-xs font-semibold shadow-[0_2px_0_0_rgba(239,68,68,0.2)] hover:translate-y-[-1px] active:translate-y-[1px] transition-all cursor-pointer"
+          className="w-full flex items-center justify-center space-x-1.5 py-1.5 px-3 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/60 text-xs font-semibold transition cursor-pointer"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>Encerrar Sessão</span>
@@ -619,12 +762,13 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
   return (
     <>
       {/* Botão Hambúrguer Mobile Flutuante */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
+      <div className="lg:hidden fixed top-3 left-3 z-50">
         <button
           onClick={() => setMobileAberto(!mobileAberto)}
-          className="p-2.5 rounded-2xl bg-[#4F39F6] text-white shadow-[0_4px_12px_rgba(79,57,246,0.4)] border border-white/20 active:scale-95 transition"
+          className="p-2 rounded-xl bg-white text-slate-700 shadow-md border border-slate-200 active:scale-95 transition cursor-pointer"
+          aria-label="Abrir menu lateral"
         >
-          {mobileAberto ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          {mobileAberto ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
@@ -632,31 +776,27 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
       {mobileAberto && (
         <div
           onClick={() => setMobileAberto(false)}
-          className="lg:hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40"
+          className="lg:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40"
         />
       )}
 
-      {/* Sidebar Desktop Flutuante com Cantos Arredondados Modernos */}
-      <aside className="hidden lg:flex flex-col w-72 shrink-0 p-4">
-        <div className="sticky top-4 h-[calc(100vh-2rem)] w-full rounded-[28px] bg-gradient-to-b from-[#5842BD] via-[#4833A8] to-[#36218A] p-4 text-white shadow-[0_16px_36px_rgba(54,33,138,0.28)] border border-white/15 overflow-y-auto scrollbar-none">
-          {navContent}
-        </div>
+      {/* Sidebar Desktop Fixa na Lateral Esquerda (Design Limpo SaaS) */}
+      <aside className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 bg-white border-r border-slate-200/90 min-h-screen sticky top-0 h-screen z-20">
+        {navContent}
       </aside>
 
       {/* Drawer Mobile */}
       <div
-        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 p-4 transition-transform duration-300 ease-in-out ${
+        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl border-r border-slate-200 transition-transform duration-300 ease-in-out ${
           mobileAberto ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="h-full w-full rounded-[28px] bg-gradient-to-b from-[#5842BD] via-[#4833A8] to-[#36218A] p-4 text-white shadow-2xl border border-white/15 overflow-y-auto">
-          {navContent}
-        </div>
+        {navContent}
       </div>
 
       {/* Toast Flutuante de Perfil */}
       {toastPerfil && (
-        <div className="fixed bottom-6 right-6 z-[9999] bg-[#36218A] text-white px-5 py-3 rounded-2xl shadow-2xl border border-purple-400/40 text-xs font-bold flex items-center space-x-2 animate-bounce">
+        <div className="fixed bottom-6 right-6 z-[9999] bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 text-xs font-bold flex items-center space-x-2 animate-bounce">
           <Check className="w-4 h-4 text-emerald-400" />
           <span>{toastPerfil}</span>
         </div>
@@ -664,135 +804,126 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
 
       {/* Modal Meu Perfil (Dados Cadastrais, E-mail, Senha, Telefone e Foto) */}
       {modalPerfilAberto && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-[32px] w-full max-w-lg overflow-hidden shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
             {/* Cabeçalho do Modal */}
-            <div className="bg-gradient-to-r from-[#4F39F6] to-[#7C3AED] p-5 text-white flex items-center justify-between">
+            <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
-                  <User className="w-5 h-5 text-white" />
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
+                  <User className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Meu Perfil de Usuário</h3>
-                  <p className="text-xs text-purple-100">Atualize seus dados, foto de perfil, contato e senha.</p>
+                  <h3 className="text-sm font-bold text-white">Meu Perfil de Usuário</h3>
+                  <p className="text-xs text-slate-300">Atualize seus dados, foto de perfil e senha.</p>
                 </div>
               </div>
               <button
                 onClick={() => setModalPerfilAberto(false)}
-                className="p-2 text-white/80 hover:text-white rounded-xl hover:bg-white/10 transition cursor-pointer"
+                className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Formulário do Perfil */}
-            <form onSubmit={handleSalvarPerfil} className="p-6 space-y-4">
+            <form onSubmit={handleSalvarPerfil} className="p-5 space-y-3.5">
               {/* Seção Foto de Perfil */}
-              <div className="flex items-center space-x-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <div className="flex items-center space-x-3.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="relative shrink-0">
                   {formFoto ? (
                     <img
                       src={formFoto}
-                      alt="Prévia"
-                      className="w-16 h-16 rounded-2xl object-cover border-2 border-purple-500 shadow-md"
+                      alt="Foto Prévia"
+                      className="w-14 h-14 rounded-xl object-cover border border-slate-300 shadow-xs"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-200 text-slate-900 font-black flex items-center justify-center text-xl shadow-md">
-                      {formNome ? formNome.slice(0, 2).toUpperCase() : 'ON'}
+                    <div className="w-14 h-14 rounded-xl bg-purple-100 text-purple-700 font-extrabold flex items-center justify-center text-lg border border-purple-200">
+                      {formNome ? formNome.slice(0, 2).toUpperCase() : 'US'}
                     </div>
                   )}
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-bold text-slate-800 block mb-1">Foto de Perfil</span>
-                  <p className="text-[11px] text-slate-500 mb-2">JPG, PNG ou WebP até 5MB. Visível para toda a equipe.</p>
+                <div className="flex-1 space-y-1.5">
                   <div className="flex items-center space-x-2">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFotoUpload}
-                      accept="image/*"
-                      className="hidden"
-                    />
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-2xs transition cursor-pointer"
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{formFoto ? 'Alterar Foto' : 'Carregar Foto'}</span>
+                      <Upload className="w-3.5 h-3.5 text-purple-600" />
+                      <span>{formFoto ? 'Trocar Foto' : 'Enviar Foto'}</span>
                     </button>
                     {formFoto && (
                       <button
                         type="button"
                         onClick={handleRemoverFoto}
-                        className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-700 text-xs font-bold transition cursor-pointer"
-                        title="Remover foto"
+                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center space-x-1 transition cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remover</span>
                       </button>
                     )}
                   </div>
+                  <p className="text-[10px] text-slate-400">PNG, JPG até 5MB</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFotoUpload}
+                    className="hidden"
+                  />
                 </div>
               </div>
 
-              {/* Nome Completo */}
+              {/* Nome */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nome Completo *
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nome Completo</label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    required
                     value={formNome}
                     onChange={(e) => setFormNome(e.target.value)}
-                    placeholder="Seu nome completo"
-                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-purple-600 focus:outline-none transition"
+                    required
                   />
                 </div>
               </div>
 
-              {/* E-mail de Acesso */}
+              {/* Email */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  E-mail de Acesso / Login *
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">E-mail Corporativo</label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="email"
-                    required
                     value={formEmail}
                     onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="exemplo@onagenciadeeventos.com.br"
-                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-purple-600 focus:outline-none transition"
+                    required
                   />
                 </div>
               </div>
 
-              {/* Telefone / WhatsApp */}
+              {/* Telefone */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Telefone / WhatsApp
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">WhatsApp / Telefone</label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={formTelefone}
                     onChange={(e) => setFormTelefone(e.target.value)}
-                    placeholder="(11) 99999-9999"
-                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                    placeholder="(00) 00000-0000"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-purple-600 focus:outline-none transition"
                   />
                 </div>
               </div>
 
-              {/* Nova Senha */}
+              {/* Senha */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nova Senha de Acesso
+                  Nova Senha <span className="font-normal text-slate-400">(deixe em branco para manter a atual)</span>
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -800,26 +931,17 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
                     type={mostrarSenha ? 'text' : 'password'}
                     value={formSenha}
                     onChange={(e) => setFormSenha(e.target.value)}
-                    placeholder="Deixe em branco para manter a senha atual"
-                    className="w-full bg-[#F4F6FB] text-slate-900 text-xs rounded-xl pl-9 pr-10 py-2.5 border border-slate-200 font-bold focus:outline-none focus:ring-2 focus:ring-[#4F39F6]"
+                    placeholder="••••••••"
+                    className="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-purple-600 focus:outline-none transition"
                   />
                   <button
                     type="button"
                     onClick={() => setMostrarSenha(!mostrarSenha)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2"
                   >
                     {mostrarSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1">Preencha apenas caso queira alterar sua senha de login.</p>
-              </div>
-
-              {/* Nível de Acesso (Informativo) */}
-              <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between text-xs">
-                <span className="font-bold text-purple-900">Nível do Usuário:</span>
-                <span className="font-black px-2.5 py-0.5 rounded-lg bg-purple-200 text-purple-900">
-                  {usuario.perfil.toUpperCase().includes('ADMIN') ? '👑 Administrador Geral' : '👤 Usuário Básico (Operacional)'}
-                </span>
               </div>
 
               {/* Botões do Rodapé */}
@@ -827,17 +949,23 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
                 <button
                   type="button"
                   onClick={() => setModalPerfilAberto(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={salvandoPerfil}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#4F39F6] to-[#7C3AED] hover:brightness-110 text-white text-xs font-extrabold shadow-md transition cursor-pointer flex items-center space-x-1.5"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>{salvandoPerfil ? 'Salvando...' : 'Salvar Alterações'}</span>
+                  {salvandoPerfil ? (
+                    <span>Salvando...</span>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Salvar Alterações</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

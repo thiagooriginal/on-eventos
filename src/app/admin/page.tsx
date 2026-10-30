@@ -27,8 +27,10 @@ import {
   LogOut,
   ExternalLink,
   ChevronRight,
-  ShieldAlert
+  ShieldAlert,
+  Handshake,
 } from 'lucide-react';
+import Sidebar from '@/components/Sidebar';
 import { autenticarUsuario, sincronizarUsuariosServidor, UsuarioSistema } from '@/lib/usuarios';
 
 interface SessaoUsuario {
@@ -301,334 +303,367 @@ export default function AdminPortalPage() {
 
   // TELA DO PORTAL ADMINISTRATIVO (QUANDO AUTENTICADO)
   return (
-    <div className="min-h-screen bg-[#F4F6FB] flex flex-col antialiased font-sans">
-      {/* Header do Painel Admin */}
-      <header className="bg-gradient-to-r from-[#1E1145] via-[#2A165F] to-[#36218A] text-white px-4 sm:px-8 py-4 shadow-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-white p-2 shadow-md flex items-center justify-center">
-              <Image
-                src="/images/logo-on-agencia.png"
-                alt="ON Agência Oficial"
-                width={30}
-                height={30}
-                className="object-contain"
-              />
+    <div className="min-h-screen bg-[#F4F6FB] flex flex-col lg:flex-row antialiased font-sans">
+      {/* Sidebar Lateral Padrão Limpa SaaS com Submenus */}
+      <Sidebar paginaAtiva="admin" />
+
+      {/* Conteúdo Principal Direito */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header Superior Limpo SaaS */}
+        <header className="bg-white border-b border-slate-200/90 px-4 sm:px-8 py-3.5 sticky top-0 z-10 shadow-xs">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center p-1.5 shrink-0">
+                <Image
+                  src="/images/logo-on-agencia.png"
+                  alt="ON Agência Oficial"
+                  width={26}
+                  height={26}
+                  className="object-contain"
+                />
+              </div>
+              <div>
+                <span className="font-extrabold text-sm sm:text-base text-slate-900 block leading-tight">
+                  Painel de Controle Central
+                </span>
+                <span className="text-[11px] text-emerald-600 font-bold flex items-center">
+                  <ShieldCheck className="w-3 h-3 mr-1" />
+                  Sessão Criptografada SSL &bull; Hostinger Cloud
+                </span>
+              </div>
             </div>
+
+            <div className="flex items-center space-x-2.5">
+              <Link
+                href="/"
+                target="_blank"
+                className="text-xs font-semibold text-slate-600 hover:text-purple-700 bg-slate-50 hover:bg-purple-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-purple-200 shadow-2xs flex items-center space-x-1.5 transition"
+                title="Abrir o portal que o aluno vê"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Ver Área do Aluno</span>
+              </Link>
+
+              <button
+                onClick={handleLogout}
+                className="text-xs font-semibold text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 px-3 py-1.5 rounded-xl border border-rose-200 shadow-2xs flex items-center space-x-1.5 transition cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sair</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Conteúdo Principal */}
+        <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-8 space-y-6">
+          {/* Banner de Boas-Vindas */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <span className="font-black text-sm tracking-wider text-white block leading-tight">
-                ON AGÊNCIA
-              </span>
-              <span className="text-[10px] text-emerald-300 font-bold flex items-center">
-                <ShieldCheck className="w-3 h-3 mr-1" />
-                Portal Administrativo Interno
-              </span>
+              <div className="flex items-center space-x-2">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900">
+                  Olá, {usuarioLogado.nome}! 👋
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+                  {usuarioLogado.perfil === 'ADMIN' ? 'Diretoria / Administrador' : 'Equipe Operacional'}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Selecione o módulo administrativo que deseja gerenciar hoje ou navegue pelo menu lateral.
+              </p>
             </div>
-          </div>
 
-          <div className="flex items-center space-x-3">
-            <Link
-              href="/"
-              target="_blank"
-              className="text-xs font-bold text-purple-200 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl border border-white/15 shadow-2xs flex items-center space-x-1.5 transition"
-              title="Abrir o portal que o aluno vê"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Ver Área do Aluno</span>
-            </Link>
-
-            <button
-              onClick={handleLogout}
-              className="text-xs font-bold text-rose-200 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 px-3 py-1.5 rounded-xl border border-rose-300/30 shadow-2xs flex items-center space-x-1.5 transition cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sair</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Conteúdo Principal */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-8 space-y-6">
-        {/* Banner de Boas-Vindas */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-                Olá, {usuarioLogado.nome}! 👋
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
-                {usuarioLogado.perfil === 'ADMIN' ? 'Diretoria / Administrador' : 'Equipe Operacional'}
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Selecione o módulo administrativo que deseja gerenciar hoje.
-            </p>
-          </div>
-
-          <Link
-            href="/fotos"
-            className="px-5 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:brightness-110 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md flex items-center justify-center space-x-2 transition shrink-0"
-          >
-            <Camera className="w-4 h-4" />
-            <span>Acessar Vendas de Álbuns & Sicredi</span>
-            <ArrowRight className="w-4 h-4 ml-1" />
-          </Link>
-        </div>
-
-        {/* Grade de Módulos Administrativos */}
-        <div>
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-600 mb-3 flex items-center">
-            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-purple-600" />
-            Módulos de Gestão Disponíveis
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Card 1: Vendas de Álbuns & Boletos Sicredi (DESTAQUE) */}
             <Link
               href="/fotos"
-              className="p-5 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/40 rounded-3xl border-2 border-emerald-300 hover:border-emerald-500 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              className="px-5 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:brightness-110 text-white font-black text-xs sm:text-sm rounded-2xl shadow-md flex items-center justify-center space-x-2 transition shrink-0"
             >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 group-hover:scale-105 transition">
-                    <Camera className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                    Principal &bull; Sicredi API
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition">
-                  Gestão de Álbuns & Fotos
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Cadastro de vendas de kits, emissão automática de carnês Sicredi, liquidações em tempo real e controle de produção.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between text-xs font-bold text-emerald-700">
-                <span>Abrir Vendas</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 2: Alunos & Formandos */}
-            <Link
-              href="/alunos"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center group-hover:scale-105 transition">
-                    <GraduationCap className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    Base de Clientes
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-purple-700 transition">
-                  Alunos & Adesões
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Consulta de formandos cadastrados, códigos individuais, turmas e adesões contratuais.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-purple-700">
-                <span>Ver Alunos</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 3: Demandas & Processos */}
-            <Link
-              href="/demandas"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center group-hover:scale-105 transition">
-                    <ClipboardList className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    Operações
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-indigo-700 transition">
-                  Demandas & Tarefas
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Kanban de tarefas operacionais, atribuição a colaboradores e contagem regressiva de prazos.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-700">
-                <span>Ver Demandas</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 4: Métricas & Telemetria */}
-            <Link
-              href="/metricas"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:scale-105 transition">
-                    <Activity className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                    Ao Vivo
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-blue-700 transition">
-                  Métricas & Telemetria
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Acompanhamento de visitantes únicos em tempo real, tempo de permanência e cliques nos botões.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-700">
-                <span>Ver Métricas</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 5: Instituições & Faculdades */}
-            <Link
-              href="/instituicoes"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center group-hover:scale-105 transition">
-                    <Building2 className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    Parceiros
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-amber-700 transition">
-                  Instituições & Faculdades
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Cadastro de faculdades, campi, colégios e contatos de coordenação das turmas.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-amber-700">
-                <span>Ver Instituições</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 6: Usuários & Permissões */}
-            <Link
-              href="/usuarios"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-105 transition">
-                    <Users className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700">
-                    Acessos
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-rose-700 transition">
-                  Usuários & Equipe
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Gerenciamento de colaboradores autorizados, senhas, cargos e níveis de privilégio administrativo.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-rose-700">
-                <span>Gerenciar Equipe</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 7: Financeiro Geral */}
-            <Link
-              href="/financeiro"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition">
-                    <Wallet className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    Finanças
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition">
-                  Módulo Financeiro Geral
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Extratos de arrecadação, fluxo de caixa e relatórios consolidados de receitas.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-700">
-                <span>Abrir Financeiro</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 8: CRM & Campanhas */}
-            <Link
-              href="/crm"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center group-hover:scale-105 transition">
-                    <Kanban className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    Comercial
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-purple-700 transition">
-                  CRM & Campanhas
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Funil comercial de captação de novas turmas de formandos e oportunidades de contrato.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-purple-700">
-                <span>Abrir CRM</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
-            </Link>
-
-            {/* Card 9: Central do Sistema Completa */}
-            <Link
-              href="/sistema"
-              className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-105 transition">
-                    <LayoutDashboard className="w-6 h-6" />
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    Visão Geral
-                  </span>
-                </div>
-                <h3 className="text-base font-black text-slate-900 group-hover:text-purple-700 transition">
-                  Central do Sistema
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Painel de controle executivo com visão integrada de todos os departamentos da ON Agência.
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-800">
-                <span>Acessar Central</span>
-                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-              </div>
+              <Camera className="w-4 h-4" />
+              <span>Acessar Vendas de Álbuns & Sicredi</span>
+              <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
           </div>
-        </div>
-      </main>
+
+          {/* Grade de Módulos Administrativos */}
+          <div>
+            <h2 className="text-xs font-black uppercase tracking-wider text-slate-600 mb-3 flex items-center">
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-purple-600" />
+              Módulos de Gestão Disponíveis
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Card 1: Vendas de Álbuns & Boletos Sicredi (DESTAQUE) */}
+              <Link
+                href="/fotos"
+                className="p-5 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/40 rounded-3xl border-2 border-emerald-300 hover:border-emerald-500 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 group-hover:scale-105 transition">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      Principal &bull; Sicredi API
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition">
+                    Gestão de Álbuns & Fotos
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Cadastro de vendas de kits, emissão automática de carnês Sicredi, liquidações em tempo real e controle de produção.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between text-xs font-bold text-emerald-700">
+                  <span>Abrir Vendas</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 2: Parceiros & Espaços para Evento (NOVO) */}
+              <Link
+                href="/parceiros"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <Handshake className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                      Novo Módulo
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-purple-700 transition">
+                    Parceiros & Espaços
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Cadastro de profissionais liberais (recepcionistas, fotógrafos, cerimonialistas) e espaços (sítios, mansões, casas com piscina, bares).
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-purple-700">
+                  <span>Gerenciar Parceiros</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 3: Comercial & CRM de Turmas */}
+              <Link
+                href="/crm"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <Kanban className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      Comercial
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-amber-700 transition">
+                    CRM de Turmas & Captação
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Funil comercial de captação de novas turmas de formandos e oportunidades de contrato.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-amber-700">
+                  <span>Abrir CRM</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 4: Alunos & Formandos */}
+              <Link
+                href="/alunos"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <GraduationCap className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      Base de Clientes
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-blue-700 transition">
+                    Alunos & Adesões
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Consulta de formandos cadastrados, códigos individuais, turmas e adesões contratuais.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-700">
+                  <span>Ver Alunos</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 5: Demandas & Processos */}
+              <Link
+                href="/demandas"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <ClipboardList className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      Operações
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-indigo-700 transition">
+                    Demandas & Tarefas
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Kanban de tarefas operacionais, atribuição a colaboradores e contagem regressiva de prazos.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-700">
+                  <span>Ver Demandas</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 6: Métricas & Telemetria */}
+              <Link
+                href="/metricas"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-cyan-100 text-cyan-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <Activity className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700">
+                      Ao Vivo
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-cyan-700 transition">
+                    Métricas & Telemetria
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Acompanhamento de visitantes únicos em tempo real, tempo de permanência e cliques nos botões.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-cyan-700">
+                  <span>Ver Métricas</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 7: Instituições & Faculdades */}
+              <Link
+                href="/instituicoes"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <Building2 className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      Cursos
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-teal-700 transition">
+                    Instituições & Faculdades
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Cadastro de faculdades, campi, colégios e contatos de coordenação das turmas.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-teal-700">
+                  <span>Ver Instituições</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 8: Usuários & Permissões */}
+              <Link
+                href="/usuarios"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700">
+                      Acessos
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-rose-700 transition">
+                    Usuários & Equipe
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Gerenciamento de colaboradores autorizados, senhas, cargos e níveis de privilégio administrativo.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-rose-700">
+                  <span>Gerenciar Equipe</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 9: Financeiro Geral */}
+              <Link
+                href="/financeiro"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition">
+                      <Wallet className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      Finanças
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-emerald-700 transition">
+                    Módulo Financeiro Geral
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Extratos de arrecadação, fluxo de caixa e relatórios consolidados de receitas.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-700">
+                  <span>Abrir Financeiro</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+
+              {/* Card 10: Central do Sistema Completa */}
+              <Link
+                href="/sistema"
+                className="p-5 bg-white rounded-3xl border border-slate-200/80 hover:border-purple-300 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-800 flex items-center justify-center group-hover:scale-105 transition">
+                      <LayoutDashboard className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      Visão Geral
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 group-hover:text-purple-700 transition">
+                    Central do Sistema
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Painel de controle executivo com visão integrada de todos os departamentos da ON Agência.
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-800">
+                  <span>Acessar Central</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+                </div>
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

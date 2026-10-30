@@ -39,30 +39,25 @@ def upload_dir(ftp, local_dir, remote_dir):
 def conectar_ftp(server, user, password, max_retries=5):
     for tentativa in range(1, max_retries + 1):
         try:
-            print(f"[{tentativa}/{max_retries}] Conectando com transporte seguro TLS a {server}...")
+            print(f"[{tentativa}/{max_retries}] Conectando obrigatoriamente com transporte criptografado TLS (FTPS) a {server}...")
             ftp = ftplib.FTP_TLS(timeout=45)
             ftp.connect(server, 21)
             ftp.login(user, password)
-            ftp.prot_p()
+            ftp.prot_p()  # Força encriptação do canal de dados
             ftp.set_pasv(True)
             print(" Conectado com sucesso com criptografia TLS (FTPS)!")
             return ftp
         except Exception as err:
-            print(f"FTPS TLS não disponível ({err}), tentando modo passivo padrão...")
-            try:
-                ftp = ftplib.FTP(timeout=45)
-                ftp.connect(server, 21)
-                ftp.login(user, password)
-                ftp.set_pasv(True)
-                print(" Conectado com sucesso em modo passivo!")
-                return ftp
-            except Exception as e2:
-                if tentativa < max_retries:
-                    espera = tentativa * 4
-                    print(f"Aguardando {espera}s antes de tentar novamente...")
-                    time.sleep(espera)
-                else:
-                    raise e2
+            print(f"Tentativa {tentativa}/{max_retries} de conexão segura FTPS falhou: {err}")
+            if tentativa < max_retries:
+                espera = tentativa * 4
+                print(f"Aguardando {espera}s antes de tentar nova conexão segura...")
+                time.sleep(espera)
+            else:
+                raise RuntimeError(
+                    f"Erro de segurança no deploy: Não foi possível estabelecer conexão segura FTPS (TLS) com {server}. "
+                    "O envio foi interrompido para não transmitir arquivos ou credenciais sem criptografia."
+                ) from err
 
 def main():
     server = os.environ.get("FTP_SERVER")

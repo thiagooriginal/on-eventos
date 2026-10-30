@@ -171,6 +171,7 @@ if ($action === 'obter_config') {
 // =========================================================================
 if ($action === 'salvar_config') {
     require_auth(['ADMIN']);
+    verify_csrf_token($dadosRequisicao['csrf_token'] ?? null);
     $novaKey = trim($dadosRequisicao['aws_access_key_id'] ?? '');
     $novoSecret = trim($dadosRequisicao['aws_secret_access_key'] ?? '');
     $novaRegiao = trim($dadosRequisicao['aws_region'] ?? 'us-east-1');

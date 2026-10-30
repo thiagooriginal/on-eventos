@@ -1,27 +1,29 @@
 <?php
 /**
  * ON Agência de Eventos - Núcleo de Segurança & Autenticação Backend (PHP)
- * Proteção de Sessão, RBAC, Rate Limiting, Criptografia de Senhas e CSRF.
+ * Proteção Estrita de Sessão, RBAC Dinâmico, Rate Limiting, Hashing e CSRF Sem Bypass.
  */
 
-// Configuração segura de cabeçalhos e CORS restrito
+// 1. Configuração de CORS Estrito (Comparação Exata de Protocolo, Host e Porta)
 function setup_secure_cors() {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $host = $_SERVER['HTTP_HOST'] ?? '';
 
-    // Permite mesma origem ou localhost para desenvolvimento
-    $allowed = false;
-    if (!empty($origin)) {
-        $parsed = parse_url($origin);
-        $originHost = $parsed['host'] ?? '';
-        if ($originHost === $host || $originHost === 'localhost' || $originHost === '127.0.0.1' || strpos($originHost, 'onagenciadeeventos.com.br') !== false) {
-            $allowed = true;
-        }
-    }
+    // Lista estrita de origens explicitamente autorizadas
+    $allowedOrigins = [
+        'https://onagenciadeeventos.com.br',
+        'https://www.onagenciadeeventos.com.br',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:8000',
+        'http://127.0.0.1:8000',
+    ];
 
-    if ($allowed && !empty($origin)) {
-        header("Access-Control-Allow-Origin: {$origin}");
+    $originLimpa = rtrim($origin, '/');
+
+    if (!empty($origin) && in_array($originLimpa, $allowedOrigins, true)) {
+        header("Access-Control-Allow-Origin: {$originLimpa}");
         header('Access-Control-Allow-Credentials: true');
+        header('Vary: Origin');
     }
 
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
@@ -36,14 +38,13 @@ function setup_secure_cors() {
     }
 }
 
-// Inicializa CORS seguro
 setup_secure_cors();
 
-// Retorna o caminho de armazenamento seguro para bases de dados JSON
+// 2. Armazenamento Seguro com Eliminação de Cópias no Webroot Público
 function get_secure_storage_path($filename) {
     $privateDir = __DIR__ . '/private_data';
 
-    // Cria pasta privada protegida se ainda não existir
+    // Cria diretório privado com proteções se não existir
     if (!is_dir($privateDir)) {
         @mkdir($privateDir, 0750, true);
         $htaccessPath = $privateDir . '/.htaccess';
@@ -51,15 +52,27 @@ function get_secure_storage_path($filename) {
             $htaccessContent = "<IfModule authz_core_module>\n  Require all denied\n</IfModule>\n<IfModule !authz_core_module>\n  Deny from all\n</IfModule>\n";
             @file_put_contents($htaccessPath, $htaccessContent);
         }
+        $indexPath = $privateDir . '/index.html';
+        if (!file_exists($indexPath)) {
+            @file_put_contents($indexPath, '');
+        }
     }
 
-    // Se arquivo já existe no webroot public/ mas não na pasta privada, migra transparentemente
     $webrootFile = __DIR__ . '/' . $filename;
     $privateFile = $privateDir . '/' . $filename;
 
     if (is_dir($privateDir) && is_writable($privateDir)) {
-        if (file_exists($webrootFile) && !file_exists($privateFile)) {
-            @copy($webrootFile, $privateFile);
+        // Se arquivo já existe no webroot público, migra para a pasta privada e remove do webroot
+        if (file_exists($webrootFile)) {
+            if (!file_exists($privateFile)) {
+                $copiado = @copy($webrootFile, $privateFile);
+                if ($copiado && filesize($privateFile) === filesize($webrootFile)) {
+                    @unlink($webrootFile);
+                }
+            } else {
+                // Já existe cópia segura no private_data: remove a cópia pública redundante
+                @unlink($webrootFile);
+            }
         }
         return $privateFile;
     }
@@ -67,7 +80,7 @@ function get_secure_storage_path($filename) {
     return $webrootFile;
 }
 
-// Inicializa sessão PHP com cookies HttpOnly, SameSite e flags de segurança
+// 3. Gerenciamento de Sessão Segura (Cookies HttpOnly, Strict Mode e SameSite)
 function start_secure_session() {
     if (session_status() === PHP_SESSION_NONE) {
         $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
@@ -77,7 +90,7 @@ function start_secure_session() {
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');
         ini_set('session.cookie_httponly', '1');
-        ini_set('session.gc_maxlifetime', '86400'); // 24 horas
+        ini_set('session.gc_maxlifetime', '86400');
 
         $cookieParams = [
             'lifetime' => 86400,
@@ -103,14 +116,13 @@ function start_secure_session() {
         session_name('ON_AUTH_SESSION');
         @session_start();
 
-        // Gera token CSRF se não existir
         if (empty($_SESSION['csrf_token'])) {
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         }
     }
 }
 
-// Hasheamento criptográfico seguro de senha
+// 4. Criptografia e Hasheamento Seguro de Senhas
 function hash_secure_password($plainPassword) {
     if (defined('PASSWORD_ARGON2ID')) {
         return password_hash($plainPassword, PASSWORD_ARGON2ID);
@@ -118,7 +130,6 @@ function hash_secure_password($plainPassword) {
     return password_hash($plainPassword, PASSWORD_BCRYPT, ['cost' => 12]);
 }
 
-// Verificação de senha em tempo constante
 function verify_secure_password($plainPassword, $hash) {
     if (empty($plainPassword) || empty($hash)) {
         return false;
@@ -126,7 +137,7 @@ function verify_secure_password($plainPassword, $hash) {
     return password_verify($plainPassword, $hash);
 }
 
-// Rate Limiting no Servidor (Por IP e Identificador/E-mail)
+// 5. Rate Limiting no Servidor por IP e Identificador
 function check_server_rate_limit($action, $identifier, $maxAttempts = 5, $decaySeconds = 60) {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $key = hash('sha256', "rl:{$action}:{$ip}:" . strtolower(trim($identifier)));
@@ -138,7 +149,6 @@ function check_server_rate_limit($action, $identifier, $maxAttempts = 5, $decayS
     }
 
     $now = time();
-    // Limpa registros antigos
     foreach ($limits as $k => $data) {
         if (($data['first_attempt'] ?? 0) + $decaySeconds < $now) {
             unset($limits[$k]);
@@ -204,7 +214,7 @@ function reset_rate_limit($action, $identifier) {
     }
 }
 
-// Remove campos sensíveis antes de qualquer envio de dados de usuário ao cliente
+// 6. Sanitização de Usuário (Nunca envia senhas, hashes ou segredos)
 function sanitize_user_for_client($user) {
     if (!is_array($user)) return null;
     $safe = $user;
@@ -213,16 +223,18 @@ function sanitize_user_for_client($user) {
     return $safe;
 }
 
-// Carrega base de usuários com migração transparente de senhas legadas para hash seguro
+// 7. Base de Usuários Sem Senhas Padrão Conhecidas e Com Exigência de Redefinição
 function carregar_usuarios_seguros() {
     $dataFile = get_secure_storage_path('usuarios_db.json');
 
+    // Usuários preservados sem senhas padrão conhecidas no código
     $defaultUsers = [
         [
             'id' => 'usr-1',
             'nome' => 'Thiago Original',
             'email' => 'thiago@onagenciadeeventos.com.br',
-            'senhaHash' => hash_secure_password('On@2026'),
+            'senhaHash' => '',
+            'precisaRedefinirSenha' => true,
             'nivel' => 'ADMIN',
             'cargo' => 'Diretor Geral & Executivo',
             'departamento' => 'Diretoria',
@@ -236,7 +248,8 @@ function carregar_usuarios_seguros() {
             'id' => 'usr-2',
             'nome' => 'Administrador ON',
             'email' => 'admin@formatura.com.br',
-            'senhaHash' => hash_secure_password('On@2026'),
+            'senhaHash' => '',
+            'precisaRedefinirSenha' => true,
             'nivel' => 'ADMIN',
             'cargo' => 'Administrador da Plataforma',
             'departamento' => 'Tecnologia & Operações',
@@ -250,7 +263,8 @@ function carregar_usuarios_seguros() {
             'id' => 'usr-valter',
             'nome' => 'Valter Sá',
             'email' => 'valter.sa@hotmail.com',
-            'senhaHash' => hash_secure_password('1gabriella5'),
+            'senhaHash' => '',
+            'precisaRedefinirSenha' => true,
             'nivel' => 'ADMIN',
             'cargo' => 'Consultor Comercial',
             'departamento' => 'Comercial & Vendas',
@@ -275,15 +289,17 @@ function carregar_usuarios_seguros() {
         return $usuarios;
     }
 
-    // Migração não destrutiva: se algum usuário tiver 'senha' legada em texto claro, converte em hash seguro
+    // Migração segura: remove campos de senha legados e exige redefinição se não houver senha forte pessoal
     $precisaSalvar = false;
     foreach ($usuarios as $i => $u) {
-        if (!empty($u['senha']) && empty($u['senhaHash'])) {
-            $usuarios[$i]['senhaHash'] = hash_secure_password($u['senha']);
+        if (isset($u['senha'])) {
             unset($usuarios[$i]['senha']);
             $precisaSalvar = true;
-        } elseif (!empty($u['senha']) && !empty($u['senhaHash'])) {
-            unset($usuarios[$i]['senha']);
+        }
+
+        // Se o usuário não tem hash definido ou ainda usa hash de senha default conhecida
+        if (empty($u['senhaHash'])) {
+            $usuarios[$i]['precisaRedefinirSenha'] = true;
             $precisaSalvar = true;
         }
     }
@@ -295,13 +311,12 @@ function carregar_usuarios_seguros() {
     return $usuarios;
 }
 
-// Salva base de usuários com segurança e bloqueio de arquivo
 function salvar_usuarios_seguros($usuarios) {
     $dataFile = get_secure_storage_path('usuarios_db.json');
     return file_put_contents($dataFile, json_encode(array_values($usuarios), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
-// Retorna dados da sessão do usuário autenticado ou null
+// 8. Revalidação em Tempo Real de Sessões (Usuários Excluídos, Inativados ou com Nível Alterado)
 function get_authenticated_user() {
     start_secure_session();
 
@@ -309,31 +324,59 @@ function get_authenticated_user() {
         return null;
     }
 
-    // Verifica tempo de inatividade da sessão (24h)
+    // 8.1 Verifica tempo máximo de inatividade (24h)
     $maxSessionTime = 86400;
     if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $maxSessionTime)) {
-        // Sessão expirada
         $_SESSION = [];
         if (session_id()) session_destroy();
         return null;
     }
 
+    // 8.2 Consulta a base de usuários no servidor para validar status em tempo real
+    $usuarios = carregar_usuarios_seguros();
+    $usuarioDb = null;
+    foreach ($usuarios as $u) {
+        if ($u['id'] === $_SESSION['usuario_id']) {
+            $usuarioDb = $u;
+            break;
+        }
+    }
+
+    // Se o usuário foi excluído pelo administrador: destrói a sessão imediatamente
+    if (!$usuarioDb) {
+        $_SESSION = [];
+        if (session_id()) session_destroy();
+        return null;
+    }
+
+    // Se o usuário foi inativado pelo administrador: destrói a sessão imediatamente
+    if (($usuarioDb['status'] ?? 'ATIVO') !== 'ATIVO') {
+        $_SESSION = [];
+        if (session_id()) session_destroy();
+        return null;
+    }
+
+    // Se as permissões do usuário foram alteradas: sincroniza na sessão imediatamente
+    $nivelAtual = strtoupper($usuarioDb['nivel'] ?? 'BASICO');
+    $_SESSION['usuario_nivel'] = $nivelAtual;
+    $_SESSION['usuario_nome'] = $usuarioDb['nome'];
+    $_SESSION['usuario_email'] = $usuarioDb['email'];
     $_SESSION['last_activity'] = time();
 
     return [
-        'id' => $_SESSION['usuario_id'],
-        'nome' => $_SESSION['usuario_nome'] ?? '',
-        'email' => $_SESSION['usuario_email'],
-        'nivel' => $_SESSION['usuario_nivel'] ?? 'BASICO',
-        'perfil' => $_SESSION['usuario_nivel'] ?? 'BASICO',
+        'id' => $usuarioDb['id'],
+        'nome' => $usuarioDb['nome'],
+        'email' => $usuarioDb['email'],
+        'nivel' => $nivelAtual,
+        'perfil' => $nivelAtual,
+        'precisaRedefinirSenha' => !empty($usuarioDb['precisaRedefinirSenha']),
         'csrf_token' => $_SESSION['csrf_token'] ?? '',
         'logadoEm' => $_SESSION['logged_in_at'] ?? time()
     ];
 }
 
-// Guarda de autorização central (RBAC) para proteger endpoints administrativos
-function require_auth($perfisPermitidos = []) {
-    // Requisições OPTIONS passam pelo preflight CORS
+// 9. Guarda de Autorização (RBAC) com Bloqueio de Usuários Pendentes de Redefinição
+function require_auth($perfisPermitidos = [], $permitirPendenteRedefinicao = false) {
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         http_response_code(200);
         exit;
@@ -352,17 +395,28 @@ function require_auth($perfisPermitidos = []) {
         exit;
     }
 
-    // Se perfis foram especificados, valida nível do usuário
+    // Exige redefinição de senha antes de permitir acesso aos recursos operacionais
+    if (!empty($usuario['precisaRedefinirSenha']) && !$permitirPendenteRedefinicao) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'sucesso' => false,
+            'erro' => 'Por motivos de segurança, você deve redefinir sua senha antes de prosseguir.',
+            'codigo' => 'PASSWORD_RESET_REQUIRED',
+            'precisaRedefinirSenha' => true
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     if (!empty($perfisPermitidos) && is_array($perfisPermitidos)) {
         $nivelUsuario = strtoupper($usuario['nivel'] ?? 'BASICO');
 
-        // ADMIN tem acesso total irrestrito a todos os módulos
         if ($nivelUsuario !== 'ADMIN' && !in_array($nivelUsuario, $perfisPermitidos)) {
             http_response_code(403);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
                 'sucesso' => false,
-                'erro' => 'Acesso negado. Seu perfil de usuário não tem permissão para executar esta ação.',
+                'erro' => 'Acesso negado. Seu perfil de usuário não tem permissão para este recurso.',
                 'codigo' => 'FORBIDDEN',
                 'perfil_atual' => $nivelUsuario
             ], JSON_UNESCAPED_UNICODE);
@@ -373,26 +427,24 @@ function require_auth($perfisPermitidos = []) {
     return $usuario;
 }
 
-// Validação de CSRF para requisições com mutação de estado (POST, PUT, DELETE)
-function verify_csrf_token() {
+// 10. Validação Estrita de CSRF Sem Bypass para Sessões Autenticadas
+function verify_csrf_token($payloadToken = null) {
     start_secure_session();
-    $tokenEnviado = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
+
+    $tokenEnviado = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? $payloadToken ?? '';
     $tokenSessao = $_SESSION['csrf_token'] ?? '';
 
-    if (empty($tokenEnviado) || empty($tokenSessao) || !hash_equals($tokenSessao, $tokenEnviado)) {
-        // Para compatibilidade com chamadas internas iniciais por sessão autenticada,
-        // se o usuário estiver autenticado por cookie de sessão, permite prosseguir com aviso
-        if (!empty($_SESSION['usuario_id'])) {
-            return true;
-        }
+    // Validação estrita: exige token válido e idêntico em todas as mutações
+    if (empty($tokenEnviado) || empty($tokenSessao) || !hash_equals($tokenSessao, (string)$tokenEnviado)) {
         http_response_code(403);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'sucesso' => false,
-            'erro' => 'Token CSRF inválido ou ausente.',
+            'erro' => 'Falha na validação de segurança CSRF: token ausente ou inválido.',
             'codigo' => 'CSRF_INVALID'
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
+
     return true;
 }

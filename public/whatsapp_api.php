@@ -398,6 +398,7 @@ if ($action === 'get_config') {
 // 2. Salvar Configuração do WhatsApp (Exclusivo ADMIN)
 if ($action === 'save_config') {
     require_auth(['ADMIN']);
+    verify_csrf_token($payload['csrf_token'] ?? null);
     $novosDados = $payload['config'] ?? $payload;
     if (is_array($novosDados)) {
         foreach (['ativo', 'status', 'provedor', 'apiUrl', 'apiKey', 'instancia', 'numeroConectado', 'nomeAgencia', 'chavePix', 'nomeBeneficiarioPix', 'cidadePix', 'lembreteAutomaticoAtivo', 'horarioLembrete', 'diasAntesLembrete', 'mensagemApenasEnvio', 'rodapeAviso', 'metaPhoneNumberId', 'metaAccessToken', 'zapiInstanceId', 'zapiToken'] as $campo) {
@@ -497,6 +498,7 @@ if ($action === 'verificar_conexao') {
 
 // 3. Testar Conexão / Enviar Mensagem de Teste
 if ($action === 'testar_conexao') {
+    verify_csrf_token($payload['csrf_token'] ?? null);
     $telefoneTeste = $payload['telefone'] ?? $config['numeroConectado'] ?? '11999999999';
     $texto = "🟢 *ON Agência de Eventos - Teste de Conexão WhatsApp*\n\nConexão com a agência estabelecida com sucesso!\nCanal configurado exclusivamente para notificações e envio de cobranças.\n\n" . ($config['rodapeAviso'] ?? '');
     
@@ -509,6 +511,7 @@ if ($action === 'testar_conexao') {
 
 // 4. Enviar Boleto de Parcela Individual
 if ($action === 'enviar_boleto') {
+    verify_csrf_token($payload['csrf_token'] ?? null);
     $vendaId = $payload['vendaId'] ?? '';
     $parcelaNum = intval($payload['parcelaNumero'] ?? 0);
     $telefone = $payload['telefone'] ?? '';
@@ -608,6 +611,7 @@ if ($action === 'enviar_boleto') {
 
 // 5. Enviar Carnê Completo com Boletos Separados
 if ($action === 'enviar_carne') {
+    verify_csrf_token($payload['csrf_token'] ?? null);
     $vendaId = $payload['vendaId'] ?? '';
     $telefone = $payload['telefone'] ?? '';
     $alunoNome = $payload['alunoNome'] ?? 'Formando';

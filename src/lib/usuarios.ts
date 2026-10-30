@@ -14,9 +14,22 @@ export interface UsuarioSistema {
   criadoEm: string;
   ultimoAcesso: string;
   avatarCor: string;
+  precisaRedefinirAcesso?: boolean;
 }
 
 const STORAGE_KEY_USUARIOS = 'on_usuarios_sistema_v2';
+
+export function getCsrfToken(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const sessaoStr = localStorage.getItem('on_usuario_logado');
+    if (sessaoStr) {
+      const sessao = JSON.parse(sessaoStr);
+      return sessao.csrf_token || '';
+    }
+  } catch (e) {}
+  return '';
+}
 
 export const USUARIOS_INICIAIS: UsuarioSistema[] = [
   {
@@ -94,12 +107,17 @@ export async function salvarUsuarios(usuarios: UsuarioSistema[]): Promise<boolea
   if (typeof window === 'undefined') return true;
   try {
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(usuarios));
+    const csrf = getCsrfToken();
     const res = await fetch('/usuarios.php', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
       credentials: 'include',
       body: JSON.stringify({
         action: 'save',
+        csrf_token: csrf,
         usuarios,
       }),
     });
@@ -156,6 +174,7 @@ export async function adicionarUsuario(
     criadoEm: new Date().toISOString(),
     ultimoAcesso: 'Nunca acessou',
     avatarCor,
+    precisaRedefinirAcesso: true,
   };
 
   const emailLimpo = novoUsuario.email.toLowerCase().trim();
@@ -165,12 +184,17 @@ export async function adicionarUsuario(
     localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(novaLista));
 
     try {
+      const csrf = getCsrfToken();
       const res = await fetch('/usuarios.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrf,
+        },
         credentials: 'include',
         body: JSON.stringify({
           action: 'add',
+          csrf_token: csrf,
           usuario: {
             ...novoUsuario,
             credencial: dados.credencialAcesso || '',
@@ -248,12 +272,17 @@ export async function removerUsuario(id: string): Promise<boolean> {
 
   try {
     if (typeof window !== 'undefined') {
+      const csrf = getCsrfToken();
       const res = await fetch('/usuarios.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrf,
+        },
         credentials: 'include',
         body: JSON.stringify({
           action: 'delete',
+          csrf_token: csrf,
           id,
           email: usuario?.email || '',
         }),
@@ -270,6 +299,45 @@ export async function removerUsuario(id: string): Promise<boolean> {
   return true;
 }
 
+// Redefinição Segura de Credencial Obrigatória
+export async function redefinirCredencial(novaCredencial: string): Promise<{
+  sucesso: boolean;
+  erro?: string;
+}> {
+  try {
+    const csrf = getCsrfToken();
+    const res = await fetch('/usuarios.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf,
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        action: 'redefinir_credencial',
+        csrf_token: csrf,
+        novaCredencial: novaCredencial,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.sucesso) {
+      return {
+        sucesso: false,
+        erro: data?.erro || 'Não foi possível registrar a nova chave de acesso.',
+      };
+    }
+
+    return { sucesso: true };
+  } catch (e) {
+    return {
+      sucesso: false,
+      erro: 'Erro de conexão com o servidor.',
+    };
+  }
+}
+
 // Autenticação Segura 100% no Servidor (PHP com Sessões HttpOnly e Rate Limit)
 export async function autenticarUsuario(
   email: string,
@@ -279,6 +347,7 @@ export async function autenticarUsuario(
   usuario?: UsuarioSistema;
   erro?: string;
   csrf_token?: string;
+  precisaRedefinirAcesso?: boolean;
 }> {
   const emailLimpo = email.trim().toLowerCase();
   const codigoLimpo = codigoAcesso.trim();
@@ -319,6 +388,7 @@ export async function autenticarUsuario(
       sucesso: true,
       usuario: data.usuario,
       csrf_token: data.csrf_token,
+      precisaRedefinirAcesso: data.precisaRedefinirSenha,
     };
   } catch (e) {
     console.warn('Falha na comunicação direta com o servidor de autenticação:', e);

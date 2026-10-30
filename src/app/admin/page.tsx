@@ -39,6 +39,8 @@ interface SessaoUsuario {
   email: string;
   perfil: string;
   token: string;
+  csrf_token?: string;
+  precisaRedefinirAcesso?: boolean;
   expiraEm: number;
   logadoEm: string;
 }
@@ -136,6 +138,8 @@ export default function AdminPortalPage() {
         email: auth.usuario.email,
         perfil: auth.usuario.nivel,
         token,
+        csrf_token: auth.csrf_token || '',
+        precisaRedefinirAcesso: auth.precisaRedefinirAcesso,
         expiraEm: Date.now() + 24 * 60 * 60 * 1000,
         logadoEm: new Date().toISOString(),
       };

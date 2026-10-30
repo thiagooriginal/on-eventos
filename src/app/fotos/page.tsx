@@ -6036,16 +6036,16 @@ ON AGENCIA DE EVENTOS LTDA`;
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Username</span>
-                    <strong className="text-slate-800 font-mono">042200726</strong>
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Ambiente</span>
+                    <strong className="text-slate-800 font-mono">Produção Oficial</strong>
                   </div>
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">x-api-key</span>
-                    <strong className="text-slate-800 font-mono text-[10px] truncate block" title="8112a356-4953-439f-9767-50660649706b">8112a356...9706b</strong>
+                    <strong className="text-slate-800 font-mono text-[10px] truncate block">Configurada no Servidor</strong>
                   </div>
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Código de Acesso</span>
-                    <strong className="text-emerald-700 font-mono text-[10px] truncate block" title="9321D4CC1CA5BCE64E3DCBB74458C510DD11BA165F04D70C0B856A9267B907D1">9321D4CC...07D1</strong>
+                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Autenticação</span>
+                    <strong className="text-emerald-700 font-mono text-[10px] truncate block">Protegida no Servidor</strong>
                   </div>
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200">
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Status da Emissão</span>

@@ -41,6 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($raw, true) ?: $_POST;
     $action = $payload['action'] ?? 'save_all';
 
+    // Mutações de parceiros exigem validação CSRF
+    verify_csrf_token($payload['csrf_token'] ?? null);
+
     // Salvar estado completo
     if ($action === 'save_all') {
         if (isset($payload['profissionais']) && is_array($payload['profissionais'])) {

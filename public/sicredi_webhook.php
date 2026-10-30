@@ -8,8 +8,8 @@ $logFile = get_secure_storage_path('sicredi_webhook_log.json');
 $vendasFile = get_secure_storage_path('vendas_albuns_db.json');
 $configFile = get_secure_storage_path('sicredi_api_config.json');
 
-// Função de validação criptográfica da autenticidade da notificação (HMAC / Secret Token)
-function validarAssinaturaWebhook($headers, $rawBody) {
+// Função de validação criptográfica da autenticidade da notificação (HMAC / Secret Token Oficial Sicredi)
+function validarAssinaturaWebhook($headers, $rawBody, $payload = []) {
     // 1. Obter segredo configurado no ambiente ou arquivo seguro
     $webhookSecret = getenv('SICREDI_WEBHOOK_SECRET');
     if (empty($webhookSecret) && file_exists($GLOBALS['configFile'])) {
@@ -17,8 +17,8 @@ function validarAssinaturaWebhook($headers, $rawBody) {
         $webhookSecret = $cfg['webhook_secret'] ?? '';
     }
 
-    // 2. Verifica token de cabeçalho X-Webhook-Secret ou Authorization
-    $tokenEnviado = $headers['X-Webhook-Secret'] ?? $headers['x-webhook-secret'] ?? '';
+    // 2. Verifica token de cabeçalho oficial (Bearer token em Authorization, X-Webhook-Secret ou x-api-key)
+    $tokenEnviado = $headers['X-Webhook-Secret'] ?? $headers['x-webhook-secret'] ?? $headers['x-api-key'] ?? $headers['X-Api-Key'] ?? '';
     if (empty($tokenEnviado) && !empty($headers['Authorization'])) {
         $auth = trim($headers['Authorization']);
         if (stripos($auth, 'Bearer ') === 0) {
@@ -26,15 +26,15 @@ function validarAssinaturaWebhook($headers, $rawBody) {
         }
     }
 
-    // Validação por token compartilhado constante
+    // Validação estrita por token compartilhado do Sicredi em tempo constante
     if (!empty($webhookSecret) && !empty($tokenEnviado)) {
         if (hash_equals($webhookSecret, $tokenEnviado)) {
             return true;
         }
     }
 
-    // 3. Validação por assinatura HMAC-SHA256 (se enviada pelo gateway)
-    $signatureEnviada = $headers['X-Signature-Sha256'] ?? $headers['x-signature-sha256'] ?? '';
+    // 3. Validação por assinatura HMAC-SHA256 (se enviada pelo gateway do banco)
+    $signatureEnviada = $headers['X-Signature-Sha256'] ?? $headers['x-signature-sha256'] ?? $headers['X-Sicredi-Signature'] ?? '';
     if (!empty($webhookSecret) && !empty($signatureEnviada)) {
         $esperada = hash_hmac('sha256', $rawBody, $webhookSecret);
         if (hash_equals($esperada, $signatureEnviada)) {
@@ -42,9 +42,10 @@ function validarAssinaturaWebhook($headers, $rawBody) {
         }
     }
 
-    // 4. Permite chamadas autenticadas por administrador logado para testes manuais
+    // 4. Testes manuais por administradores logados exigem CSRF estrito
     $usuario = get_authenticated_user();
     if ($usuario && strtoupper($usuario['nivel'] ?? '') === 'ADMIN') {
+        verify_csrf_token($payload['csrf_token'] ?? null);
         return true;
     }
 
@@ -96,8 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     exit;
 }
 
-// Validação estrita de autenticidade no POST
-if (!validarAssinaturaWebhook($headers, $raw)) {
+// Validação estrita de autenticidade no POST (Token oficial Sicredi / HMAC)
+if (!validarAssinaturaWebhook($headers, $raw, $payload)) {
     http_response_code(401);
     echo json_encode([
         'sucesso' => false,

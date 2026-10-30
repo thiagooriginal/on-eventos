@@ -233,6 +233,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($raw, true) ?: $_POST;
     $action = $payload['action'] ?? 'save';
 
+    // Mutações de instituições e cursos exigem CSRF
+    verify_csrf_token($payload['csrf_token'] ?? null);
+
     // Salvar todas as instituições e cursos
     if ($action === 'save') {
         if (isset($payload['instituicoes']) && is_array($payload['instituicoes'])) {

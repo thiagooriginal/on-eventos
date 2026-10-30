@@ -40,7 +40,7 @@ import {
   Search,
   ExternalLink,
 } from 'lucide-react';
-import { getUsuarios, salvarUsuarios } from '@/lib/usuarios';
+import { getUsuarios, salvarUsuarios, redefinirCredencial } from '@/lib/usuarios';
 
 export interface SidebarProps {
   paginaAtiva?: string;
@@ -467,6 +467,10 @@ export default function Sidebar({ paginaAtiva = 'dashboard' }: SidebarProps) {
       });
 
       await salvarUsuarios(usuariosAtualizados);
+
+      if (formSenha.trim()) {
+        await redefinirCredencial(formSenha.trim());
+      }
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('on_perfil_atualizado'));

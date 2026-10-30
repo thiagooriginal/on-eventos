@@ -24,6 +24,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($raw, true) ?: $_POST;
     $action = $payload['action'] ?? 'save';
 
+    // Todas as mutações de demandas exigem validação CSRF
+    verify_csrf_token($payload['csrf_token'] ?? null);
+
     if ($action === 'clear') {
         require_auth(['ADMIN']); // Somente ADMIN pode limpar tudo
         $demandas = [];

@@ -46,6 +46,7 @@ $action = $_GET['action'] ?? '';
 // Comando de reset total no servidor (Exclusivo ADMIN)
 if ($action === 'reset') {
     require_auth(['ADMIN']);
+    verify_csrf_token($_GET['csrf_token'] ?? $_POST['csrf_token'] ?? null);
     $limpo = getEstruturaZerada();
     file_put_contents($dataFile, json_encode($limpo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     echo json_encode(['sucesso' => true, 'mensagem' => 'Métricas zeradas no servidor']);

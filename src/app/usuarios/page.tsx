@@ -60,7 +60,7 @@ export default function UsuariosPage() {
   // Form de Novo Usuário
   const [formNome, setFormNome] = useState('');
   const [formEmail, setFormEmail] = useState('');
-  const [formSenha, setFormSenha] = useState('On@2026');
+  const [formSenha, setFormSenha] = useState('');
   const [formNivel, setFormNivel] = useState<NivelUsuario>('BASICO');
   const [formCargo, setFormCargo] = useState('Consultor Comercial');
   const [formDepartamento, setFormDepartamento] = useState('Comercial');
@@ -113,7 +113,7 @@ export default function UsuariosPage() {
       const novo = await adicionarUsuario({
         nome: formNome.trim(),
         email: formEmail.trim().toLowerCase(),
-        credencialAcesso: formSenha || 'On@2026',
+        credencialAcesso: formSenha.trim() || undefined,
         nivel: formNivel,
         cargo: formCargo.trim() || 'Colaborador',
         departamento: formDepartamento || 'Operações',
@@ -131,7 +131,7 @@ export default function UsuariosPage() {
       // Limpa campos
       setFormNome('');
       setFormEmail('');
-      setFormSenha('On@2026');
+      setFormSenha('');
       setFormTelefone('');
       setFormNivel('BASICO');
       exibirFeedback(`Novo usuário "${novo.nome}" cadastrado com sucesso!`);
@@ -789,25 +789,26 @@ export default function UsuariosPage() {
                   />
                 </div>
 
-                {/* Senha Provisória */}
+                {/* Senha Provisória / Primeiro Acesso */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold text-slate-700">
-                      Senha Provisória
+                      Chave Inicial (Opcional)
                     </label>
                     <button
                       type="button"
-                      onClick={() => setFormSenha('On@' + Math.floor(1000 + Math.random() * 9000))}
+                      onClick={() => setFormSenha('Sec@' + Math.random().toString(36).substring(2, 8))}
                       className="text-[11px] font-bold text-purple-700 hover:underline"
                     >
-                      Gerar Senha Aleatória
+                      Gerar Chave Única
                     </button>
                   </div>
                   <input
                     type="text"
                     value={formSenha}
+                    placeholder="Deixe em branco para o usuário definir no 1º acesso"
                     onChange={(e) => setFormSenha(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400"
                   />
                 </div>
 

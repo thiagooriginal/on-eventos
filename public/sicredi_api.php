@@ -205,6 +205,11 @@ $raw = file_get_contents('php://input');
 $payload = json_decode($raw, true) ?: $_POST;
 $action = $payload['action'] ?? $_GET['action'] ?? 'get_config';
 
+// Todas as mutações bancárias e de configuração exigem CSRF estrito
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== 'get_config') {
+    verify_csrf_token($payload['csrf_token'] ?? null);
+}
+
 // 1. Obter Configurações
 if ($action === 'get_config') {
     $safeConfig = $config;

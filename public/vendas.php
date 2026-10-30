@@ -59,6 +59,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($raw, true) ?: $_POST;
     $action = $payload['action'] ?? 'save';
 
+    // Mutações financeiras e cadastrais exigem validação CSRF estrita
+    if ($action !== 'get_deleted_logs') {
+        verify_csrf_token($payload['csrf_token'] ?? null);
+    }
+
     if ($action === 'clear') {
         require_auth(['ADMIN']);
         $vendas = [];

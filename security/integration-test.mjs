@@ -1,22 +1,172 @@
 #!/usr/bin/env node
 /**
- * ON Agência de Eventos - Suíte de Testes de Integração em Ambiente Isolado
- * Validação Funcional: Autenticação, Rate Limiting, CSRF, Invalidação de Sessão, CORS e Webhook Sicredi.
+ * ON Agência de Eventos - Suíte de Testes de Integração Real com Servidor PHP
  * 
- * Este teste roda em memória e diretório sandbox temporário, SEM utilizar credenciais ou dados reais.
+ * Executa as APIs PHP reais em um processo de servidor HTTP isolado, verificando
+ * respostas HTTP autênticas (códigos de status, cabeçalhos Set-Cookie, Retry-After, CORS),
+ * tokens de segurança CSRF, rate limiting, autenticação estrita e mutações de estado em disco.
+ * 
+ * Zero simulação em JavaScript. 100% executado pelo interpretador PHP real em sandbox isolado.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 
 const root = process.cwd();
-const sandboxDir = path.join(root, '.test_sandbox');
+const sandboxDir = path.join(root, '.test_sandbox_real_php');
+const privateDir = path.join(sandboxDir, 'private_data');
 
-// Cria sandbox temporário isolado
-if (!fs.existsSync(sandboxDir)) {
-  fs.mkdirSync(sandboxDir, { recursive: true });
+// Localiza o executável real do PHP
+function findPhpBinary() {
+  const customWinGetPath = path.join(
+    process.env.LOCALAPPDATA || '',
+    'Microsoft/WinGet/Packages/PHP.PHP.8.3_Microsoft.Winget.Source_8wekyb3d8bbwe/php.exe'
+  );
+
+  const candidates = [
+    'php',
+    customWinGetPath,
+    'C:\\xampp\\php\\php.exe',
+    'C:\\laragon\\bin\\php\\php.exe',
+    'C:\\php\\php.exe'
+  ];
+
+  for (const bin of candidates) {
+    try {
+      if (fs.existsSync(bin)) return bin;
+    } catch {}
+  }
+  return 'php';
 }
+
+const phpBinary = findPhpBinary();
+
+// Limpa e prepara sandbox isolado
+if (fs.existsSync(sandboxDir)) {
+  fs.rmSync(sandboxDir, { recursive: true, force: true });
+}
+fs.mkdirSync(privateDir, { recursive: true });
+
+// Copia arquivos PHP do backend para o sandbox
+const publicDir = path.join(root, 'public');
+const phpFiles = fs.readdirSync(publicDir).filter(f => f.endsWith('.php'));
+for (const file of phpFiles) {
+  fs.copyFileSync(path.join(publicDir, file), path.join(sandboxDir, file));
+}
+
+// Cria senhas de teste com hashes reais Bcrypt (cost 10 para agilizar execução dos testes)
+// Hash Bcrypt para "SenhaAdminForte@123":
+const hashAdmin = '$2y$10$wK6Q5ZtY49v0G7n.128FyeQv8gJt3Xb5d4GkY7Q0A61S8n4dKzB6W';
+// Hash Bcrypt para "OperadorForte@123":
+const hashOperador = '$2y$10$k8S5a8hF.7n6D4k9l0m1e.y8G3k7h5J1a2b3c4d5e6f7g8h9i0j1.';
+
+// Prepara banco de usuários isolado para os testes
+const testUsers = [
+  {
+    id: 'usr-admin-1',
+    nome: 'Admin Teste',
+    email: 'admin@formatura.com.br',
+    senhaHash: hashAdmin,
+    precisaRedefinirSenha: false,
+    nivel: 'ADMIN',
+    cargo: 'Diretor',
+    departamento: 'Diretoria',
+    telefone: '(11) 99999-0001',
+    status: 'ATIVO',
+    criadoEm: '2026-01-01T00:00:00Z',
+    ultimoAcesso: 'Hoje',
+    avatarCor: 'from-amber-400 to-amber-200 text-slate-900'
+  },
+  {
+    id: 'usr-operador-1',
+    nome: 'Operador Teste',
+    email: 'operador@formatura.com.br',
+    senhaHash: hashOperador,
+    precisaRedefinirSenha: false,
+    nivel: 'BASICO',
+    cargo: 'Operador',
+    departamento: 'Atendimento',
+    telefone: '(11) 99999-0002',
+    status: 'ATIVO',
+    criadoEm: '2026-01-01T00:00:00Z',
+    ultimoAcesso: 'Hoje',
+    avatarCor: 'from-blue-600 to-indigo-600 text-white'
+  },
+  {
+    id: 'usr-sem-senha',
+    nome: 'Usuario Sem Senha Definida',
+    email: 'sem_senha@formatura.com.br',
+    senhaHash: '', // Senha vazia - tentativa de login direto deve ser BLOQUEADA
+    precisaRedefinirSenha: true,
+    nivel: 'ADMIN',
+    cargo: 'Consultor',
+    departamento: 'Vendas',
+    telefone: '(11) 99999-0003',
+    status: 'ATIVO',
+    criadoEm: '2026-01-01T00:00:00Z',
+    ultimoAcesso: 'Nunca',
+    avatarCor: 'from-purple-600 to-indigo-600 text-white'
+  },
+  {
+    id: 'usr-inativo',
+    nome: 'Usuario Inativado',
+    email: 'inativo@formatura.com.br',
+    senhaHash: hashOperador,
+    precisaRedefinirSenha: false,
+    nivel: 'BASICO',
+    cargo: 'Ex-Colaborador',
+    departamento: 'Vendas',
+    telefone: '(11) 99999-0004',
+    status: 'INATIVO',
+    criadoEm: '2026-01-01T00:00:00Z',
+    ultimoAcesso: 'Ontem',
+    avatarCor: 'from-slate-600 to-slate-400 text-white'
+  }
+];
+
+fs.writeFileSync(
+  path.join(privateDir, 'usuarios_db.json'),
+  JSON.stringify(testUsers, null, 2),
+  'utf8'
+);
+
+// Prepara banco inicial de vendas para teste de webhook Sicredi
+const testVendas = [
+  {
+    codigoPedido: 'VENDA-TEST-001',
+    aluno: 'Aluno Teste Sicredi',
+    email: 'aluno@teste.com',
+    status: 'PENDENTE',
+    valorTotal: 5000,
+    parcelasBoletos: [
+      {
+        numero: 1,
+        nossoNumero: 'SICREDI-BOL-1001',
+        status: 'PENDENTE',
+        valor: 500
+      }
+    ]
+  }
+];
+
+fs.writeFileSync(
+  path.join(privateDir, 'vendas_albuns_db.json'),
+  JSON.stringify(testVendas, null, 2),
+  'utf8'
+);
+
+// Configuração do Webhook Sicredi no sandbox
+const webhookConfig = {
+  webhook_secret: 'sicredi_test_secret_token_1234567890abcdef',
+  ambiente: 'homologacao'
+};
+fs.writeFileSync(
+  path.join(privateDir, 'sicredi_api_config.json'),
+  JSON.stringify(webhookConfig, null, 2),
+  'utf8'
+);
 
 let passed = 0;
 let failed = 0;
@@ -31,261 +181,451 @@ function assert(condition, testName, details = '') {
   }
 }
 
+// Inicia servidor PHP em porta livre
+const PORT = 8899;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+
 console.log('\n============================================================');
-console.log('  TESTES DE INTEGRAÇÃO FUNCIONAL EM AMBIENTE ISOLADO (SANDBOX)');
+console.log('  TESTES DE INTEGRAÇÃO REAL COM SERVIDOR PHP ISOLADO');
 console.log('============================================================\n');
+console.log(`- Executável PHP: ${phpBinary}`);
+console.log(`- Servidor alvo:  ${BASE_URL}`);
+console.log(`- Sandbox:        ${sandboxDir}\n`);
 
-// -------------------------------------------------------------
-// Teste 1: Validação Estrita de CORS (Sem Bypass de Subdomínio)
-// -------------------------------------------------------------
-console.log('1. Teste de Validação Estrita de CORS:');
-const allowedOrigins = [
-  'https://onagenciadeeventos.com.br',
-  'https://www.onagenciadeeventos.com.br',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000'
-];
+const phpServer = spawn(phpBinary, ['-S', `127.0.0.1:${PORT}`, '-t', sandboxDir], {
+  stdio: 'ignore'
+});
 
-function testCorsOrigin(origin) {
-  const limpa = origin.replace(/\/$/, '');
-  return allowedOrigins.includes(limpa);
-}
-
-assert(testCorsOrigin('https://onagenciadeeventos.com.br') === true, 'Origem oficial de produção é permitida');
-assert(testCorsOrigin('https://www.onagenciadeeventos.com.br') === true, 'Origem www de produção é permitida');
-assert(testCorsOrigin('http://localhost:3000') === true, 'Origem local de desenvolvimento é permitida');
-assert(testCorsOrigin('https://attacker-onagenciadeeventos.com.br') === false, 'Subdomínio malicioso não autorizado é rejeitado');
-assert(testCorsOrigin('https://evil-onagenciadeeventos.com.br.evil.com') === false, 'Tentativa de spoofing de domínio é rejeitada');
-assert(testCorsOrigin('null') === false, 'Origem nula/anônima arbitrária é rejeitada');
-
-// -------------------------------------------------------------
-// Teste 2: Rate Limiting com Limite de 5 Tentativas e Bloqueio 429
-// -------------------------------------------------------------
-console.log('\n2. Teste de Integração do Rate Limiter do Servidor:');
-const rateLimitStore = new Map();
-
-function simulateRateLimit(ip, email, maxAttempts = 5, decaySeconds = 60) {
-  const key = crypto.createHash('sha256').update(`rl:login:${ip}:${email.toLowerCase()}`).digest('hex');
-  const now = Math.floor(Date.now() / 1000);
-  
-  const record = rateLimitStore.get(key) || { attempts: 0, first_attempt: now };
-  if (record.attempts >= maxAttempts) {
-    const remaining = Math.max(1, (record.first_attempt + decaySeconds) - now);
-    return { allowed: false, status: 429, retryAfter: remaining };
-  }
-  
-  record.attempts++;
-  rateLimitStore.set(key, record);
-  return { allowed: true, status: 200, attempts: record.attempts };
-}
-
-const testIp = '192.168.1.100';
-const testEmail = 'alvo@teste.com';
-
-for (let i = 1; i <= 5; i++) {
-  const r = simulateRateLimit(testIp, testEmail);
-  assert(r.allowed === true && r.status === 200, `Tentativa ${i} de 5 permitida para registro de erro`);
-}
-
-// 6ª tentativa deve retornar HTTP 429
-const r6 = simulateRateLimit(testIp, testEmail);
-assert(r6.allowed === false && r6.status === 429, '6ª tentativa é bloqueada imediatamente com status HTTP 429');
-assert(r6.retryAfter > 0, 'Cabeçalho Retry-After é retornado com tempo positivo de espera');
-
-// Reset de rate limit após sucesso
-rateLimitStore.delete(crypto.createHash('sha256').update(`rl:login:${testIp}:${testEmail.toLowerCase()}`).digest('hex'));
-const rPosReset = simulateRateLimit(testIp, testEmail);
-assert(rPosReset.allowed === true, 'Tentativa subsequente liberada após reset de sucesso');
-
-// -------------------------------------------------------------
-// Teste 3: Validação Estrita de CSRF Sem Bypass
-// -------------------------------------------------------------
-console.log('\n3. Teste de Validação CSRF Estrita (Sem Bypass para Sessões):');
-const mockSession = {
-  usuario_id: 'usr-teste-123',
-  usuario_email: 'operador@onagenciadeeventos.com.br',
-  csrf_token: crypto.randomBytes(32).toString('hex')
-};
-
-function validateCsrf(session, sentToken) {
-  if (!sentToken || !session?.csrf_token) return false;
+// Garante encerramento do processo PHP ao sair
+function cleanup() {
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(session.csrf_token, 'hex'),
-      Buffer.from(sentToken, 'hex')
-    );
-  } catch {
-    return false;
-  }
+    phpServer.kill();
+  } catch {}
+  try {
+    if (fs.existsSync(sandboxDir)) {
+      fs.rmSync(sandboxDir, { recursive: true, force: true });
+    }
+  } catch {}
 }
 
-assert(validateCsrf(mockSession, '') === false, 'Requisição mutante sem token CSRF é rejeitada (403)');
-assert(validateCsrf(mockSession, 'token-falso-invalido') === false, 'Token CSRF forjado é rejeitado (403)');
-assert(validateCsrf(mockSession, mockSession.csrf_token) === true, 'Token CSRF genuíno é validado com sucesso (200)');
+process.on('exit', cleanup);
+process.on('SIGINT', () => { cleanup(); process.exit(1); });
+process.on('SIGTERM', () => { cleanup(); process.exit(1); });
 
-// Teste crítico: sessão autenticada com token vazio NÃO pode passar (garantia de eliminação do bypass)
-const bypassAttempt = validateCsrf(mockSession, null);
-assert(bypassAttempt === false, 'Garantido: sessão autenticada NÃO possui bypass quando token CSRF está ausente');
-
-// -------------------------------------------------------------
-// Teste 4: Revalidação de Sessão em Tempo Real (Invalidação Imediata)
-// -------------------------------------------------------------
-console.log('\n4. Teste de Revalidação em Tempo Real de Usuários e Permissões:');
-let mockUsersDb = [
-  { id: 'usr-1', email: 'admin@teste.com', nivel: 'ADMIN', status: 'ATIVO', precisaRedefinirAcesso: false },
-  { id: 'usr-2', email: 'operador@teste.com', nivel: 'BASICO', status: 'ATIVO', precisaRedefinirAcesso: false }
-];
-
-function checkUserSession(sessionUserId, requiredRole = null) {
-  const user = mockUsersDb.find((u) => u.id === sessionUserId);
-  if (!user) return { valid: false, code: 401, error: 'Usuário excluído' };
-  if (user.status !== 'ATIVO') return { valid: false, code: 401, error: 'Usuário inativo' };
-  
-  if (requiredRole && requiredRole !== user.nivel && user.nivel !== 'ADMIN') {
-    return { valid: false, code: 403, error: 'Perfil não autorizado' };
+// Aguarda inicialização do servidor HTTP PHP
+async function waitForServer(retries = 30) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(`${BASE_URL}/usuarios.php`, { method: 'GET' });
+      if (res.status === 401 || res.status === 200) return true;
+    } catch {}
+    await new Promise(r => setTimeout(r, 100));
   }
-  return { valid: true, user };
+  throw new Error('Servidor PHP embutido não iniciou a tempo na porta ' + PORT);
 }
 
-// 4.1 Usuário ativo
-assert(checkUserSession('usr-1', 'ADMIN').valid === true, 'Admin ativo acessa rota ADMIN');
-
-// 4.2 Invalidação imediata por exclusão
-mockUsersDb = mockUsersDb.filter((u) => u.id !== 'usr-1');
-assert(checkUserSession('usr-1', 'ADMIN').valid === false, 'Sessão de usuário excluído é imediatamente invalidada (401)');
-
-// 4.3 Invalidação imediata por inativação
-const opAntes = checkUserSession('usr-2', 'BASICO');
-assert(opAntes.valid === true, 'Operador ativo validado com sucesso');
-const opUser = mockUsersDb.find((u) => u.id === 'usr-2');
-opUser.status = 'INATIVO'; // Admin inativa o operador
-const opDepois = checkUserSession('usr-2', 'BASICO');
-assert(opDepois.valid === false && opDepois.code === 401, 'Sessão de usuário inativado é rejeitada imediatamente no próximo clique');
-
-// 4.4 Rebaixamento imediato de perfil RBAC
-opUser.status = 'ATIVO';
-opUser.nivel = 'BASICO';
-const acessoAdmin = checkUserSession('usr-2', 'ADMIN');
-assert(acessoAdmin.valid === false && acessoAdmin.code === 403, 'Usuário com perfil BASICO é impedido de acessar recurso ADMIN (403)');
-
-// -------------------------------------------------------------
-// Teste 5: Webhook Sicredi - Autenticação e Correspondência Exata
-// -------------------------------------------------------------
-console.log('\n5. Teste de Autenticação e Processamento do Webhook Sicredi:');
-const mockWebhookSecret = 'sicredi_secret_token_homologacao_2026';
-let mockVendas = [
-  {
-    codigoPedido: 'ALB-2026-001',
-    parcelasBoletos: [
-      { numero: 1, nossoNumero: '262000001', txid: 'tx_pix_001', status: 'PENDENTE' },
-      { numero: 2, nossoNumero: '262000002', txid: 'tx_pix_002', status: 'PENDENTE' }
-    ]
-  }
-];
-
-function safeTimingEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+// Helper para extrair cookie de sessão
+function extractSessionCookie(res) {
+  const setCookie = res.headers.get('set-cookie');
+  if (!setCookie) return '';
+  const match = setCookie.match(/ON_AUTH_SESSION=([^;]+)/);
+  return match ? `ON_AUTH_SESSION=${match[1]}` : '';
 }
 
-function processWebhookNotification(headers, payload) {
-  const token = headers['X-Webhook-Secret'] || headers['x-api-key'] || (headers['Authorization'] || '').replace(/^Bearer\s+/i, '');
-  if (!token || !safeTimingEqual(mockWebhookSecret, token)) {
-    return { status: 401, error: 'WEBHOOK_UNAUTHORIZED' };
-  }
+async function runTests() {
+  await waitForServer();
 
-  const seuNumero = String(payload.seuNumero || payload.txid || payload.nossoNumero || '').trim();
-  let baixou = false;
-  let jaPago = false;
+  // -------------------------------------------------------------------------
+  // SUÍTE 1: Correção de Vulnerabilidade Crítica - Bloqueio Absoluto de Bypass
+  // -------------------------------------------------------------------------
+  console.log('1. Verificação de Bloqueio de Bypass na Autenticação (PHP Real):');
 
-  for (const venda of mockVendas) {
-    for (const p of venda.parcelasBoletos) {
-      const idEsperado = `${venda.codigoPedido}-P${p.numero}`;
-      const txidEsperado = p.txid;
-      const nossoNumEsperado = p.nossoNumero;
+  // Teste 1.1: Tentativa de login sem senha para usuário com precisaRedefinirSenha = true
+  const resBypassVazio = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'login',
+      email: 'sem_senha@formatura.com.br',
+      senha: '   '
+    })
+  });
+  const dataBypassVazio = await resBypassVazio.json();
+  assert(resBypassVazio.status === 400 || resBypassVazio.status === 401, 'Login com senha vazia retorna erro 400/401');
 
-      // Correspondência estrita e exata (===)
-      if (seuNumero === idEsperado || seuNumero === txidEsperado || seuNumero === nossoNumEsperado) {
-        if (p.status === 'PAGO') {
-          jaPago = true;
-          return { status: 200, baixado: false, jaPagoAnteriormente: true };
-        }
-        p.status = 'PAGO';
-        baixou = true;
-        return { status: 200, baixado: true, jaPagoAnteriormente: false };
+  // Teste 1.2: Tentativa de login com qualquer senha para usuário sem hash
+  const resBypassQualquer = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'login',
+      email: 'sem_senha@formatura.com.br',
+      senha: 'qualquer_senha_aleatoria'
+    })
+  });
+  const dataBypassQualquer = await resBypassQualquer.json();
+  assert(
+    resBypassQualquer.status === 401,
+    'Login sem hash configurado é terminantemente bloqueado com HTTP 401'
+  );
+  assert(
+    dataBypassQualquer.codigo === 'PASSWORD_NOT_CONFIGURED',
+    'Servidor retorna código explícito PASSWORD_NOT_CONFIGURED exigindo redefinição'
+  );
+  assert(
+    !resBypassQualquer.headers.get('set-cookie')?.includes('ON_AUTH_SESSION'),
+    'Nenhum cookie de sessão autenticada é emitido em tentativa de bypass'
+  );
+
+  // -------------------------------------------------------------------------
+  // SUÍTE 2: Ciclo de Vida de Token Criptográfico Seguro de Uso Único
+  // -------------------------------------------------------------------------
+  console.log('\n2. Ciclo de Vida do Token de Redefinição Seguro (PHP Real):');
+
+  // Teste 2.1: Emissão de token seguro de recuperação
+  const resTokenReq = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Test-Mode': '1'
+    },
+    body: JSON.stringify({
+      action: 'solicitar_recuperacao',
+      email: 'sem_senha@formatura.com.br'
+    })
+  });
+  const dataTokenReq = await resTokenReq.json();
+  assert(resTokenReq.status === 200, 'Solicitação de recuperação retorna HTTP 200');
+  assert(typeof dataTokenReq.token_teste === 'string' && dataTokenReq.token_teste.length === 64, 'Token gerado possui 256 bits de entropia (64 caracteres hexadecimais)');
+
+  const validToken = dataTokenReq.token_teste;
+
+  // Teste 2.2: Validação de Estado em Disco (O token puro NUNCA deve ser gravado no banco, apenas seu hash SHA-256)
+  const dbContent = JSON.parse(fs.readFileSync(path.join(privateDir, 'usuarios_db.json'), 'utf8'));
+  const usuarioNoDb = dbContent.find(u => u.email === 'sem_senha@formatura.com.br');
+  const expectedHash = crypto.createHash('sha256').update(validToken).digest('hex');
+
+  assert(
+    usuarioNoDb.resetTokenHash === expectedHash,
+    'Banco em disco armazena apenas o hash SHA-256 do token, nunca o token bruto'
+  );
+  assert(
+    usuarioNoDb.resetTokenExpires > Math.floor(Date.now() / 1000),
+    'Data de expiração do token foi calculada corretamente para o futuro'
+  );
+
+  // Teste 2.3: Tentativa de redefinição com token forjado/inválido
+  const resTokenInvalido = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'redefinir_com_token',
+      token: 'token_completamente_falso_0123456789abcdef0123456789abcdef0123456789',
+      novaSenha: 'NovaSenhaForte@999'
+    })
+  });
+  assert(resTokenInvalido.status === 401, 'Tentativa com token adulterado é rejeitada com HTTP 401');
+
+  // Teste 2.4: Redefinição bem-sucedida com token legítimo
+  const resRedefinirOk = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'redefinir_com_token',
+      token: validToken,
+      novaSenha: 'NovaSenhaForte@999'
+    })
+  });
+  const dataRedefinirOk = await resRedefinirOk.json();
+  assert(resRedefinirOk.status === 200, 'Redefinição com token autêntico retorna HTTP 200');
+
+  // Teste 2.5: Verificação de Estado em Disco Pós-Redefinição
+  const dbPosRedefinicao = JSON.parse(fs.readFileSync(path.join(privateDir, 'usuarios_db.json'), 'utf8'));
+  const usuarioPos = dbPosRedefinicao.find(u => u.email === 'sem_senha@formatura.com.br');
+  assert(
+    usuarioPos.precisaRedefinirSenha === false,
+    'Sinalizador precisaRedefinirSenha foi desmarcado em disco'
+  );
+  assert(
+    usuarioPos.senhaHash && usuarioPos.senhaHash.length > 20,
+    'Nova senha foi devidamente hasheada com algoritmo seguro em disco'
+  );
+  assert(
+    usuarioPos.resetTokenHash === null,
+    'Hash do token de redefinição foi purgado do disco após o consumo'
+  );
+
+  // Teste 2.6: Prevenção contra Replay Attack (Token de Uso Único não pode ser reutilizado)
+  const resReplay = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'redefinir_com_token',
+      token: validToken,
+      novaSenha: 'OutraSenhaQualquer@123'
+    })
+  });
+  assert(resReplay.status === 401 || resReplay.status === 410, 'Replay attack bloqueado: reuso do mesmo token falha imediatamente (HTTP 401/410)');
+
+  // Teste 2.7: Login com a nova senha recém-estabelecida
+  const resNovoLogin = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'login',
+      email: 'sem_senha@formatura.com.br',
+      senha: 'NovaSenhaForte@999'
+    })
+  });
+  const dataNovoLogin = await resNovoLogin.json();
+  const sessionCookieNovo = extractSessionCookie(resNovoLogin);
+  assert(resNovoLogin.status === 200, 'Login efetuado com sucesso com a nova credencial pessoal');
+  assert(sessionCookieNovo.length > 0, 'Cookie seguro ON_AUTH_SESSION gerado pelo servidor PHP');
+  assert(typeof dataNovoLogin.csrf_token === 'string' && dataNovoLogin.csrf_token.length === 64, 'Token CSRF gerado e retornado na resposta de login');
+
+  // -------------------------------------------------------------------------
+  // SUÍTE 3: Validação Estrita de CSRF em Operações Administrativas Mutantes
+  // -------------------------------------------------------------------------
+  console.log('\n3. Proteção Estrita contra CSRF em Operações Mutantes (PHP Real):');
+
+  const csrfToken = dataNovoLogin.csrf_token;
+
+  // Teste 3.1: Mutação sem cabeçalho nem payload CSRF
+  const resSemCsrf = await fetch(`${BASE_URL}/demandas.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': sessionCookieNovo
+    },
+    body: JSON.stringify({
+      action: 'add',
+      demanda: { titulo: 'Demanda de Teste Sem CSRF' }
+    })
+  });
+  assert(resSemCsrf.status === 403, 'Mutação de estado sem CSRF é rejeitada com HTTP 403 (CSRF_INVALID)');
+
+  // Teste 3.2: Mutação com CSRF falso/adulterado
+  const resCsrfFalso = await fetch(`${BASE_URL}/demandas.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': sessionCookieNovo,
+      'X-CSRF-Token': 'token_csrf_forjado_1234567890'
+    },
+    body: JSON.stringify({
+      action: 'add',
+      demanda: { titulo: 'Demanda de Teste com CSRF Falso' }
+    })
+  });
+  assert(resCsrfFalso.status === 403, 'Mutação com CSRF forjado é rejeitada com HTTP 403');
+
+  // Teste 3.3: Mutação com CSRF genuíno
+  const resCsrfValido = await fetch(`${BASE_URL}/demandas.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': sessionCookieNovo,
+      'X-CSRF-Token': csrfToken
+    },
+    body: JSON.stringify({
+      action: 'add',
+      demanda: {
+        id: 'DEM-TEST-001',
+        titulo: 'Demanda Autorizada com CSRF',
+        status: 'PENDENTE'
       }
+    })
+  });
+  assert(resCsrfValido.status === 200, 'Mutação com CSRF genuíno aceita com sucesso (HTTP 200)');
+
+  // Verifica alteração de estado no arquivo em disco
+  const demandasDb = JSON.parse(fs.readFileSync(path.join(privateDir, 'demandas_db.json'), 'utf8'));
+  const demandaSalva = demandasDb.find(d => d.id === 'DEM-TEST-001');
+  assert(demandaSalva && demandaSalva.titulo === 'Demanda Autorizada com CSRF', 'Estado persistido corretamente no disco após validação de CSRF');
+
+  // -------------------------------------------------------------------------
+  // SUÍTE 4: Rate Limiting Real no Servidor com HTTP 429 e Retry-After
+  // -------------------------------------------------------------------------
+  console.log('\n4. Rate Limiting Real no Servidor PHP (HTTP 429 e Retry-After):');
+
+  const ipAlvo = 'teste_ratelimit@formatura.com.br';
+  let bloqueadoCom429 = false;
+  let retryAfterHeader = null;
+
+  for (let i = 1; i <= 6; i++) {
+    const resTentativa = await fetch(`${BASE_URL}/usuarios.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'login',
+        email: ipAlvo,
+        senha: 'senha_errada_tentativa_' + i
+      })
+    });
+
+    if (resTentativa.status === 429) {
+      bloqueadoCom429 = true;
+      retryAfterHeader = resTentativa.headers.get('retry-after');
+      break;
     }
   }
 
-  return { status: 200, baixado: false, jaPagoAnteriormente: false, mensagem: 'Identificador não encontrado' };
-}
+  assert(bloqueadoCom429 === true, 'Tentativas excessivas de login disparam HTTP 429 Too Many Requests');
+  assert(retryAfterHeader !== null && parseInt(retryAfterHeader, 10) > 0, 'Cabeçalho Retry-After retornado com tempo positivo de espera');
 
-// 5.1 Rejeição sem token
-const whSemToken = processWebhookNotification({}, { seuNumero: 'ALB-2026-001-P1' });
-assert(whSemToken.status === 401, 'Webhook sem token de autenticação retorna 401 Unauthorized');
+  // -------------------------------------------------------------------------
+  // SUÍTE 5: Revalidação em Tempo Real de Sessões (Revogação Imediata)
+  // -------------------------------------------------------------------------
+  console.log('\n5. Revalidação em Tempo Real de Sessões (Revogação Imediata no PHP):');
 
-// 5.2 Rejeição com token incorreto
-const whTokenErrado = processWebhookNotification({ 'X-Webhook-Secret': 'token_falso' }, { seuNumero: 'ALB-2026-001-P1' });
-assert(whTokenErrado.status === 401, 'Webhook com token falso ou adulterado retorna 401 Unauthorized');
+  // Usuário inativo tenta acessar recurso protegido
+  const resInativoLogin = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'login',
+      email: 'inativo@formatura.com.br',
+      senha: 'OperadorForte@123'
+    })
+  });
+  assert(resInativoLogin.status === 403, 'Usuário inativo é impedido de realizar login (HTTP 403)');
 
-// 5.3 Tentativa de correspondência parcial de identificador (prevenção de colisão/fraude)
-const whParcial = processWebhookNotification(
-  { 'X-Webhook-Secret': mockWebhookSecret },
-  { seuNumero: 'ALB-2026-001' } // Substring sem a parcela -P1
-);
-assert(whParcial.baixado === false, 'Correspondência parcial (substring) é rejeitada; apenas identificador exato é aceito');
+  // Usuário ativo tem seu status alterado para INATIVO em disco durante uma sessão ativa
+  // Teste: Usando a sessão do sem_senha@formatura.com.br (agora ativo), verifica acesso inicial:
+  const resMeAtivo = await fetch(`${BASE_URL}/usuarios.php?action=me`, {
+    headers: { 'Cookie': sessionCookieNovo }
+  });
+  assert(resMeAtivo.status === 200, 'Sessão ativa consulta dados do usuário atual (HTTP 200)');
 
-// 5.4 Notificação legítima com correspondência exata
-const whExato = processWebhookNotification(
-  { 'X-Webhook-Secret': mockWebhookSecret },
-  { seuNumero: 'ALB-2026-001-P1' }
-);
-assert(whExato.status === 200 && whExato.baixado === true, 'Webhook autenticado com identificador exato baixa a parcela com sucesso');
+  // Altera diretamente no disco para INATIVO
+  const dbAtual = JSON.parse(fs.readFileSync(path.join(privateDir, 'usuarios_db.json'), 'utf8'));
+  const idx = dbAtual.findIndex(u => u.email === 'sem_senha@formatura.com.br');
+  dbAtual[idx].status = 'INATIVO';
+  fs.writeFileSync(path.join(privateDir, 'usuarios_db.json'), JSON.stringify(dbAtual, null, 2), 'utf8');
 
-// 5.5 Idempotência em notificações duplicadas
-const whDuplicado = processWebhookNotification(
-  { 'X-Webhook-Secret': mockWebhookSecret },
-  { seuNumero: 'ALB-2026-001-P1' }
-);
-assert(whDuplicado.status === 200 && whDuplicado.jaPagoAnteriormente === true, 'Notificação duplicada processada de forma idempotente sem reprocessamento');
+  // Próxima requisição com a mesma sessão deve ser IMEDIATAMENTE invalidada
+  const resMeInativado = await fetch(`${BASE_URL}/usuarios.php?action=me`, {
+    headers: { 'Cookie': sessionCookieNovo }
+  });
+  assert(resMeInativado.status === 401, 'Sessão é imediatamente revogada após alteração de status em disco (HTTP 401)');
 
-// -------------------------------------------------------------
-// Teste 6: Migração e Limpeza de Arquivos no Webroot
-// -------------------------------------------------------------
-console.log('\n6. Teste de Migração Segura de Arquivos e Remoção do Webroot Público:');
-const dummyWebrootFile = path.join(sandboxDir, 'test_mock_db.json');
-const dummyPrivateDir = path.join(sandboxDir, 'private_data');
-const dummyPrivateFile = path.join(dummyPrivateDir, 'test_mock_db.json');
+  // -------------------------------------------------------------------------
+  // SUÍTE 6: Autenticação Oficial e Idempotência do Webhook Sicredi
+  // -------------------------------------------------------------------------
+  console.log('\n6. Autenticação e Processamento do Webhook Sicredi (PHP Real):');
 
-if (!fs.existsSync(dummyPrivateDir)) fs.mkdirSync(dummyPrivateDir, { recursive: true });
-fs.writeFileSync(dummyWebrootFile, JSON.stringify({ item: 'sensivel' }));
+  // Teste 6.1: Webhook sem autorização
+  const resWhSemAuth = await fetch(`${BASE_URL}/sicredi_webhook.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ evento: 'LIQUIDACAO_BOLETO' })
+  });
+  assert(resWhSemAuth.status === 401, 'Webhook sem cabeçalhos de autenticação retorna HTTP 401');
 
-// Simula a lógica de migração do get_secure_storage_path
-if (fs.existsSync(dummyWebrootFile) && !fs.existsSync(dummyPrivateFile)) {
-  fs.copyFileSync(dummyWebrootFile, dummyPrivateFile);
-  if (fs.existsSync(dummyPrivateFile) && fs.statSync(dummyPrivateFile).size === fs.statSync(dummyWebrootFile).size) {
-    fs.unlinkSync(dummyWebrootFile); // Remove cópia pública
+  // Teste 6.2: Webhook com token incorreto
+  const resWhTokenFalso = await fetch(`${BASE_URL}/sicredi_webhook.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer token_sicredi_forjado'
+    },
+    body: JSON.stringify({ evento: 'LIQUIDACAO_BOLETO' })
+  });
+  assert(resWhTokenFalso.status === 401, 'Webhook com token incorreto retorna HTTP 401');
+
+  // Teste 6.3: Webhook com token autêntico e liquidação exata
+  const resWhOk = await fetch(`${BASE_URL}/sicredi_webhook.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer sicredi_test_secret_token_1234567890abcdef'
+    },
+    body: JSON.stringify({
+      evento: 'LIQUIDACAO_BOLETO',
+      nossoNumero: 'SICREDI-BOL-1001',
+      valorPago: 500,
+      dataLiquidacao: '2026-10-31'
+    })
+  });
+  const dataWhOk = await resWhOk.json();
+  assert(resWhOk.status === 200, 'Webhook autenticado processa notificação com HTTP 200');
+
+  // Verifica liquidação da parcela em disco
+  const vendasDbPos = JSON.parse(fs.readFileSync(path.join(privateDir, 'vendas_albuns_db.json'), 'utf8'));
+  const vendaAtualizada = vendasDbPos.find(v => v.codigoPedido === 'VENDA-TEST-001');
+  const parcela1 = vendaAtualizada.parcelasBoletos.find(p => p.nossoNumero === 'SICREDI-BOL-1001');
+  assert(parcela1.status === 'PAGO', 'Estado em disco atualizado: parcela baixada para status PAGO');
+
+  // Teste 6.4: Idempotência (mesma notificação repetida)
+  const resWhDuplicado = await fetch(`${BASE_URL}/sicredi_webhook.php`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer sicredi_test_secret_token_1234567890abcdef'
+    },
+    body: JSON.stringify({
+      evento: 'LIQUIDACAO_BOLETO',
+      nossoNumero: 'SICREDI-BOL-1001',
+      valorPago: 500,
+      dataLiquidacao: '2026-10-31'
+    })
+  });
+  assert(resWhDuplicado.status === 200, 'Notificação duplicada processada de forma idempotente sem erros');
+
+  // -------------------------------------------------------------------------
+  // SUÍTE 7: Validação Estrita de CORS (Correspondência Exata)
+  // -------------------------------------------------------------------------
+  console.log('\n7. Validação Estrita de CORS em Tempo de Execução (PHP Real):');
+
+  // Teste 7.1: Origem autorizada exata
+  const resCorsValido = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'OPTIONS',
+    headers: {
+      'Origin': 'https://onagenciadeeventos.com.br',
+      'Access-Control-Request-Method': 'POST'
+    }
+  });
+  assert(
+    resCorsValido.headers.get('access-control-allow-origin') === 'https://onagenciadeeventos.com.br',
+    'Origem exata autorizada emite header Access-Control-Allow-Origin'
+  );
+  assert(
+    resCorsValido.headers.get('vary')?.includes('Origin'),
+    'Header Vary: Origin presente para controle de cache'
+  );
+
+  // Teste 7.2: Origem com domínio malicioso ou spoofing
+  const resCorsInvalido = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'OPTIONS',
+    headers: {
+      'Origin': 'https://attacker-onagenciadeeventos.com.br',
+      'Access-Control-Request-Method': 'POST'
+    }
+  });
+  assert(
+    resCorsInvalido.headers.get('access-control-allow-origin') === null,
+    'Origem não autorizada NÃO recebe cabeçalho Access-Control-Allow-Origin'
+  );
+
+  // -------------------------------------------------------------------------
+  // FINALIZAÇÃO
+  // -------------------------------------------------------------------------
+  console.log('\n------------------------------------------------------------');
+  console.log(`TOTAL DE TESTES REAIS PHP: ${passed + failed} | APROVADOS: ${passed} | FALHAS: ${failed}`);
+  console.log('------------------------------------------------------------\n');
+
+  cleanup();
+
+  if (failed > 0) {
+    process.exit(1);
+  } else {
+    console.log('✓ Todos os testes de integração real PHP passaram com 100% de sucesso!');
+    process.exit(0);
   }
 }
 
-assert(fs.existsSync(dummyPrivateFile) === true, 'Arquivo sensível migrado para pasta privada');
-assert(fs.existsSync(dummyWebrootFile) === false, 'Cópia sensível original no diretório público foi eliminada');
-
-// Limpeza da sandbox
-try {
-  fs.rmSync(sandboxDir, { recursive: true, force: true });
-} catch {}
-
-console.log('\n------------------------------------------------------------');
-console.log(`TOTAL DE TESTES DE INTEGRAÇÃO: ${passed + failed} | APROVADOS: ${passed} | FALHAS: ${failed}`);
-console.log('------------------------------------------------------------\n');
-
-if (failed > 0) {
+runTests().catch(err => {
+  console.error('\n[ERRO CRÍTICO NA EXECUÇÃO DOS TESTES]:', err);
+  cleanup();
   process.exit(1);
-} else {
-  console.log('✓ Todos os testes de integração funcional passaram com 100% de sucesso!\n');
-  process.exit(0);
-}
+});

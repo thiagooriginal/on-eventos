@@ -14,7 +14,7 @@ function validarAssinaturaWebhook($headers, $rawBody, $payload = []) {
     $webhookSecret = getenv('SICREDI_WEBHOOK_SECRET');
     if (empty($webhookSecret) && file_exists($GLOBALS['configFile'])) {
         $cfg = json_decode(@file_get_contents($GLOBALS['configFile']), true) ?: [];
-        $webhookSecret = $cfg['webhook_secret'] ?? '';
+        $webhookSecret = $cfg['webhook_secret'] ?? $cfg['webhookSecret'] ?? '';
     }
 
     // 2. Verifica token de cabeçalho oficial (Bearer token em Authorization, X-Webhook-Secret ou x-api-key)
@@ -24,6 +24,20 @@ function validarAssinaturaWebhook($headers, $rawBody, $payload = []) {
         if (stripos($auth, 'Bearer ') === 0) {
             $tokenEnviado = substr($auth, 7);
         }
+    }
+
+    // Suporte para servidores PHP CLI embutido / FastCGI onde getallheaders omite cabeçalhos customizados
+    if (empty($tokenEnviado) && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
+        $auth = trim($_SERVER['HTTP_AUTHORIZATION']);
+        if (stripos($auth, 'Bearer ') === 0) {
+            $tokenEnviado = substr($auth, 7);
+        }
+    }
+    if (empty($tokenEnviado) && !empty($_SERVER['HTTP_X_WEBHOOK_SECRET'])) {
+        $tokenEnviado = trim($_SERVER['HTTP_X_WEBHOOK_SECRET']);
+    }
+    if (empty($tokenEnviado) && !empty($_SERVER['HTTP_X_API_KEY'])) {
+        $tokenEnviado = trim($_SERVER['HTTP_X_API_KEY']);
     }
 
     // Validação estrita por token compartilhado do Sicredi em tempo constante

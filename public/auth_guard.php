@@ -214,13 +214,175 @@ function reset_rate_limit($action, $identifier) {
     }
 }
 
-// 6. Sanitização de Usuário (Nunca envia senhas, hashes ou segredos)
+// 6. Sanitização de Usuário (Nunca envia senhas, hashes, segredos ou tokens de redefinição)
 function sanitize_user_for_client($user) {
     if (!is_array($user)) return null;
     $safe = $user;
     unset($safe['senha']);
     unset($safe['senhaHash']);
+    unset($safe['resetTokenHash']);
     return $safe;
+}
+
+// 6.1 Auditoria e Registro de Eventos Críticos de Segurança
+function log_security_event($event, $context = []) {
+    $auditFile = get_secure_storage_path('_security_audit.log');
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $entry = [
+        'timestamp' => date('c'),
+        'event' => $event,
+        'ip' => $ip,
+        'context' => $context
+    ];
+    @file_put_contents($auditFile, json_encode($entry, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+}
+
+// 6.2 Geração de Token Criptográfico Seguro de Uso Único para Redefinição de Senha
+function generate_password_reset_token($email, $validitySeconds = 1800) {
+    $emailLimpo = strtolower(trim($email));
+    if (empty($emailLimpo)) {
+        return null;
+    }
+
+    $usuarios = carregar_usuarios_seguros();
+    $usuarioIndex = null;
+    foreach ($usuarios as $i => $u) {
+        if (strtolower(trim($u['email'] ?? '')) === $emailLimpo) {
+            $usuarioIndex = $i;
+            break;
+        }
+    }
+
+    if ($usuarioIndex === null) {
+        return null;
+    }
+
+    // Token com 256 bits de entropia criptográfica (64 hexadecimais)
+    $rawToken = bin2hex(random_bytes(32));
+    $tokenHash = hash('sha256', $rawToken);
+    $expires = time() + $validitySeconds;
+
+    $usuarios[$usuarioIndex]['resetTokenHash'] = $tokenHash;
+    $usuarios[$usuarioIndex]['resetTokenExpires'] = $expires;
+    $usuarios[$usuarioIndex]['resetTokenUsed'] = false;
+    $usuarios[$usuarioIndex]['resetTokenCreatedAt'] = time();
+
+    salvar_usuarios_seguros($usuarios);
+
+    log_security_event('PASSWORD_RESET_TOKEN_GENERATED', [
+        'email' => $emailLimpo,
+        'expires_at' => date('c', $expires),
+        'validity_seconds' => $validitySeconds
+    ]);
+
+    return [
+        'token' => $rawToken,
+        'expiraEm' => date('c', $expires),
+        'expiraTimestamp' => $expires,
+        'email' => $usuarios[$usuarioIndex]['email'],
+        'usuarioNome' => $usuarios[$usuarioIndex]['nome']
+    ];
+}
+
+// 6.3 Verificação Estrita e Consumo de Uso Único de Token de Redefinição
+function verify_and_consume_reset_token($rawToken, $novaSenha, $emailOpcional = null) {
+    $rawTokenLimpo = trim((string)$rawToken);
+    if (empty($rawTokenLimpo) || strlen($rawTokenLimpo) < 32) {
+        return [
+            'sucesso' => false,
+            'erro' => 'Token de redefinição inválido ou ausente.',
+            'codigo' => 'TOKEN_INVALID'
+        ];
+    }
+
+    if (strlen((string)$novaSenha) < 8) {
+        return [
+            'sucesso' => false,
+            'erro' => 'A nova senha deve possuir no mínimo 8 caracteres.',
+            'codigo' => 'PASSWORD_TOO_SHORT'
+        ];
+    }
+
+    $tokenHash = hash('sha256', $rawTokenLimpo);
+    $usuarios = carregar_usuarios_seguros();
+    $usuarioIndex = null;
+
+    foreach ($usuarios as $i => $u) {
+        if (empty($u['resetTokenHash'])) {
+            continue;
+        }
+
+        if ($emailOpcional !== null && !empty($emailOpcional)) {
+            if (strtolower(trim($u['email'] ?? '')) !== strtolower(trim($emailOpcional))) {
+                continue;
+            }
+        }
+
+        if (hash_equals($u['resetTokenHash'], $tokenHash)) {
+            $usuarioIndex = $i;
+            break;
+        }
+    }
+
+    if ($usuarioIndex === null) {
+        log_security_event('PASSWORD_RESET_FAILED_INVALID_TOKEN', [
+            'provided_token_hash_prefix' => substr($tokenHash, 0, 8)
+        ]);
+        return [
+            'sucesso' => false,
+            'erro' => 'Token de redefinição inválido ou inexistente.',
+            'codigo' => 'TOKEN_INVALID'
+        ];
+    }
+
+    $usuario = $usuarios[$usuarioIndex];
+
+    // Validação 1: Uso Único
+    if (!empty($usuario['resetTokenUsed'])) {
+        log_security_event('PASSWORD_RESET_REPLAY_ATTACK_PREVENTED', [
+            'email' => $usuario['email']
+        ]);
+        return [
+            'sucesso' => false,
+            'erro' => 'Este token de redefinição já foi utilizado anteriormente.',
+            'codigo' => 'TOKEN_ALREADY_USED'
+        ];
+    }
+
+    // Validação 2: Expiração Temporal
+    $expiresAt = (int)($usuario['resetTokenExpires'] ?? 0);
+    if (time() > $expiresAt) {
+        log_security_event('PASSWORD_RESET_TOKEN_EXPIRED', [
+            'email' => $usuario['email'],
+            'expired_at' => date('c', $expiresAt)
+        ]);
+        return [
+            'sucesso' => false,
+            'erro' => 'O token de redefinição informado já expirou. Solicite um novo link de redefinição.',
+            'codigo' => 'TOKEN_EXPIRED'
+        ];
+    }
+
+    // Sucesso: Aplica novo hash forte, invalida token e marca como utilizado
+    $usuarios[$usuarioIndex]['senhaHash'] = hash_secure_password($novaSenha);
+    $usuarios[$usuarioIndex]['precisaRedefinirSenha'] = false;
+    $usuarios[$usuarioIndex]['resetTokenUsed'] = true;
+    $usuarios[$usuarioIndex]['resetTokenHash'] = null;
+    $usuarios[$usuarioIndex]['resetTokenExpires'] = null;
+    $usuarios[$usuarioIndex]['senhaAlteradaEm'] = date('c');
+    unset($usuarios[$usuarioIndex]['senha']);
+
+    salvar_usuarios_seguros($usuarios);
+
+    log_security_event('PASSWORD_RESET_SUCCESS', [
+        'email' => $usuario['email']
+    ]);
+
+    return [
+        'sucesso' => true,
+        'mensagem' => 'Senha redefinida com sucesso! Você já pode efetuar o login com suas novas credenciais.',
+        'usuario' => sanitize_user_for_client($usuarios[$usuarioIndex])
+    ];
 }
 
 // 7. Base de Usuários Sem Senhas Padrão Conhecidas e Com Exigência de Redefinição

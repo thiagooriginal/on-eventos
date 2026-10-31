@@ -299,7 +299,65 @@ export async function removerUsuario(id: string): Promise<boolean> {
   return true;
 }
 
-// Redefinição Segura de Credencial Obrigatória
+// Redefinição Segura com Token Criptográfico de Uso Único
+export async function solicitarRecuperacaoAcesso(email: string): Promise<{
+  sucesso: boolean;
+  mensagem?: string;
+  erro?: string;
+}> {
+  try {
+    const res = await fetch('/usuarios.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'solicitar_recuperacao',
+        email: email.trim().toLowerCase(),
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.sucesso) {
+      return { sucesso: false, erro: data?.erro || 'Não foi possível solicitar a recuperação de acesso.' };
+    }
+    return { sucesso: true, mensagem: data.mensagem };
+  } catch (e) {
+    return { sucesso: false, erro: 'Falha na conexão com o servidor.' };
+  }
+}
+
+export async function redefinirComToken(
+  token: string,
+  novaCredencial: string,
+  email?: string
+): Promise<{
+  sucesso: boolean;
+  mensagem?: string;
+  erro?: string;
+}> {
+  try {
+    const res = await fetch('/usuarios.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'redefinir_com_token',
+        token: token.trim(),
+        novaSenha: novaCredencial,
+        email: email ? email.trim().toLowerCase() : undefined,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.sucesso) {
+      return {
+        sucesso: false,
+        erro: data?.erro || 'Token de redefinição inválido, já utilizado ou expirado.',
+      };
+    }
+    return { sucesso: true, mensagem: data.mensagem };
+  } catch (e) {
+    return { sucesso: false, erro: 'Falha na comunicação com o servidor de autenticação.' };
+  }
+}
+
+// Redefinição Segura de Credencial Obrigatória (Sessão Ativa)
 export async function redefinirCredencial(novaCredencial: string): Promise<{
   sucesso: boolean;
   erro?: string;

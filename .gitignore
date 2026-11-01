@@ -38,7 +38,10 @@ public/videos/WhatsApp Video*
 /public/whatsapp_qrcode.png
 /public/**/private/
 /private-data/
+/private_data/
+private_data/
 /secure-data/
+*.bak
 
 # Arquivos de certificados e chaves
 *.p12

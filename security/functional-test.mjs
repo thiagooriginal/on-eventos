@@ -19,6 +19,7 @@ import { spawn } from 'node:child_process';
 
 const root = process.cwd();
 const sandboxDir = path.join(root, '.test_sandbox_functional');
+const webrootDir = path.join(sandboxDir, 'public');
 const privateDir = path.join(sandboxDir, 'private_data');
 
 function findPhpBinary() {
@@ -47,12 +48,13 @@ const phpBinary = findPhpBinary();
 if (fs.existsSync(sandboxDir)) {
   fs.rmSync(sandboxDir, { recursive: true, force: true });
 }
+fs.mkdirSync(webrootDir, { recursive: true });
 fs.mkdirSync(privateDir, { recursive: true });
 
-// Copia arquivos do backend PHP para o sandbox
+// Copia arquivos do backend PHP para o webroot do sandbox
 const publicDir = path.join(root, 'public');
 for (const file of fs.readdirSync(publicDir).filter(f => f.endsWith('.php'))) {
-  fs.copyFileSync(path.join(publicDir, file), path.join(sandboxDir, file));
+  fs.copyFileSync(path.join(publicDir, file), path.join(webrootDir, file));
 }
 
 // Cria administrador inicial com hash Bcrypt real para 'SenhaAdminForte@123'
@@ -115,8 +117,9 @@ console.log(`- Executável PHP: ${phpBinary}`);
 console.log(`- Servidor alvo:  ${BASE_URL}`);
 console.log(`- Sandbox:        ${sandboxDir}\n`);
 
-const phpServer = spawn(phpBinary, ['-S', `127.0.0.1:${PORT}`, '-t', sandboxDir], {
-  stdio: 'ignore'
+const phpServer = spawn(phpBinary, ['-S', `127.0.0.1:${PORT}`, '-t', webrootDir], {
+  stdio: 'ignore',
+  env: { ...process.env, ON_PRIVATE_DATA_DIR: privateDir }
 });
 
 function cleanup() {

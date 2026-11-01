@@ -168,7 +168,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Rate limit rigoroso no servidor para impedir abuso ou varredura de e-mails (3 solicitações / 5 minutos)
+        // 1. Verifica se limite de requisições por e-mail/IP foi atingido
         check_server_rate_limit('pwd_reset_req', $email, 3, 300);
+
+        // 2. Registra a solicitação incondicionalmente (inclusive bem-sucedidas) no rate limiter
+        record_rate_limit_attempt('pwd_reset_req', $email, 300);
 
         $tokenData = generate_password_reset_token($email, 1800);
 

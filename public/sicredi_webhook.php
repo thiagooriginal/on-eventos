@@ -124,24 +124,61 @@ if (!validarAssinaturaWebhook($headers, $raw, $payload)) {
 
 // Processamento da notificação de liquidação com correspondência EXATA (Suporta Boleto Sicredi e Pix Sicredi BACEN)
 $seuNumero = trim((string)($payload['seuNumero'] ?? $payload['txid'] ?? $payload['nossoNumero'] ?? ''));
-$statusPagamento = strtoupper(trim((string)($payload['status'] ?? $payload['situacao'] ?? 'LIQUIDADO')));
 
-// Suporte ao formato oficial Pix Sicredi / BACEN onde os dados vêm dentro do array 'pix'
-if (empty($seuNumero) && !empty($payload['pix']) && is_array($payload['pix']) && isset($payload['pix'][0])) {
+// Extração do status e evento declarados (NUNCA assume 'LIQUIDADO' por padrão)
+$statusDeclarado = strtoupper(trim((string)($payload['status'] ?? $payload['situacao'] ?? $payload['statusPagamento'] ?? '')));
+$evento = strtoupper(trim((string)($payload['evento'] ?? $payload['tipoOperacao'] ?? $payload['tipoEvento'] ?? '')));
+
+// Eventos bancários que expressamente NÃO representam liquidação financeira (devem ser ignorados para baixa)
+$eventosNaoLiquidacao = [
+    'REGISTRO', 'ENTRADA_CONFIRMADA', 'EMISSAO', 'ALTERACAO', 'ALTERACAO_VENCIMENTO',
+    'ALTERACAO_VALOR', 'BAIXA_ADMINISTRATIVA', 'BAIXA_SEM_PAGAMENTO', 'CANCELAMENTO',
+    'PROTESTO', 'PEDIDO_BAIXA', 'DEVOLUCAO', 'ESTORNO', 'REJEICAO'
+];
+
+$eventoNaoPermitido = (!empty($evento) && in_array($evento, $eventosNaoLiquidacao, true));
+
+// Status que confirmam quitação financeira legítima
+$statusConfirmadosPagamento = ['LIQUIDADO', 'PAGO', 'BAIXADO_POR_LIQUIDACAO', 'RECEBIDO', 'CONCLUIDO'];
+
+// Suporte estrito ao formato oficial Pix Sicredi / BACEN (array 'pix')
+$isPixBacenValido = false;
+if (!empty($payload['pix']) && is_array($payload['pix']) && isset($payload['pix'][0])) {
     $itemPix = $payload['pix'][0];
-    $seuNumero = trim((string)($itemPix['txid'] ?? $itemPix['endToEndId'] ?? ''));
-    $statusPagamento = 'LIQUIDADO';
+    $txidPix = trim((string)($itemPix['txid'] ?? ''));
+    $e2ePix = trim((string)($itemPix['endToEndId'] ?? ''));
+    $valorPix = floatval($itemPix['valor'] ?? 0);
+    $temDevolucao = !empty($itemPix['devolucoes']) && is_array($itemPix['devolucoes']) && count($itemPix['devolucoes']) > 0;
+    $statusPix = strtoupper(trim((string)($itemPix['status'] ?? 'CONCLUIDO')));
+
+    if (empty($seuNumero)) {
+        $seuNumero = !empty($txidPix) ? $txidPix : $e2ePix;
+    }
+
+    // Critérios estritos BACEN/Sicredi Pix: identificador presente, valor > 0, sem devoluções, status não estornado
+    if (!empty($seuNumero) && $valorPix > 0 && !$temDevolucao && !in_array($statusPix, ['DEVOLVIDO', 'CANCELADO', 'REJEITADO', 'ESTORNADO'], true)) {
+        $isPixBacenValido = true;
+        $statusDeclarado = 'LIQUIDADO';
+    }
 }
 
-// Status que confirmam pagamento real
-$statusValidosPagamento = ['LIQUIDADO', 'PAGO', 'BAIXADO', 'RECEBIDO', 'CONCLUIDO'];
-$statusValido = in_array($statusPagamento, $statusValidosPagamento);
+// Determinação estrita da liquidação segundo os formatos contratuais Sicredi
+$pagamentoEfetivamenteLiquidado = false;
+if (!$eventoNaoPermitido) {
+    if ($isPixBacenValido) {
+        $pagamentoEfetivamenteLiquidado = true;
+    } elseif (!empty($statusDeclarado) && in_array($statusDeclarado, $statusConfirmadosPagamento, true)) {
+        $pagamentoEfetivamenteLiquidado = true;
+    } elseif (!empty($evento) && (strpos($evento, 'LIQUIDAC') !== false || in_array($evento, ['TITULO_LIQUIDADO', 'BAIXA_POR_LIQUIDACAO', 'PIX_RECEBIDO', 'PAGO'], true))) {
+        $pagamentoEfetivamenteLiquidado = true;
+    }
+}
 
 $baixou = false;
 $jaEstavaPago = false;
 $vendaAfetada = null;
 
-if (!empty($seuNumero) && $statusValido && file_exists($vendasFile)) {
+if (!empty($seuNumero) && $pagamentoEfetivamenteLiquidado && file_exists($vendasFile)) {
     $vendas = json_decode(file_get_contents($vendasFile), true);
     if (is_array($vendas)) {
         foreach ($vendas as $vi => $venda) {
@@ -183,6 +220,8 @@ echo json_encode([
     'sucesso' => true,
     'baixado' => $baixou,
     'jaPagoAnteriormente' => $jaEstavaPago,
+    'pagamentoLiquidado' => $pagamentoEfetivamenteLiquidado,
+    'statusReconhecido' => $statusDeclarado ?: ($evento ?: 'NAO_INFORMADO'),
     'pedido' => $vendaAfetada,
-    'mensagem' => $baixou ? 'Pagamento liquidado e registrado com sucesso!' : ($jaEstavaPago ? 'Pagamento já havia sido baixado anteriormente (idempotente).' : 'Notificação recebida e verificada.')
+    'mensagem' => $baixou ? 'Pagamento liquidado e registrado com sucesso!' : ($jaEstavaPago ? 'Pagamento já havia sido baixado anteriormente (idempotente).' : ($pagamentoEfetivamenteLiquidado ? 'Notificação verificada, mas parcela não localizada na base.' : 'Notificação recebida. Status não representa liquidação financeira válida; nenhuma alteração efetuada.'))
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);

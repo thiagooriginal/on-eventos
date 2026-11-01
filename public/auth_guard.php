@@ -36,7 +36,7 @@ function setup_secure_cors() {
     header('X-Frame-Options: SAMEORIGIN');
     header('X-XSS-Protection: 1; mode=block');
 
-    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
         http_response_code(200);
         exit;
     }
@@ -44,13 +44,45 @@ function setup_secure_cors() {
 
 setup_secure_cors();
 
-// 2. Armazenamento Seguro com Eliminação de Cópias no Webroot Público
-function get_secure_storage_path($filename) {
-    $privateDir = __DIR__ . '/private_data';
+// 2. Armazenamento Seguro Fora da Raiz Pública (Sem Fallback Inseguro)
+function get_secure_storage_dir() {
+    $custom = getenv('ON_PRIVATE_DATA_DIR');
+    if (!empty($custom)) {
+        return rtrim($custom, '/\\');
+    }
+    // Armazena estritamente fora do diretório público (um nível acima de public/)
+    return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'private_data';
+}
 
-    // Cria diretório privado com proteções se não existir
+function is_dir_really_writable($dir) {
+    if (!is_dir($dir)) return false;
+    $testFile = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . '.wtest_' . bin2hex(random_bytes(8));
+    $fp = @fopen($testFile, 'w');
+    if ($fp) {
+        @fclose($fp);
+        @unlink($testFile);
+        return true;
+    }
+    return false;
+}
+
+function get_secure_storage_path($filename) {
+    // Sanitização contra Directory Traversal
+    $filenameLimpo = basename($filename);
+    $privateDir = get_secure_storage_dir();
+
+    // Cria diretório privado seguro se não existir
     if (!is_dir($privateDir)) {
-        @mkdir($privateDir, 0750, true);
+        if (!@mkdir($privateDir, 0750, true)) {
+            // Falha segura: NUNCA faz fallback para o diretório público
+            http_response_code(500);
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Erro interno de segurança: diretório de dados privados inacessível. O fallback inseguro foi bloqueado.',
+                'codigo' => 'SECURE_STORAGE_UNAVAILABLE'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
         $htaccessPath = $privateDir . '/.htaccess';
         if (!file_exists($htaccessPath)) {
             $htaccessContent = "<IfModule authz_core_module>\n  Require all denied\n</IfModule>\n<IfModule !authz_core_module>\n  Deny from all\n</IfModule>\n";
@@ -62,26 +94,130 @@ function get_secure_storage_path($filename) {
         }
     }
 
-    $webrootFile = __DIR__ . '/' . $filename;
-    $privateFile = $privateDir . '/' . $filename;
-
-    if (is_dir($privateDir) && is_writable($privateDir)) {
-        // Se arquivo já existe no webroot público, migra para a pasta privada e remove do webroot
-        if (file_exists($webrootFile)) {
-            if (!file_exists($privateFile)) {
-                $copiado = @copy($webrootFile, $privateFile);
-                if ($copiado && filesize($privateFile) === filesize($webrootFile)) {
-                    @unlink($webrootFile);
-                }
-            } else {
-                // Já existe cópia segura no private_data: remove a cópia pública redundante
-                @unlink($webrootFile);
-            }
-        }
-        return $privateFile;
+    if (!is_dir_really_writable($privateDir)) {
+        http_response_code(500);
+        echo json_encode([
+            'sucesso' => false,
+            'erro' => 'Erro interno de segurança: diretório privado seguro sem permissão de gravação.',
+            'codigo' => 'SECURE_STORAGE_NOT_WRITABLE'
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
-    return $webrootFile;
+    $targetFile = $privateDir . DIRECTORY_SEPARATOR . $filenameLimpo;
+
+    // Migração não destrutiva com backup automático de dados remanescentes em locais legados
+    $legacyPublic = __DIR__ . DIRECTORY_SEPARATOR . $filenameLimpo;
+    $legacySubdir = __DIR__ . DIRECTORY_SEPARATOR . 'private_data' . DIRECTORY_SEPARATOR . $filenameLimpo;
+
+    foreach ([$legacySubdir, $legacyPublic] as $legacyFile) {
+        if (file_exists($legacyFile) && realpath($legacyFile) !== realpath($targetFile)) {
+            $backupDir = $privateDir . DIRECTORY_SEPARATOR . 'backups';
+            if (!is_dir($backupDir)) {
+                @mkdir($backupDir, 0750, true);
+            }
+
+            if (!file_exists($targetFile)) {
+                // Realiza backup pré-migração
+                $backupFile = $backupDir . DIRECTORY_SEPARATOR . date('Ymd_His') . '_legacy_' . $filenameLimpo . '.bak';
+                @copy($legacyFile, $backupFile);
+
+                // Copia e valida integridade via SHA-256 e tamanho de arquivo
+                if (@copy($legacyFile, $targetFile)) {
+                    if (filesize($targetFile) === filesize($legacyFile) && hash_file('sha256', $targetFile) === hash_file('sha256', $legacyFile)) {
+                        @unlink($legacyFile);
+                    }
+                }
+            } else {
+                // Se já existe no destino seguro com conteúdo idêntico, remove cópia remanescente no webroot
+                if (hash_file('sha256', $targetFile) === hash_file('sha256', $legacyFile)) {
+                    @unlink($legacyFile);
+                }
+            }
+        }
+    }
+
+    return $targetFile;
+}
+
+// 2.1 Backup e Restauração Não Destrutiva de Dados Privados
+function create_private_data_backup($label = null) {
+    $privateDir = get_secure_storage_dir();
+    $backupDir = $privateDir . DIRECTORY_SEPARATOR . 'backups';
+    if (!is_dir($backupDir)) {
+        @mkdir($backupDir, 0750, true);
+    }
+
+    $cleanLabel = $label ? preg_replace('/[^a-zA-Z0-9_-]/', '_', $label) : date('Ymd_His');
+    $snapshotDir = $backupDir . DIRECTORY_SEPARATOR . 'snapshot_' . $cleanLabel;
+    if (!is_dir($snapshotDir)) {
+        @mkdir($snapshotDir, 0750, true);
+    }
+
+    $manifest = [
+        'timestamp' => date('c'),
+        'label' => $cleanLabel,
+        'files' => []
+    ];
+
+    if (is_dir($privateDir)) {
+        $items = scandir($privateDir);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..' || $item === 'backups' || $item === '.htaccess' || $item === 'index.html') continue;
+            $src = $privateDir . DIRECTORY_SEPARATOR . $item;
+            if (is_file($src)) {
+                $dst = $snapshotDir . DIRECTORY_SEPARATOR . $item;
+                if (@copy($src, $dst)) {
+                    $manifest['files'][$item] = [
+                        'size' => filesize($dst),
+                        'sha256' => hash_file('sha256', $dst)
+                    ];
+                }
+            }
+        }
+    }
+
+    @file_put_contents($snapshotDir . DIRECTORY_SEPARATOR . 'manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    return [
+        'sucesso' => true,
+        'snapshot_dir' => $snapshotDir,
+        'total_arquivos' => count($manifest['files']),
+        'manifest' => $manifest
+    ];
+}
+
+function restore_private_data_backup($labelOrPath) {
+    $privateDir = get_secure_storage_dir();
+    $backupDir = $privateDir . DIRECTORY_SEPARATOR . 'backups';
+    $srcDir = is_dir($labelOrPath) ? $labelOrPath : $backupDir . DIRECTORY_SEPARATOR . 'snapshot_' . $labelOrPath;
+
+    if (!is_dir($srcDir)) {
+        return ['sucesso' => false, 'erro' => 'Snapshot de backup não localizado: ' . basename($labelOrPath)];
+    }
+
+    $manifestFile = $srcDir . DIRECTORY_SEPARATOR . 'manifest.json';
+    $manifest = file_exists($manifestFile) ? json_decode(file_get_contents($manifestFile), true) : null;
+
+    $restored = [];
+    $items = scandir($srcDir);
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..' || $item === 'manifest.json') continue;
+        $fileSrc = $srcDir . DIRECTORY_SEPARATOR . $item;
+        if (is_file($fileSrc)) {
+            $fileDst = $privateDir . DIRECTORY_SEPARATOR . $item;
+            if (@copy($fileSrc, $fileDst)) {
+                $restored[$item] = hash_file('sha256', $fileDst);
+            }
+        }
+    }
+
+    return [
+        'sucesso' => true,
+        'arquivos_restaurados' => count($restored),
+        'checksums' => $restored,
+        'manifest' => $manifest
+    ];
 }
 
 // 3. Gerenciamento de Sessão Segura (Cookies HttpOnly, Strict Mode e SameSite)
@@ -179,7 +315,7 @@ function check_server_rate_limit($action, $identifier, $maxAttempts = 5, $decayS
     return true;
 }
 
-function record_failed_attempt($action, $identifier, $decaySeconds = 60) {
+function record_rate_limit_attempt($action, $identifier, $decaySeconds = 60) {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $key = hash('sha256', "rl:{$action}:{$ip}:" . strtolower(trim($identifier)));
     $rateLimitFile = get_secure_storage_path('_rate_limits.json');
@@ -190,7 +326,7 @@ function record_failed_attempt($action, $identifier, $decaySeconds = 60) {
     }
 
     $now = time();
-    if (!isset($limits[$key])) {
+    if (!isset($limits[$key]) || (($limits[$key]['first_attempt'] ?? 0) + $decaySeconds < $now)) {
         $limits[$key] = [
             'attempts' => 1,
             'first_attempt' => $now,
@@ -202,6 +338,10 @@ function record_failed_attempt($action, $identifier, $decaySeconds = 60) {
     }
 
     @file_put_contents($rateLimitFile, json_encode($limits, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+function record_failed_attempt($action, $identifier, $decaySeconds = 60) {
+    record_rate_limit_attempt($action, $identifier, $decaySeconds);
 }
 
 function reset_rate_limit($action, $identifier) {
@@ -229,6 +369,16 @@ function sanitize_user_for_client($user) {
 }
 
 // 6.1 Auditoria e Registro de Eventos Críticos de Segurança
+function mask_email_for_audit($email) {
+    $email = strtolower(trim((string)$email));
+    $parts = explode('@', $email);
+    if (count($parts) !== 2) return '***@***';
+    $name = $parts[0];
+    $domain = $parts[1];
+    $maskedName = strlen($name) <= 2 ? substr($name, 0, 1) . '***' : substr($name, 0, 2) . '***' . substr($name, -1);
+    return $maskedName . '@' . $domain;
+}
+
 function log_security_event($event, $context = []) {
     $auditFile = get_secure_storage_path('_security_audit.log');
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
@@ -274,7 +424,8 @@ function generate_password_reset_token($email, $validitySeconds = 1800) {
     salvar_usuarios_seguros($usuarios);
 
     log_security_event('PASSWORD_RESET_TOKEN_GENERATED', [
-        'email' => $emailLimpo,
+        'destinatario_mascarado' => mask_email_for_audit($emailLimpo),
+        'destinatario_sha256' => hash('sha256', $emailLimpo),
         'expires_at' => date('c', $expires),
         'validity_seconds' => $validitySeconds
     ]);
@@ -311,31 +462,58 @@ function dispatch_password_reset_email($destinatarioEmail, $nomeUsuario, $rawTok
         "- Se você não solicitou esta redefinição, desconsidere esta mensagem. Sua conta permanece protegida.\n\n" .
         "Equipe de Segurança & Tecnologia - ON Agência de Eventos";
 
-    // 1. Tenta envio pelo serviço padrão do PHP
+    // 1. Tenta envio pelo serviço padrão do PHP com parâmetros compatíveis com o MTA da Hostinger
     $headersMail = [
         'From: ON Agência de Eventos <seguranca@onagenciadeeventos.com.br>',
         'Reply-To: suporte@onagenciadeeventos.com.br',
+        'Return-Path: <seguranca@onagenciadeeventos.com.br>',
+        'MIME-Version: 1.0',
         'X-Mailer: PHP/' . phpversion(),
         'Content-Type: text/plain; charset=UTF-8'
     ];
-    @mail($emailLimpo, $assunto, $mensagemTexto, implode("\r\n", $headersMail));
+    $mailEnviado = @mail($emailLimpo, $assunto, $mensagemTexto, implode("\r\n", $headersMail), "-f seguranca@onagenciadeeventos.com.br");
 
-    // 2. Registra o despacho de e-mail no spool seguro da aplicação (dentro de private_data, inacessível via HTTP)
+    // 2. Registra o despacho de auditoria (NUNCA armazena tokens ou links no log)
     $mailSpoolFile = get_secure_storage_path('_outbox_mail.log');
+
+    // Higienização preventiva de logs legados para expurgar tokens ou links remanescentes
+    if (file_exists($mailSpoolFile)) {
+        $rawLog = @file_get_contents($mailSpoolFile);
+        if ($rawLog && (strpos($rawLog, '"token"') !== false || strpos($rawLog, '"link"') !== false)) {
+            $lines = explode("\n", trim($rawLog));
+            $cleanLines = [];
+            foreach ($lines as $ln) {
+                if (empty($ln)) continue;
+                $entry = json_decode($ln, true);
+                if (is_array($entry)) {
+                    unset($entry['token']);
+                    unset($entry['link']);
+                    if (isset($entry['destinatario'])) {
+                        $entry['destinatario_mascarado'] = mask_email_for_audit($entry['destinatario']);
+                        unset($entry['destinatario']);
+                    }
+                    $cleanLines[] = json_encode($entry, JSON_UNESCAPED_UNICODE);
+                }
+            }
+            @file_put_contents($mailSpoolFile, implode("\n", $cleanLines) . (count($cleanLines) ? "\n" : ""), LOCK_EX);
+        }
+    }
+
     $mailEntry = [
         'data_envio' => date('c'),
-        'destinatario' => $emailLimpo,
-        'nome' => $nomeUsuario,
+        'destinatario_mascarado' => mask_email_for_audit($emailLimpo),
+        'destinatario_sha256' => hash('sha256', $emailLimpo),
         'assunto' => $assunto,
-        'token' => $rawToken,
         'expira_em' => date('c', $expiresTimestamp),
-        'link' => $linkRedefinicao,
-        'status_entrega' => 'DISPATCHED_TO_VERIFIED_INBOX'
+        'validade_minutos' => $minutosValidade,
+        'status_entrega' => $mailEnviado ? 'DISPATCHED_TO_HOSTINGER_MTA' : 'SIMULATED_TEST_MTA',
+        'mecanismo' => 'PHP_MAIL_HOSTINGER'
     ];
     @file_put_contents($mailSpoolFile, json_encode($mailEntry, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
 
     log_security_event('PASSWORD_RESET_EMAIL_DISPATCHED', [
-        'destinatario' => $emailLimpo,
+        'destinatario_mascarado' => mask_email_for_audit($emailLimpo),
+        'destinatario_sha256' => hash('sha256', $emailLimpo),
         'expires_at' => date('c', $expiresTimestamp)
     ]);
 
@@ -597,7 +775,7 @@ function get_authenticated_user() {
 
 // 9. Guarda de Autorização (RBAC) com Bloqueio de Usuários Pendentes de Redefinição
 function require_auth($perfisPermitidos = [], $permitirPendenteRedefinicao = false) {
-    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
         http_response_code(200);
         exit;
     }

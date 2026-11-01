@@ -122,9 +122,16 @@ if (!validarAssinaturaWebhook($headers, $raw, $payload)) {
     exit;
 }
 
-// Processamento da notificação de liquidação com correspondência EXATA
+// Processamento da notificação de liquidação com correspondência EXATA (Suporta Boleto Sicredi e Pix Sicredi BACEN)
 $seuNumero = trim((string)($payload['seuNumero'] ?? $payload['txid'] ?? $payload['nossoNumero'] ?? ''));
 $statusPagamento = strtoupper(trim((string)($payload['status'] ?? $payload['situacao'] ?? 'LIQUIDADO')));
+
+// Suporte ao formato oficial Pix Sicredi / BACEN onde os dados vêm dentro do array 'pix'
+if (empty($seuNumero) && !empty($payload['pix']) && is_array($payload['pix']) && isset($payload['pix'][0])) {
+    $itemPix = $payload['pix'][0];
+    $seuNumero = trim((string)($itemPix['txid'] ?? $itemPix['endToEndId'] ?? ''));
+    $statusPagamento = 'LIQUIDADO';
+}
 
 // Status que confirmam pagamento real
 $statusValidosPagamento = ['LIQUIDADO', 'PAGO', 'BAIXADO', 'RECEBIDO', 'CONCLUIDO'];

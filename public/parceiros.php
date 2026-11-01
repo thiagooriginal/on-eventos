@@ -78,16 +78,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Adicionar Profissional
-    if ($action === 'add_profissional' && !empty($payload['item'])) {
-        array_unshift($data['profissionais'], $payload['item']);
+    $itemProfissional = $payload['item'] ?? $payload['profissional'] ?? null;
+    if ($action === 'add_profissional' && !empty($itemProfissional)) {
+        array_unshift($data['profissionais'], $itemProfissional);
         file_put_contents($dataFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode(['sucesso' => true, 'profissionais' => $data['profissionais']]);
         exit;
     }
 
     // Adicionar Espaço
-    if ($action === 'add_espaco' && !empty($payload['item'])) {
-        array_unshift($data['espacos'], $payload['item']);
+    $itemEspaco = $payload['item'] ?? $payload['espaco'] ?? null;
+    if ($action === 'add_espaco' && !empty($itemEspaco)) {
+        array_unshift($data['espacos'], $itemEspaco);
         file_put_contents($dataFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode(['sucesso' => true, 'espacos' => $data['espacos']]);
         exit;

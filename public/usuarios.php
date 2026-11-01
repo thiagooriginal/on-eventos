@@ -157,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Ação 3: Solicitação de Redefinição de Senha (Público, com Rate Limiting e Token Criptográfico)
+    // Ação 3: Solicitação de Redefinição de Senha (Público, com Rate Limiting e Envio Exclusivo por E-mail)
     if ($action === 'solicitar_recuperacao') {
         $email = strtolower(trim($payload['email'] ?? ''));
 
@@ -172,20 +172,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $tokenData = generate_password_reset_token($email, 1800);
 
-        // Prevenção contra enumeração de usuários: resposta consistente
-        $resposta = [
-            'sucesso' => true,
-            'mensagem' => 'Se o endereço informado corresponder a um usuário ativo, um token criptográfico de uso único com expiração de 30 minutos foi emitido.'
-        ];
-
-        // Em ambiente de teste local autenticado por header interno, disponibiliza o token para a asserção automatizada
-        $isLocalTest = (isset($_SERVER['HTTP_X_TEST_MODE']) && in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1', 'localhost'], true));
-        if ($isLocalTest && $tokenData) {
-            $resposta['token_teste'] = $tokenData['token'];
-            $resposta['expiraEm'] = $tokenData['expiraEm'];
+        if ($tokenData) {
+            // Entrega segura e exclusiva do token na caixa postal verificada do titular
+            dispatch_password_reset_email(
+                $tokenData['email'],
+                $tokenData['usuarioNome'],
+                $tokenData['token'],
+                $tokenData['expiraTimestamp']
+            );
         }
 
-        echo json_encode($resposta, JSON_UNESCAPED_UNICODE);
+        // Resposta pública uniforme: NUNCA vaza o token no payload HTTP (zero exposição pública)
+        echo json_encode([
+            'sucesso' => true,
+            'mensagem' => 'Se o endereço informado corresponder a um usuário ativo cadastrado no sistema, as instruções e o link seguro de recuperação foram enviados para a sua caixa de entrada com validade de 30 minutos.'
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -280,18 +281,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Ação 6: Redefinição Segura de Senha na Sessão Ativa (Exige CSRF e Sessão Autenticada)
+    // Ação 6: Redefinição Segura de Senha na Sessão Ativa (Exige CSRF, Sessão e Comprovação Rigorosa de Identidade)
     if ($action === 'redefinir_senha' || $action === 'redefinir_credencial') {
         $usuarioSessao = require_auth([], true);
         verify_csrf_token($payload['csrf_token'] ?? null);
 
         $novaSenha = (string)($payload['novaSenha'] ?? $payload['novaCredencial'] ?? '');
+        $senhaAtual = (string)($payload['senhaAtual'] ?? $payload['credencialAtual'] ?? '');
+        $token = trim((string)($payload['token'] ?? ''));
 
         if (strlen($novaSenha) < 8) {
             http_response_code(400);
             echo json_encode([
                 'sucesso' => false,
-                'erro' => 'A nova senha deve possuir no mínimo 8 caracteres para sua segurança.'
+                'erro' => 'A nova senha deve possuir no mínimo 8 caracteres para sua segurança.',
+                'codigo' => 'PASSWORD_TOO_SHORT'
             ], JSON_UNESCAPED_UNICODE);
             exit;
         }
@@ -311,13 +315,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        // Comprovação estrita de identidade: exige senha atual OU token seguro de uso único
+        $identidadeComprovada = false;
+        $hashExistente = $usuarios[$usuarioIndex]['senhaHash'] ?? '';
+
+        if (!empty($hashExistente) && !empty($senhaAtual)) {
+            if (verify_secure_password($senhaAtual, $hashExistente)) {
+                $identidadeComprovada = true;
+            }
+        }
+
+        // Validação alternativa por token de uso único
+        if (!$identidadeComprovada && !empty($token) && !empty($usuarios[$usuarioIndex]['resetTokenHash'])) {
+            $tokenHash = hash('sha256', $token);
+            if (hash_equals($usuarios[$usuarioIndex]['resetTokenHash'], $tokenHash)) {
+                $expiraTimestamp = (int)($usuarios[$usuarioIndex]['resetTokenExpires'] ?? 0);
+                if (time() <= $expiraTimestamp && empty($usuarios[$usuarioIndex]['resetTokenUsed'])) {
+                    $identidadeComprovada = true;
+                }
+            }
+        }
+
+        if (!$identidadeComprovada) {
+            record_failed_attempt('redefinir_auth', $usuarioSessao['email'], 60);
+            http_response_code(401);
+            echo json_encode([
+                'sucesso' => false,
+                'erro' => 'Comprovação de identidade necessária: informe sua senha atual correta ou um token seguro de uso único válido.',
+                'codigo' => 'IDENTITY_PROOF_REQUIRED'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
         // Aplica novo hash forte e remove a exigência de redefinição
         $usuarios[$usuarioIndex]['senhaHash'] = hash_secure_password($novaSenha);
         $usuarios[$usuarioIndex]['precisaRedefinirSenha'] = false;
         $usuarios[$usuarioIndex]['senhaAlteradaEm'] = date('c');
+        $usuarios[$usuarioIndex]['resetTokenUsed'] = true;
+        $usuarios[$usuarioIndex]['resetTokenHash'] = null;
+        $usuarios[$usuarioIndex]['resetTokenExpires'] = null;
         unset($usuarios[$usuarioIndex]['senha']);
 
         salvar_usuarios_seguros($usuarios);
+
+        log_security_event('PASSWORD_RESET_AUTHENTICATED_SUCCESS', [
+            'email' => $usuarios[$usuarioIndex]['email']
+        ]);
 
         echo json_encode([
             'sucesso' => true,
@@ -366,6 +409,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'add' && !empty($payload['usuario'])) {
         $novo = $payload['usuario'];
         $novoEmail = strtolower(trim($novo['email'] ?? ''));
+
+        if (empty($novo['id'])) {
+            $novo['id'] = 'usr-' . bin2hex(random_bytes(6));
+        }
 
         // Se veio senha personalizada com tamanho adequado, aplica hash seguro;
         // Senão, gera token criptográfico seguro de primeiro acesso para entrega individual
@@ -456,7 +503,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Ação 6: Salvar lista de usuários (sincronização de administradores com CSRF)
+    // Ação 6: Salvar lista de usuários (sincronização de administradores com CSRF - sem alteração arbitrária de senhas)
     if ($action === 'save' && isset($payload['usuarios']) && is_array($payload['usuarios'])) {
         $mapaHashes = [];
         $mapaRedefinir = [];
@@ -475,19 +522,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $uEmail = strtolower(trim($u['email'] ?? ''));
             if (empty($uEmail)) continue;
 
-            if (!empty($u['senha'])) {
-                $u['senhaHash'] = hash_secure_password($u['senha']);
-                $u['precisaRedefinirSenha'] = false;
-                unset($u['senha']);
-            } elseif (!empty($mapaHashes[$uEmail])) {
+            // Preserva estritamente hashes existentes; impede modificação de senhas em massa
+            if (!empty($mapaHashes[$uEmail])) {
                 $u['senhaHash'] = $mapaHashes[$uEmail];
                 $u['precisaRedefinirSenha'] = $mapaRedefinir[$uEmail] ?? false;
-                unset($u['senha']);
             } else {
                 $u['senhaHash'] = '';
                 $u['precisaRedefinirSenha'] = true;
-                unset($u['senha']);
             }
+            unset($u['senha']);
 
             $novosUsuarios[] = $u;
         }

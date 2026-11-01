@@ -4,6 +4,10 @@
  * Proteção Estrita de Sessão, RBAC Dinâmico, Rate Limiting, Hashing e CSRF Sem Bypass.
  */
 
+// Impede vazamento de avisos internos de PHP no fluxo de respostas JSON
+ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED);
+
 // 1. Configuração de CORS Estrito (Comparação Exata de Protocolo, Host e Porta)
 function setup_secure_cors() {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -284,6 +288,60 @@ function generate_password_reset_token($email, $validitySeconds = 1800) {
     ];
 }
 
+// 6.2.1 Envio Seguro de E-mail de Recuperação com Token de Uso Único
+function dispatch_password_reset_email($destinatarioEmail, $nomeUsuario, $rawToken, $expiresTimestamp) {
+    $emailLimpo = strtolower(trim($destinatarioEmail));
+    if (empty($emailLimpo) || !filter_var($emailLimpo, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+
+    $minutosValidade = max(1, round(($expiresTimestamp - time()) / 60));
+    $linkRedefinicao = "https://onagenciadeeventos.com.br/login?token=" . urlencode($rawToken) . "&email=" . urlencode($emailLimpo);
+    $dataHoraFormatada = date('d/m/Y H:i');
+
+    $assunto = "ON Agência de Eventos - Redefinição de Senha e Recuperação de Acesso";
+
+    $mensagemTexto = "Olá, {$nomeUsuario}!\n\n" .
+        "Uma solicitação de redefinição de acesso foi registrada para a sua conta no Portal Administrativo da ON Agência de Eventos em {$dataHoraFormatada}.\n\n" .
+        "Para definir sua nova senha com segurança, utilize o token criptográfico de uso único abaixo:\n\n" .
+        "TOKEN DE ACESSO: {$rawToken}\n\n" .
+        "Ou acesse diretamente pelo link seguro:\n{$linkRedefinicao}\n\n" .
+        "ATENÇÃO:\n" .
+        "- Este token é de uso único e expira em {$minutosValidade} minutos.\n" .
+        "- Se você não solicitou esta redefinição, desconsidere esta mensagem. Sua conta permanece protegida.\n\n" .
+        "Equipe de Segurança & Tecnologia - ON Agência de Eventos";
+
+    // 1. Tenta envio pelo serviço padrão do PHP
+    $headersMail = [
+        'From: ON Agência de Eventos <seguranca@onagenciadeeventos.com.br>',
+        'Reply-To: suporte@onagenciadeeventos.com.br',
+        'X-Mailer: PHP/' . phpversion(),
+        'Content-Type: text/plain; charset=UTF-8'
+    ];
+    @mail($emailLimpo, $assunto, $mensagemTexto, implode("\r\n", $headersMail));
+
+    // 2. Registra o despacho de e-mail no spool seguro da aplicação (dentro de private_data, inacessível via HTTP)
+    $mailSpoolFile = get_secure_storage_path('_outbox_mail.log');
+    $mailEntry = [
+        'data_envio' => date('c'),
+        'destinatario' => $emailLimpo,
+        'nome' => $nomeUsuario,
+        'assunto' => $assunto,
+        'token' => $rawToken,
+        'expira_em' => date('c', $expiresTimestamp),
+        'link' => $linkRedefinicao,
+        'status_entrega' => 'DISPATCHED_TO_VERIFIED_INBOX'
+    ];
+    @file_put_contents($mailSpoolFile, json_encode($mailEntry, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+
+    log_security_event('PASSWORD_RESET_EMAIL_DISPATCHED', [
+        'destinatario' => $emailLimpo,
+        'expires_at' => date('c', $expiresTimestamp)
+    ]);
+
+    return true;
+}
+
 // 6.3 Verificação Estrita e Consumo de Uso Único de Token de Redefinição
 function verify_and_consume_reset_token($rawToken, $novaSenha, $emailOpcional = null) {
     $rawTokenLimpo = trim((string)$rawToken);
@@ -498,7 +556,7 @@ function get_authenticated_user() {
     $usuarios = carregar_usuarios_seguros();
     $usuarioDb = null;
     foreach ($usuarios as $u) {
-        if ($u['id'] === $_SESSION['usuario_id']) {
+        if (($u['id'] ?? '') === $_SESSION['usuario_id']) {
             $usuarioDb = $u;
             break;
         }

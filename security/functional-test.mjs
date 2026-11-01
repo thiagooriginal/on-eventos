@@ -56,6 +56,9 @@ const publicDir = path.join(root, 'public');
 for (const file of fs.readdirSync(publicDir).filter(f => f.endsWith('.php'))) {
   fs.copyFileSync(path.join(publicDir, file), path.join(webrootDir, file));
 }
+if (fs.existsSync(path.join(publicDir, 'phpmailer'))) {
+  fs.cpSync(path.join(publicDir, 'phpmailer'), path.join(webrootDir, 'phpmailer'), { recursive: true });
+}
 
 // Cria administrador inicial com hash Bcrypt real para 'SenhaAdminForte@123'
 const hashAdmin = '$2y$10$kpaLrRRv5SgufVd/2I7Ql.G3hv5Q5h0UJ3l/5Gny9lIbV2/9QK.ou';

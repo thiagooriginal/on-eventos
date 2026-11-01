@@ -10,6 +10,9 @@ error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED);
 
 // 1. Configuração de CORS Estrito (Comparação Exata de Protocolo, Host e Porta)
 function setup_secure_cors() {
+    if (php_sapi_name() === 'cli') {
+        return;
+    }
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
     // Lista estrita de origens explicitamente autorizadas
@@ -439,7 +442,160 @@ function generate_password_reset_token($email, $validitySeconds = 1800) {
     ];
 }
 
-// 6.2.1 Envio Seguro de E-mail de Recuperação com Token de Uso Único
+// 6.2.1 Configuração Segura de E-mail SMTP (Hostinger Oficial)
+function get_smtp_config() {
+    $configFile = get_secure_storage_path('smtp_config.json');
+    $defaultConfig = [
+        'host' => 'smtp.hostinger.com',
+        'port' => 465,
+        'secure' => 'ssl',
+        'auth' => true,
+        'username' => 'contato@onagenciadeeventos.com.br',
+        'password' => '',
+        'from_email' => 'contato@onagenciadeeventos.com.br',
+        'from_name' => 'ON Agência de Eventos',
+        'reply_to' => 'contato@onagenciadeeventos.com.br'
+    ];
+
+    $config = $defaultConfig;
+    if (file_exists($configFile)) {
+        $saved = json_decode(@file_get_contents($configFile), true);
+        if (is_array($saved)) {
+            $config = array_merge($defaultConfig, $saved);
+        }
+    } else {
+        @file_put_contents($configFile, json_encode($defaultConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    }
+
+    // Variáveis de ambiente têm precedência se definidas
+    $envPass = getenv('SMTP_PASS') ?: (getenv('SMTP_PASSWORD') ?: ($_ENV['SMTP_PASS'] ?? ($_ENV['SMTP_PASSWORD'] ?? '')));
+    if (!empty($envPass)) {
+        $config['password'] = $envPass;
+    }
+    $envUser = getenv('SMTP_USER') ?: ($_ENV['SMTP_USER'] ?? '');
+    if (!empty($envUser)) {
+        $config['username'] = $envUser;
+        $config['from_email'] = $envUser;
+    }
+
+    return $config;
+}
+
+// 6.2.2 Envio Unificado de E-mails do Sistema via SMTP Hostinger (PHPMailer)
+function send_system_email($destinatarioEmail, $nomeDestinatario, $assunto, $corpoHtml, $corpoTexto = '') {
+    $emailLimpo = strtolower(trim((string)$destinatarioEmail));
+    if (empty($emailLimpo) || !filter_var($emailLimpo, FILTER_VALIDATE_EMAIL)) {
+        return [
+            'sucesso' => false,
+            'erro' => 'Endereço de e-mail inválido.',
+            'mecanismo' => 'VALIDATION_FAILED'
+        ];
+    }
+
+    $smtpConfig = get_smtp_config();
+    $hasPassword = !empty($smtpConfig['password']);
+
+    // Carrega classes do PHPMailer se disponíveis
+    $phpMailerLoaded = false;
+    $phpMailerBase = __DIR__ . '/phpmailer/';
+    if (file_exists($phpMailerBase . 'PHPMailer.php')) {
+        require_once $phpMailerBase . 'Exception.php';
+        require_once $phpMailerBase . 'PHPMailer.php';
+        require_once $phpMailerBase . 'SMTP.php';
+        $phpMailerLoaded = true;
+    }
+
+    $sucesso = false;
+    $erroSanitizado = null;
+    $mecanismoUtilizado = 'NONE';
+
+    if ($phpMailerLoaded && $hasPassword) {
+        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+        try {
+            $mail->isSMTP();
+            $mail->Host       = $smtpConfig['host'];
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $smtpConfig['username'];
+            $mail->Password   = $smtpConfig['password'];
+            $mail->SMTPSecure = ($smtpConfig['port'] == 465) ? PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS : PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = (int)$smtpConfig['port'];
+            $mail->CharSet    = 'UTF-8';
+            $mail->Timeout    = 15;
+
+            $mail->setFrom($smtpConfig['from_email'], $smtpConfig['from_name']);
+            if (!empty($smtpConfig['reply_to'])) {
+                $mail->addReplyTo($smtpConfig['reply_to'], $smtpConfig['from_name']);
+            }
+            $mail->addAddress($emailLimpo, $nomeDestinatario ?: $emailLimpo);
+
+            $mail->isHTML(true);
+            $mail->Subject = $assunto;
+            $mail->Body    = $corpoHtml;
+            $mail->AltBody = !empty($corpoTexto) ? $corpoTexto : strip_tags($corpoHtml);
+
+            $mail->send();
+            $sucesso = true;
+            $mecanismoUtilizado = 'HOSTINGER_SMTP_PHPMAILER';
+        } catch (PHPMailer\PHPMailer\Exception $e) {
+            $sucesso = false;
+            $rawError = $mail->ErrorInfo ?: $e->getMessage();
+            $erroSanitizado = str_ireplace([$smtpConfig['password'], $smtpConfig['username']], ['[REDACTED_PASS]', '[USER]'], $rawError);
+            $mecanismoUtilizado = 'HOSTINGER_SMTP_FAILED';
+        }
+    } elseif ($phpMailerLoaded && !$hasPassword) {
+        // Modo seguro de pré-configuração ou teste local: senha ainda não informada em private_data
+        $sucesso = false;
+        $erroSanitizado = 'Senha SMTP pendente de configuração em private_data/smtp_config.json.';
+        $mecanismoUtilizado = 'SMTP_PENDING_CREDENTIALS';
+
+        // Tenta fallback defensivo via mail() com remetente institucional Hostinger
+        $headersMail = [
+            'From: ' . $smtpConfig['from_name'] . ' <' . $smtpConfig['from_email'] . '>',
+            'Reply-To: ' . ($smtpConfig['reply_to'] ?: $smtpConfig['from_email']),
+            'Return-Path: <' . $smtpConfig['from_email'] . '>',
+            'MIME-Version: 1.0',
+            'X-Mailer: PHP/' . phpversion(),
+            'Content-Type: text/html; charset=UTF-8'
+        ];
+        $mailFallback = @mail($emailLimpo, $assunto, $corpoHtml, implode("\r\n", $headersMail), "-f " . $smtpConfig['from_email']);
+        if ($mailFallback) {
+            $sucesso = true;
+            $mecanismoUtilizado = 'HOSTINGER_MAIL_FALLBACK';
+        }
+    } else {
+        $sucesso = false;
+        $erroSanitizado = 'Biblioteca PHPMailer não carregada.';
+        $mecanismoUtilizado = 'PHPMAILER_MISSING';
+    }
+
+    // Auditoria de segurança: metadados essenciais sem tokens, senhas ou segredos
+    $mailSpoolFile = get_secure_storage_path('_outbox_mail.log');
+    $mailEntry = [
+        'data_envio' => date('c'),
+        'destinatario_mascarado' => mask_email_for_audit($emailLimpo),
+        'destinatario_sha256' => hash('sha256', $emailLimpo),
+        'assunto' => $assunto,
+        'status_entrega' => $sucesso ? 'DISPATCHED_SUCCESS' : 'PENDING_OR_FAILED',
+        'mecanismo' => $mecanismoUtilizado,
+        'info' => $erroSanitizado
+    ];
+    @file_put_contents($mailSpoolFile, json_encode($mailEntry, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+
+    log_security_event('SYSTEM_EMAIL_DISPATCHED', [
+        'destinatario_mascarado' => mask_email_for_audit($emailLimpo),
+        'destinatario_sha256' => hash('sha256', $emailLimpo),
+        'sucesso' => $sucesso,
+        'mecanismo' => $mecanismoUtilizado
+    ]);
+
+    return [
+        'sucesso' => $sucesso,
+        'erro' => $erroSanitizado,
+        'mecanismo' => $mecanismoUtilizado
+    ];
+}
+
+// 6.2.3 Envio Seguro de E-mail de Recuperação com Token de Uso Único
 function dispatch_password_reset_email($destinatarioEmail, $nomeUsuario, $rawToken, $expiresTimestamp) {
     $emailLimpo = strtolower(trim($destinatarioEmail));
     if (empty($emailLimpo) || !filter_var($emailLimpo, FILTER_VALIDATE_EMAIL)) {
@@ -452,70 +608,69 @@ function dispatch_password_reset_email($destinatarioEmail, $nomeUsuario, $rawTok
 
     $assunto = "ON Agência de Eventos - Redefinição de Senha e Recuperação de Acesso";
 
-    $mensagemTexto = "Olá, {$nomeUsuario}!\n\n" .
-        "Uma solicitação de redefinição de acesso foi registrada para a sua conta no Portal Administrativo da ON Agência de Eventos em {$dataHoraFormatada}.\n\n" .
-        "Para definir sua nova senha com segurança, utilize o token criptográfico de uso único abaixo:\n\n" .
-        "TOKEN DE ACESSO: {$rawToken}\n\n" .
-        "Ou acesse diretamente pelo link seguro:\n{$linkRedefinicao}\n\n" .
-        "ATENÇÃO:\n" .
-        "- Este token é de uso único e expira em {$minutosValidade} minutos.\n" .
-        "- Se você não solicitou esta redefinição, desconsidere esta mensagem. Sua conta permanece protegida.\n\n" .
-        "Equipe de Segurança & Tecnologia - ON Agência de Eventos";
+    $corpoHtml = '<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>' . htmlspecialchars($assunto) . '</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); overflow: hidden;">
+          <tr>
+            <td style="background-color: #3b0764; padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">ON AGÊNCIA DE EVENTOS</h1>
+              <p style="color: #cbd5e1; margin: 6px 0 0; font-size: 13px;">Portal de Gestão & Administração</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 35px 30px;">
+              <h2 style="margin: 0 0 16px; font-size: 18px; color: #0f172a;">Olá, ' . htmlspecialchars($nomeUsuario) . '!</h2>
+              <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: #334155;">
+                Uma solicitação de redefinição de acesso foi registrada para a sua conta no Portal da ON Agência de Eventos em <strong>' . $dataHoraFormatada . '</strong>.
+              </p>
+              <p style="margin: 0 0 24px; font-size: 14px; line-height: 1.6; color: #334155;">
+                Para estabelecer sua nova credencial de acesso com segurança, utilize o botão abaixo:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="' . htmlspecialchars($linkRedefinicao) . '" style="background-color: #10b981; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">Redefinir Minha Senha</a>
+              </div>
+              <div style="background-color: #f8fafc; border-left: 4px solid #10b981; padding: 14px; border-radius: 4px; margin: 24px 0;">
+                <p style="margin: 0; font-size: 13px; color: #475569;">
+                  <strong>Token de acesso manual:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: monospace;">' . htmlspecialchars($rawToken) . '</code>
+                </p>
+              </div>
+              <p style="margin: 0 0 10px; font-size: 12px; color: #64748b; line-height: 1.5;">
+                • Este token criptográfico é de uso único e expira automaticamente em <strong>' . $minutosValidade . ' minutos</strong>.<br>
+                • Se você não fez essa solicitação, desconsidere esta mensagem. Sua conta permanece totalmente protegida.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f8fafc; padding: 20px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                © ' . date('Y') . ' ON Agência de Eventos — Comunicação segura e criptografada via Hostinger SMTP.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>';
 
-    // 1. Tenta envio pelo serviço padrão do PHP com parâmetros compatíveis com o MTA da Hostinger
-    $headersMail = [
-        'From: ON Agência de Eventos <seguranca@onagenciadeeventos.com.br>',
-        'Reply-To: suporte@onagenciadeeventos.com.br',
-        'Return-Path: <seguranca@onagenciadeeventos.com.br>',
-        'MIME-Version: 1.0',
-        'X-Mailer: PHP/' . phpversion(),
-        'Content-Type: text/plain; charset=UTF-8'
-    ];
-    $mailEnviado = @mail($emailLimpo, $assunto, $mensagemTexto, implode("\r\n", $headersMail), "-f seguranca@onagenciadeeventos.com.br");
+    $corpoTexto = "Olá, {$nomeUsuario}!\n\n" .
+        "Uma solicitação de redefinição de acesso foi registrada em {$dataHoraFormatada}.\n\n" .
+        "Para definir sua nova senha, utilize o token criptográfico de uso único:\n" .
+        "TOKEN: {$rawToken}\n\n" .
+        "Ou acesse pelo link seguro:\n{$linkRedefinicao}\n\n" .
+        "Atenção: Este token é de uso único e expira em {$minutosValidade} minutos.\n\n" .
+        "Equipe de Tecnologia — ON Agência de Eventos";
 
-    // 2. Registra o despacho de auditoria (NUNCA armazena tokens ou links no log)
-    $mailSpoolFile = get_secure_storage_path('_outbox_mail.log');
-
-    // Higienização preventiva de logs legados para expurgar tokens ou links remanescentes
-    if (file_exists($mailSpoolFile)) {
-        $rawLog = @file_get_contents($mailSpoolFile);
-        if ($rawLog && (strpos($rawLog, '"token"') !== false || strpos($rawLog, '"link"') !== false)) {
-            $lines = explode("\n", trim($rawLog));
-            $cleanLines = [];
-            foreach ($lines as $ln) {
-                if (empty($ln)) continue;
-                $entry = json_decode($ln, true);
-                if (is_array($entry)) {
-                    unset($entry['token']);
-                    unset($entry['link']);
-                    if (isset($entry['destinatario'])) {
-                        $entry['destinatario_mascarado'] = mask_email_for_audit($entry['destinatario']);
-                        unset($entry['destinatario']);
-                    }
-                    $cleanLines[] = json_encode($entry, JSON_UNESCAPED_UNICODE);
-                }
-            }
-            @file_put_contents($mailSpoolFile, implode("\n", $cleanLines) . (count($cleanLines) ? "\n" : ""), LOCK_EX);
-        }
-    }
-
-    $mailEntry = [
-        'data_envio' => date('c'),
-        'destinatario_mascarado' => mask_email_for_audit($emailLimpo),
-        'destinatario_sha256' => hash('sha256', $emailLimpo),
-        'assunto' => $assunto,
-        'expira_em' => date('c', $expiresTimestamp),
-        'validade_minutos' => $minutosValidade,
-        'status_entrega' => $mailEnviado ? 'DISPATCHED_TO_HOSTINGER_MTA' : 'SIMULATED_TEST_MTA',
-        'mecanismo' => 'PHP_MAIL_HOSTINGER'
-    ];
-    @file_put_contents($mailSpoolFile, json_encode($mailEntry, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
-
-    log_security_event('PASSWORD_RESET_EMAIL_DISPATCHED', [
-        'destinatario_mascarado' => mask_email_for_audit($emailLimpo),
-        'destinatario_sha256' => hash('sha256', $emailLimpo),
-        'expires_at' => date('c', $expiresTimestamp)
-    ]);
+    send_system_email($emailLimpo, $nomeUsuario, $assunto, $corpoHtml, $corpoTexto);
 
     return true;
 }

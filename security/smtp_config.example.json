@@ -1,0 +1,11 @@
+{
+  "host": "smtp.hostinger.com",
+  "port": 465,
+  "secure": "ssl",
+  "auth": true,
+  "username": "contato@onagenciadeeventos.com.br",
+  "password": "SUA_SENHA_DO_EMAIL_HOSTINGER_AQUI",
+  "from_email": "contato@onagenciadeeventos.com.br",
+  "from_name": "ON Agência de Eventos",
+  "reply_to": "contato@onagenciadeeventos.com.br"
+}

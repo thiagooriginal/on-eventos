@@ -40,6 +40,8 @@ public/videos/WhatsApp Video*
 /private-data/
 /private_data/
 private_data/
+*smtp_config.json
+!security/smtp_config.example.json
 /secure-data/
 *.bak
 

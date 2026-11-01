@@ -57,6 +57,9 @@ const phpFiles = fs.readdirSync(publicDir).filter(f => f.endsWith('.php'));
 for (const file of phpFiles) {
   fs.copyFileSync(path.join(publicDir, file), path.join(webrootDir, file));
 }
+if (fs.existsSync(path.join(publicDir, 'phpmailer'))) {
+  fs.cpSync(path.join(publicDir, 'phpmailer'), path.join(webrootDir, 'phpmailer'), { recursive: true });
+}
 
 // Cria senhas de teste com hashes reais Bcrypt (cost 10 para agilizar execução dos testes)
 const hashAdmin = '$2y$10$gh8qsoaS7towV8c3nrHAi.sMgmpfM34Bujo2gnF1pVwLpaEIXMxCO';

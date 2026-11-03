@@ -53,8 +53,32 @@ function get_secure_storage_dir() {
     if (!empty($custom)) {
         return rtrim($custom, '/\\');
     }
-    // Armazena estritamente fora do diretório público (um nível acima de public/)
-    return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'private_data';
+
+    // 1. Um nível acima do diretório atual (ex: fora de public_html)
+    $candidate1 = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'private_data';
+    if (is_dir($candidate1)) {
+        return $candidate1;
+    }
+
+    // 2. Dois níveis acima (caso public_html esteja dentro de domains/dominio.com.br/ e private_data esteja na raiz /home/uXXXXXXX/private_data)
+    $candidate2 = dirname(dirname(__DIR__)) . DIRECTORY_SEPARATOR . 'private_data';
+    if (is_dir($candidate2)) {
+        return $candidate2;
+    }
+
+    // 3. Baseado no DOCUMENT_ROOT do servidor web
+    if (!empty($_SERVER['DOCUMENT_ROOT'])) {
+        $candidate3 = dirname($_SERVER['DOCUMENT_ROOT']) . DIRECTORY_SEPARATOR . 'private_data';
+        if (is_dir($candidate3)) {
+            return $candidate3;
+        }
+        $candidate4 = dirname(dirname($_SERVER['DOCUMENT_ROOT'])) . DIRECTORY_SEPARATOR . 'private_data';
+        if (is_dir($candidate4)) {
+            return $candidate4;
+        }
+    }
+
+    return $candidate1;
 }
 
 function is_dir_really_writable($dir) {

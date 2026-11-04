@@ -7,7 +7,7 @@ RewriteBase /
 
 # Bloquear acesso externo a arquivos privados de configuração, sessões, banco e logs.
 # Esses arquivos ainda podem ser lidos internamente pelos scripts PHP via sistema de arquivos.
-<FilesMatch "(?i)(^\.env($|\.)|^\.git|(?:_config|_db|_log|_cache)\.json$|\.(?:db|sqlite|sqlite3)(?:-.*)?$|\.(?:bak|backup|old|orig|swp|sql|pem|p12|pfx|key)$|^whatsapp_qrcode\.png$)">
+<FilesMatch "(?i)(^\.env($|\.)|^\.git|(?:_config|_db|_log|_cache|_limits|_security|_outbox|usuarios|vendas|demandas|parceiros|instituicoes)\.json$|\.(?:db|sqlite|sqlite3)(?:-.*)?$|\.(?:bak|backup|old|orig|swp|sql|pem|p12|pfx|key)$|^whatsapp_qrcode\.png$)">
     Require all denied
 </FilesMatch>
 

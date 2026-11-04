@@ -152,13 +152,14 @@ function get_secure_storage_path($filename) {
                 // Copia e valida integridade via SHA-256 e tamanho de arquivo
                 if (@copy($legacyFile, $targetFile)) {
                     if (filesize($targetFile) === filesize($legacyFile) && hash_file('sha256', $targetFile) === hash_file('sha256', $legacyFile)) {
-                        @unlink($legacyFile);
+                        // Preservação não destrutiva: quarentena o arquivo legando renomeando para .bak com timestamp, sem apagar
+                        @rename($legacyFile, $legacyFile . '.migrated_' . date('Ymd_His') . '.bak');
                     }
                 }
             } else {
-                // Se já existe no destino seguro com conteúdo idêntico, remove cópia remanescente no webroot
+                // Se já existe no destino seguro com conteúdo idêntico, quarentena o arquivo legado
                 if (hash_file('sha256', $targetFile) === hash_file('sha256', $legacyFile)) {
-                    @unlink($legacyFile);
+                    @rename($legacyFile, $legacyFile . '.migrated_' . date('Ymd_His') . '.bak');
                 }
             }
         }

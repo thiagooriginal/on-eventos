@@ -655,6 +655,39 @@ async function runTests() {
   });
   assert(resMeInativado.status === 401, 'Sessão é imediatamente revogada após alteração de status em disco (HTTP 401)');
 
+  // Teste 5.3: Controle de Privilégio Mínimo (PoLP): Usuário BASICO NÃO pode listar todos os usuários
+  const resLoginBasico = await fetch(`${BASE_URL}/usuarios.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'login',
+      email: 'operador@formatura.com.br',
+      senha: 'OperadorForte@123'
+    })
+  });
+  const cookieBasico = resLoginBasico.headers.get('set-cookie')?.split(';')[0];
+  assert(resLoginBasico.status === 200, 'Login de usuário BASICO bem-sucedido (HTTP 200)');
+
+  // Usuário BASICO consulta seus próprios dados via action=me
+  const resMeBasico = await fetch(`${BASE_URL}/usuarios.php?action=me`, {
+    headers: { 'Cookie': cookieBasico }
+  });
+  assert(resMeBasico.status === 200, 'Usuário BASICO consulta seus próprios dados com sucesso (HTTP 200)');
+  const meBasicoJson = await resMeBasico.json();
+  assert(meBasicoJson.usuario.email === 'operador@formatura.com.br', 'Dados retornados correspondem ao usuário conectado');
+
+  // Usuário BASICO tenta listar TODOS os usuários (deve ser BLOQUEADO com HTTP 403 Forbidden)
+  const resListagemBasico = await fetch(`${BASE_URL}/usuarios.php`, {
+    headers: { 'Cookie': cookieBasico }
+  });
+  assert(resListagemBasico.status === 403, 'Usuário BASICO é impedido de listar todos os usuários (HTTP 403 Forbidden)');
+
+  // Administrador lista todos os usuários com sucesso (HTTP 200)
+  const resListagemAdmin = await fetch(`${BASE_URL}/usuarios.php`, {
+    headers: { 'Cookie': sessionAdmin }
+  });
+  assert(resListagemAdmin.status === 200, 'Administrador lista usuários com sucesso (HTTP 200)');
+
   // -------------------------------------------------------------------------
   // SUÍTE 6: Validação Rigorosa de Webhook Sicredi (Boleto e Pix BACEN)
   // -------------------------------------------------------------------------

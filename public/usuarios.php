@@ -30,8 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         exit;
     }
 
-    // Listagem de usuários exige autenticação no servidor
-    require_auth(['ADMIN', 'EQUIPE_INTERNA', 'BASICO']);
+    // Listagem completa de usuários é estritamente restrita a ADMIN e EQUIPE_INTERNA (PoLP / LGPD)
+    // Usuários de nível BASICO só podem consultar sua própria sessão via action=session ou action=me
+    require_auth(['ADMIN', 'EQUIPE_INTERNA']);
 
     // Sanitiza todos os usuários para nunca expor senhas ou hashes
     $usuariosSanitizados = array_values(array_map('sanitize_user_for_client', $usuarios));
@@ -547,6 +548,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fallback padrão sanitizado
-$usuariosSanitizados = array_values(array_map('sanitize_user_for_client', $usuarios));
-echo json_encode($usuariosSanitizados, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+// Fallback defensivo: Rejeita qualquer outro método ou requisição não tratada
+http_response_code(405);
+echo json_encode(['sucesso' => false, 'erro' => 'Método ou requisição não permitida.'], JSON_UNESCAPED_UNICODE);
+exit;

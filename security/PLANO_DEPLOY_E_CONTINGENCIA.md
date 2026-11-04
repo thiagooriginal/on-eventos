@@ -1,9 +1,40 @@
-# Plano de Deploy, Janela de Implantação e Plano de Contingência
+# Plano de Deploy Emergencial, Contenção Imediata e Plano de Contingência
 
 > **Sistema**: Portal Administrativo & Operacional — ON Agência de Eventos  
-> **Versão / Branch**: `security/hardening-phase-1` (Commit: `56e8645`)  
+> **Versão / Branch**: `security/hardening-phase-1` (Commit atualizado)  
 > **Alvo de Publicação**: Hostinger Shared Hosting (`onagenciadeeventos.com.br`)  
 > **Classificação**: Crítica / Segurança / Zero Downtime
+
+---
+
+## 0. Contenção Imediata em Produção (Sem Deploy Completo)
+
+### Situação Atual
+A versão legada de `public_html/usuarios.php` na Hostinger responde a requisições `GET` anônimas entregando os registros de usuários. Embora os arquivos `*.json` já tenham sido bloqueados via `.htaccess`, a API legada em PHP ainda faz a leitura interna do arquivo e entrega o conteúdo.
+
+### Procedimento de Bloqueio Imediato via `.htaccess`
+Adicionar no topo do arquivo `public_html/.htaccess` existente na Hostinger a seguinte diretiva de contenção cirúrgica:
+
+```apache
+# ============================================================
+# CONTENÇÃO EMERGENCIAL DE SEGURANÇA — ON AGÊNCIA DE EVENTOS
+# Bloqueia consultas GET anônimas à API de usuários
+# ============================================================
+RewriteEngine On
+RewriteCond %{REQUEST_METHOD} GET
+RewriteCond %{REQUEST_URI} ^/usuarios\.php [NC]
+RewriteCond %{HTTP:Cookie} !ON_AUTH_SESSION
+RewriteRule .* - [F,L]
+```
+
+### Avaliação de Impacto Funcional
+1. **Impacto Positivo Imediato**:
+   - Bloqueia instantaneamente qualquer raspagem ou vazamento de dados de usuários por invasores ou ferramentas automatizadas (HTTP 403 Forbidden).
+2. **Preservação do Fluxo de Login**:
+   - A requisição de login (`POST /usuarios.php?action=login`) **NÃO é afetada**, pois utiliza o verbo `POST` e continua operando normalmente.
+3. **Preservação dos Demais Módulos**:
+   - Vendas, CRM, Webhook Sicredi, Alunos, Face-API e o site público continuam 100% operacionais.
+   - Nenhuma dependência externa é quebrada.
 
 ---
 
@@ -42,70 +73,94 @@ Nenhum comando de deploy deve ser disparado antes de checar os itens abaixo:
 
 ---
 
-## 3. Roteiro de Execução do Deploy (Passo a Passo)
+## 3. Procedimento de Implantação Atômica (Anti-Race Condition)
 
-### Fase 1: Liberação do Código (T-0)
-1. Revisar o Pull Request em modo rascunho no GitHub:
-   `https://github.com/thiagooriginal/on-eventos/compare/main...security/hardening-phase-1`
-2. Após aprovação expressa do usuário, efetuar o merge da branch `security/hardening-phase-1` na `main`.
-3. O workflow do GitHub Actions (`.github/workflows/deploy.yml`) iniciará automaticamente:
-   - `npm ci`
-   - `npm run build` (compila frontend e exporta as 11 APIs PHP para `out/`)
-   - `python3 deploy.py` (conecta via FTPS com TLS forçado e envia os arquivos para `public_html/`)
-4. Acompanhar a execução no menu **Actions** do GitHub até a conclusão com sucesso.
+### Por que a implantação deve ser estritamente atômica?
+Se arquivos PHP forem enviados individualmente via FTP tradicional (arquivo por arquivo), existirá uma janela de vários minutos em que `usuarios.php` novo pode tentar chamar funções de `auth_guard.php` antes que este tenha sido transferido, ou requisições de clientes podem encontrar arquivos em estado inconsistente, gerando erros HTTP 500 ou quebras temporárias de segurança.
 
-### Fase 2: Verificação Pós-Deploy em Produção (T+10 min)
+### Pacote de Implantação Atômico
+O pacote `on_seguranca_deploy_atomico.zip` (gerado por `security/build-deploy-package.mjs`) contém a estrutura completa de produção:
+- `public_html/`: `auth_guard.php`, `usuarios.php`, `vendas.php`, `demandas.php`, `parceiros.php`, `instituicoes.php`, `whatsapp_api.php`, `sicredi_api.php`, `sicredi_webhook.php`, `aws_rekognition.php`, `telemetria.php`, `phpmailer/`, `.htaccess`.
+- `private_data/`: `setup-admin-password.php`, `.htaccess`.
+
+### Roteiro de Aplicação Atômica no Servidor:
+1. Fazer upload de `on_seguranca_deploy_atomico.zip` diretamente para o diretório raiz do domínio:
+   `/home/uXXXXXXX/domains/onagenciadeeventos.com.br/`
+2. No Gerenciador de Arquivos da Hostinger (ou via SSH):
+   - Clicar com o botão direito no arquivo `on_seguranca_deploy_atomico.zip` e selecionar **Extrair Aqui** (ou executar `unzip -o on_seguranca_deploy_atomico.zip`).
+   - Todos os arquivos de `public_html/` e `private_data/` são atualizados simultaneamente no mesmo segundo.
+3. Excluir o arquivo `on_seguranca_deploy_atomico.zip` do servidor após a extração.
+
+---
+
+## 4. Bootstrap do Primeiro Administrador (Sem Dependência de SMTP)
+
+Como as credenciais de SMTP da Hostinger ainda não estão configuradas no servidor, a ferramenta administrativa CLI `private_data/setup-admin-password.php` permite inicializar o acesso de dois modos seguros:
+
+### Modo A: Definição Interativa com Entrada Oculta (Recomendado via SSH)
+Conecte-se ao terminal SSH da Hostinger e acesse a pasta `private_data`:
+```bash
+cd /home/uXXXXXXX/domains/onagenciadeeventos.com.br/private_data
+php setup-admin-password.php --email="admin@onagenciadeeventos.com.br"
+```
+O script solicitará a senha de forma silenciosa/oculta (sem eco no terminal, sem parâmetro `--pass` e sem registrar nada no histórico do shell `~/.bash_history`):
+- `Digite a nova senha (mínimo 8 caracteres):` [oculto]
+- `Confirme a nova senha digitada:` [oculto]
+A senha é criptografada com Argon2id/Bcrypt e o acesso é liberado imediatamente.
+
+### Modo B: Emissão de Link com Token Criptográfico (Alternativa Sem SMTP)
+Caso prefira redefinir a senha através da interface web do navegador:
+```bash
+php setup-admin-password.php --email="admin@onagenciadeeventos.com.br" --generate-token
+```
+O script emitirá na tela um link seguro de 24 horas:
+`https://onagenciadeeventos.com.br/redefinir-senha?token=...`
+Basta copiar e colar o link no navegador para criar a nova senha pessoal.
+
+---
+
+## 5. Verificação Pós-Deploy em Produção (T+5 min)
+
 Executar os seguintes testes de integridade diretamente no domínio de produção:
 
-1. **Isolamento de Dados Privados**:
-   - Tentar acessar no navegador: `https://onagenciadeeventos.com.br/private_data/usuarios_db.json`
-   - **Resultado esperado**: `HTTP 404 Not Found` (comprovando que os dados não estão acessíveis via web).
-2. **Sessão e Autenticação Server-side**:
-   - Acessar `https://onagenciadeeventos.com.br/usuarios.php?action=me`
-   - **Resultado esperado**: `HTTP 401 Unauthorized` com JSON `{"sucesso": false, "autenticado": false}`.
-3. **Envio Real de E-mail de Recuperação**:
-   - Acessar `https://onagenciadeeventos.com.br/login`, clicar em "Esqueci minha senha" e enviar para um e-mail corporativo cadastrado.
-   - Conferir se o e-mail chegou na caixa de entrada/spam em menos de 2 minutos.
-   - Abrir o link, definir a nova senha pessoal e confirmar o login.
+1. **Tentativa de Raspagem Anônima**:
+   - `curl -i -X GET https://onagenciadeeventos.com.br/usuarios.php`
+   - **Resultado esperado**: `HTTP 401 Unauthorized` (ou `HTTP 403 Forbidden`). Senhas ou dados de usuários NUNCA são retornados.
+2. **Isolamento de Dados Privados**:
+   - `curl -i https://onagenciadeeventos.com.br/private_data/usuarios_db.json`
+   - **Resultado esperado**: `HTTP 404 Not Found` ou `HTTP 403 Forbidden`.
+3. **Login Administrativo**:
+   - Acessar `https://onagenciadeeventos.com.br/login` e logar com a credencial recém-definida.
+   - Confirmar recebimento do cookie HttpOnly `ON_AUTH_SESSION`.
 4. **Proteção contra CSRF**:
-   - Tentar uma requisição POST manual sem `X-CSRF-Token` para `https://onagenciadeeventos.com.br/demandas.php`.
-   - **Resultado esperado**: `HTTP 403 Forbidden` (`CSRF_INVALID`).
-5. **Webhook Sicredi**:
-   - Acessar via GET autenticado: `https://onagenciadeeventos.com.br/sicredi_webhook.php`.
-   - Conferir status online e registro correto de eventos.
+   - Tentar requisição POST manual sem `X-CSRF-Token` para `https://onagenciadeeventos.com.br/demandas.php`.
+   - **Resultado esperado**: `HTTP 403 Forbidden`.
+5. **Preservação de Ativos Face-API e Modelos**:
+   - `curl -i https://onagenciadeeventos.com.br/models/tiny_face_detector_model-weights_manifest.json`
+   - **Resultado esperado**: `HTTP 200 OK`.
 
 ---
 
-## 4. Plano de Contingência e Rollback Imediato
+## 6. Plano de Contingência e Rollback Seguro (Anti-Reexposição)
 
-Se durante a janela de implantação for detectado qualquer comportamento anômalo (ex: falha de build, erro 500 generalizado ou rejeição de autenticação), o plano de rollback deve ser acionado imediatamente:
+> [!CAUTION]
+> **Aviso Crítico de Segurança sobre Rollback Tradicional**:
+> Se o operador simplesmente descompactar o backup legado antigo (`backup_full_pre_deploy.zip`) sobre `public_html/`, a versão vulnerável de `usuarios.php` seria restaurada, **reabrindo imediatamente a falha crítica de vazamento de senhas em texto puro!**
 
-### Procedimento de Rollback em 3 Minutos:
-1. **Restaurar os Arquivos via Gerenciador da Hostinger**:
-   - No hPanel -> Gerenciador de Arquivos -> Entrar em `public_html/`.
-   - Extrair o arquivo `backup_full_pre_deploy.zip` gerado antes da publicação, substituindo os arquivos atuais.
-2. **Reversão no Git**:
-   - No repositório local, reverter o commit de merge:
-     ```bash
-     git checkout main
-     git pull origin main
-     git revert -m 1 HEAD -m "revert(deploy): retorno ao estado anterior estavel para diagnostico"
-     git push origin main
+### Procedimento de Rollback Compensatório Obrigatório:
+Se for necessário reverter arquivos de aplicação por qualquer instabilidade:
+1. **Restaurar os Arquivos Legados no hPanel**:
+   - Extrair o backup `backup_full_pre_deploy.zip` em `public_html/`.
+2. **REAPLICAR IMEDIATAMENTE A REGRA DE CONTENÇÃO NO `.htaccess`**:
+   - Garantir que a regra do item 0 permaneça no topo do `.htaccess` de produção:
+     ```apache
+     RewriteEngine On
+     RewriteCond %{REQUEST_METHOD} GET
+     RewriteCond %{REQUEST_URI} ^/usuarios\.php [NC]
+     RewriteCond %{HTTP:Cookie} !ON_AUTH_SESSION
+     RewriteRule .* - [F,L]
      ```
-3. **Verificação pós-rollback**:
-   - Acessar `https://onagenciadeeventos.com.br` e garantir que o portal voltou a responder normalmente no estado estável anterior.
-   - Tempo total estimado de recuperação: **menos de 3 minutos**.
-
----
-
-## 5. Matriz de Responsabilidades
-
-| Atividade | Responsável | Status |
-| :--- | :---: | :---: |
-| Desenvolvimento & Testes Automatizados (120 testes) | Antigravity AI | Concluído (100% aprovado) |
-| Criação de Ferramentas de Teste FTPS e E-mail | Antigravity AI | Concluído |
-| Revisão de Código no GitHub | ChatGPT / Thiago | Aguardando liberação do PR |
-| Criação da Caixa `seguranca@` na Hostinger | Administrador (Thiago) | Pendente de execução no hPanel |
-| Troca de Senha FTP no hPanel | Administrador (Thiago) | Pendente de execução no hPanel |
-| Atualização do Segredo `FTP_PASSWORD` no GitHub | Administrador (Thiago) | Pendente (após teste FTPS) |
-| Autorização Expressa para Merge e Deploy | Administrador (Thiago) | Pendente |
+   - Isso garante que, mesmo no caso de rollback do código PHP, a vulnerabilidade de extração de usuários não volte a ficar exposta na internet.
+3. **Preservar a Integridade dos Dados em `private_data/`**:
+   - Os arquivos de banco de dados (`usuarios_db.json`, `vendas_db.json`, etc.) que foram migrados de forma não destrutiva para `private_data/` e os backups com checksum SHA-256 em `private_data/backups/` **NUNCA devem ser apagados**.
+   - O rollback deve afetar exclusivamente os scripts de execução, mantendo os dados e os backups intactos.

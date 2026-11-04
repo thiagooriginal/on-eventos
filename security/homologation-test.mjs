@@ -75,6 +75,11 @@ if (fs.existsSync(path.join(publicDir, 'phpmailer'))) {
   fs.cpSync(path.join(publicDir, 'phpmailer'), path.join(webrootDir, 'phpmailer'), { recursive: true });
 }
 
+// Garante compatibilidade de roteamento estático caso /login.html seja requisitado
+if (fs.existsSync(path.join(webrootDir, 'login', 'index.html')) && !fs.existsSync(path.join(webrootDir, 'login.html'))) {
+  fs.copyFileSync(path.join(webrootDir, 'login', 'index.html'), path.join(webrootDir, 'login.html'));
+}
+
 // Prepara base de usuários de teste de homologação com hashes Bcrypt reais
 const hashAdmin = '$2y$10$gh8qsoaS7towV8c3nrHAi.sMgmpfM34Bujo2gnF1pVwLpaEIXMxCO'; // SenhaAdminForte@123
 const hashOperador = '$2y$10$WA/nIc2zZhNG7gtq.g61cOSHgECDZZqkOxdcmho6HNraG0WNsMmLS'; // OperadorForte@123
@@ -173,8 +178,14 @@ async function runHomologationSuite() {
     const resHome = await fetch(`${BASE_URL}/index.html`);
     assert(resHome.status === 200, 'Frontend index.html entregue com sucesso (HTTP 200)');
 
-    const resLogin = await fetch(`${BASE_URL}/login.html`);
-    assert(resLogin.status === 200 || resLogin.status === 404, 'Rota de login acessível');
+    // Testa rota da página de login com obrigatoriedade estrita de HTTP 200 (HTTP 404 reprova)
+    const resLogin = await fetch(`${BASE_URL}/login/index.html`);
+    assert(resLogin.status === 200, 'Página de login retornou HTTP 200 com sucesso (HTTP 404 estritamente reprovado)');
+    const loginHtml = await resLogin.text();
+    assert(
+      loginHtml.includes('login') || loginHtml.includes('ON') || loginHtml.includes('__next'),
+      'Conteúdo da aplicação de login verificado com sucesso'
+    );
 
     // Testa manifestos públicos de Face-API (Requisito 5)
     const resFaceManifest = await fetch(`${BASE_URL}/models/face-api/face_landmark_68_model-weights_manifest.json`);

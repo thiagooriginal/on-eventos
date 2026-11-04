@@ -4,21 +4,30 @@
  * 
  * FINALIDADE:
  * Permitir que os administradores oficiais definam suas novas senhas seguras (ou gerem tokens
- * de uso único) diretamente no ambiente da hospedagem via CLI/SSH, de forma 100% segura e
+ * de uso único) diretamente no ambiente da hospedagem via CLI/SSH, de forma 100% segura, com
+ * ENTRADA INTERATIVA OCULTA (sem expor senhas no histórico do shell com --pass) e
  * SEM DEPENDER DO DISPARO DE E-MAILS SMTP (solucionando o bootstrap inicial quando o SMTP
- * ainda não possui a senha configurada).
+ * ainda não possui senha configurada).
+ * 
+ * LOCALIZAÇÃO NA HOSPEDAGEM:
+ * Pode ser executado em private_data/setup-admin-password.php (fora do public_html).
  * 
  * USO VIA TERMINAL / SSH NA HOSPEDAGEM:
- * 1. Definir senha diretamente:
- *    php security/setup-admin-password.php --email="thiago@onagenciadeeventos.com.br" --pass="NovaSenhaForte@2026"
+ * 1. Definir senha de forma interativa com digitação oculta:
+ *    php setup-admin-password.php --email="thiago@onagenciadeeventos.com.br"
+ *    (O sistema solicitará a nova senha com digitação oculta e confirmação)
  * 
  * 2. Ou gerar token criptográfico de uso único para redefinição no navegador:
- *    php security/setup-admin-password.php --email="thiago@onagenciadeeventos.com.br" --generate-token
+ *    php setup-admin-password.php --email="thiago@onagenciadeeventos.com.br" --generate-token
+ * 
+ * 3. Listar administradores:
+ *    php setup-admin-password.php --list-admins
  * 
  * SEGURANÇA:
  * - Execução estritamente restrita a CLI (linha de comando / SSH). Bloqueado via Web/HTTP.
- * - Hashing com Argon2id ou Bcrypt (cost 12) e salt individual.
- * - Registrado no log de auditoria com timestamp e hash.
+ * - Entrada oculta de senha (stty -echo / Read-Host).
+ * - Hashing com Argon2id ou Bcrypt (cost 12) e salt individual aleatório.
+ * - Registrado no log de auditoria com timestamp.
  */
 
 if (php_sapi_name() !== 'cli') {
@@ -26,9 +35,59 @@ if (php_sapi_name() !== 'cli') {
     die("Acesso negado: Este script de gerenciamento só pode ser executado via CLI / Terminal.\n");
 }
 
-require_once dirname(__DIR__) . '/public/auth_guard.php';
+// Resolução dinâmica e resiliente do auth_guard.php
+$candidatosAuthGuard = [
+    dirname(__DIR__) . '/public/auth_guard.php', // Quando executado em security/ (ambiente local)
+    dirname(__DIR__) . '/public_html/auth_guard.php', // Quando executado em private_data/ (hospedagem)
+    __DIR__ . '/../public_html/auth_guard.php',
+    __DIR__ . '/../public/auth_guard.php',
+    __DIR__ . '/auth_guard.php'
+];
 
-// Leitura de parâmetros de linha de comando
+$authGuardPath = null;
+foreach ($candidatosAuthGuard as $c) {
+    if (file_exists($c)) {
+        $authGuardPath = realpath($c) ?: $c;
+        break;
+    }
+}
+
+if (!$authGuardPath) {
+    die("[ERRO CRÍTICO]: Arquivo auth_guard.php não encontrado nos caminhos esperados.\n");
+}
+
+require_once $authGuardPath;
+
+/**
+ * Captura entrada de senha do terminal de forma silenciosa/oculta
+ */
+function prompt_silent_password($prompt) {
+    echo $prompt;
+
+    // Ambiente Windows
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $cmd = 'powershell -Command "$p = Read-Host -AsSecureString; if ($p) { [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($p)) }"';
+        $pass = trim((string)shell_exec($cmd));
+        echo "\n";
+        return $pass;
+    }
+
+    // Ambiente Linux / macOS (Hospedagem Hostinger via SSH)
+    $hasStty = (shell_exec('which stty 2>/dev/null') !== null);
+    if ($hasStty) {
+        shell_exec('stty -echo');
+        $pass = trim((string)fgets(STDIN));
+        shell_exec('stty echo');
+        echo "\n";
+        return $pass;
+    }
+
+    // Fallback padrão caso stty não esteja disponível
+    $pass = trim((string)fgets(STDIN));
+    return $pass;
+}
+
+// Leitura de opções da linha de comando
 $options = getopt('', ['email:', 'pass:', 'generate-token', 'list-admins']);
 
 echo "============================================================\n";
@@ -51,13 +110,25 @@ if (isset($options['list-admins'])) {
     exit(0);
 }
 
+// Identifica ou solicita o e-mail do administrador
 $email = strtolower(trim($options['email'] ?? ''));
 
 if (empty($email)) {
-    echo "Uso:\n";
-    echo "  Definir senha:  php security/setup-admin-password.php --email=\"seu-email@dominio.com\" --pass=\"SuaNovaSenhaForte@123\"\n";
-    echo "  Gerar token:    php security/setup-admin-password.php --email=\"seu-email@dominio.com\" --generate-token\n";
-    echo "  Listar admins:  php security/setup-admin-password.php --list-admins\n\n";
+    echo "Administradores disponíveis:\n";
+    $adminsList = [];
+    foreach ($usuarios as $u) {
+        if (($u['nivel'] ?? '') === 'ADMIN') {
+            $adminsList[] = $u['email'];
+            echo "  * {$u['email']} ({$u['nome']})\n";
+        }
+    }
+    echo "\nDigite o e-mail do administrador para configurar: ";
+    $email = strtolower(trim((string)fgets(STDIN)));
+    echo "\n";
+}
+
+if (empty($email)) {
+    echo "[ERRO] E-mail não informado. Operação cancelada.\n";
     exit(1);
 }
 
@@ -103,23 +174,39 @@ if (isset($options['generate-token'])) {
     echo "  E-mail:       {$email}\n";
     echo "  Token Manual: {$tokenData['token']}\n";
     echo "  Expiração:    " . date('d/m/Y H:i', $tokenData['expiraTimestamp']) . " (24 horas)\n\n";
-    echo "Link seguro para acesso direto no navegador:\n";
+    echo "Link seguro para acesso direto no navegador (sem depender de SMTP):\n";
     echo "  {$link}\n\n";
     echo "Copie e cole este link no seu navegador para definir sua nova senha com segurança.\n";
     echo "============================================================\n";
     exit(0);
 }
 
-// 2. DEFINIÇÃO DIRETA DE SENHA COM HASH FORTE (Modo Senha)
-$novaSenha = (string)($options['pass'] ?? '');
+// 2. DEFINIÇÃO DE SENHA INTERATIVA COM ENTRADA OCULTA (Modo Padrão)
+$novaSenha = '';
 
-if (empty($novaSenha)) {
-    echo "[ERRO] Nenhuma senha informada. Utilize o parâmetro --pass=\"SuaSenhaForte\" ou use --generate-token.\n";
-    exit(1);
+if (!empty($options['pass'])) {
+    echo "[AVISO DE SEGURANÇA]: Passar senhas via argumento de linha de comando (--pass) pode registrar a credencial no histórico do shell. Para máxima segurança, omita o parâmetro --pass e digite de forma oculta.\n\n";
+    $novaSenha = (string)$options['pass'];
+} else {
+    // Modo interativo com entrada oculta
+    echo "Configurando nova senha para: {$usuario['nome']} <{$email}>\n";
+    $novaSenha = prompt_silent_password("Digite a nova senha (mínimo 8 caracteres): ");
+    
+    if (strlen($novaSenha) < 8) {
+        echo "[ERRO] A senha deve possuir no mínimo 8 caracteres para garantir a segurança da plataforma.\n";
+        exit(1);
+    }
+
+    $confirmaSenha = prompt_silent_password("Confirme a nova senha digitada: ");
+    
+    if ($novaSenha !== $confirmaSenha) {
+        echo "[ERRO] As senhas digitadas não conferem. Operação cancelada.\n";
+        exit(1);
+    }
 }
 
 if (strlen($novaSenha) < 8) {
-    echo "[ERRO] A senha deve possuir no mínimo 8 caracteres para garantir a segurança da plataforma.\n";
+    echo "[ERRO] A senha deve possuir no mínimo 8 caracteres.\n";
     exit(1);
 }
 
@@ -144,7 +231,7 @@ log_security_event('CLI_ADMIN_PASSWORD_PROVISIONED', [
     'action_by' => 'cli_administrator'
 ]);
 
-echo "[PASS] Senha do administrador {$email} atualizada com 100% de sucesso!\n";
+echo "\n[PASS] Senha do administrador {$email} atualizada com 100% de sucesso!\n";
 echo "  - Algoritmo aplicado:  " . (defined('PASSWORD_ARGON2ID') ? 'Argon2id' : 'Bcrypt (cost 12)') . "\n";
 echo "  - Flag de redefinição: Desmarcada (Acesso liberado imediatamente)\n";
 echo "  - Senhas em texto puro: Expurgo garantido\n";

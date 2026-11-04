@@ -133,34 +133,82 @@ function get_secure_storage_path($filename) {
 
     $targetFile = $privateDir . DIRECTORY_SEPARATOR . $filenameLimpo;
 
-    // Migração não destrutiva com backup automático de dados remanescentes em locais legados
+    // Migração não destrutiva com backup atômico, conferência SHA-256 e teste de restauração
     $legacyPublic = __DIR__ . DIRECTORY_SEPARATOR . $filenameLimpo;
     $legacySubdir = __DIR__ . DIRECTORY_SEPARATOR . 'private_data' . DIRECTORY_SEPARATOR . $filenameLimpo;
 
     foreach ([$legacySubdir, $legacyPublic] as $legacyFile) {
         if (file_exists($legacyFile) && realpath($legacyFile) !== realpath($targetFile)) {
+            $sourceSize = @filesize($legacyFile);
+            $sourceSha = @hash_file('sha256', $legacyFile);
+
+            if ($sourceSize === false || $sourceSha === false || $sourceSize === 0) {
+                continue;
+            }
+
             $backupDir = $privateDir . DIRECTORY_SEPARATOR . 'backups';
             if (!is_dir($backupDir)) {
                 @mkdir($backupDir, 0750, true);
             }
 
-            if (!file_exists($targetFile)) {
-                // Realiza backup pré-migração
-                $backupFile = $backupDir . DIRECTORY_SEPARATOR . date('Ymd_His') . '_legacy_' . $filenameLimpo . '.bak';
-                @copy($legacyFile, $backupFile);
+            $backupFile = $backupDir . DIRECTORY_SEPARATOR . date('Ymd_His') . '_legacy_' . $filenameLimpo . '.bak';
 
-                // Copia e valida integridade via SHA-256 e tamanho de arquivo
-                if (@copy($legacyFile, $targetFile)) {
-                    if (filesize($targetFile) === filesize($legacyFile) && hash_file('sha256', $targetFile) === hash_file('sha256', $legacyFile)) {
-                        // Preservação não destrutiva: quarentena o arquivo legando renomeando para .bak com timestamp, sem apagar
-                        @rename($legacyFile, $legacyFile . '.migrated_' . date('Ymd_His') . '.bak');
+            // Etapa 1: Cópia e conferência rigorosa de integridade do backup (SHA-256 e tamanho)
+            $backupOk = @copy($legacyFile, $backupFile);
+            if (!$backupOk || !file_exists($backupFile)) {
+                log_security_event('MIGRATION_BACKUP_COPY_FAILED', ['file' => $filenameLimpo]);
+                continue; // Aborta migração: preserva o arquivo legado original intacto
+            }
+
+            if (@filesize($backupFile) !== $sourceSize || @hash_file('sha256', $backupFile) !== $sourceSha) {
+                @unlink($backupFile);
+                log_security_event('MIGRATION_BACKUP_INTEGRITY_MISMATCH', ['file' => $filenameLimpo]);
+                continue; // Aborta migração: integridade falhou, preserva o arquivo original intacto
+            }
+
+            // Etapa 2: Teste de restauração e validação estrutural do conteúdo do backup
+            $backupContent = @file_get_contents($backupFile);
+            if ($backupContent === false) {
+                log_security_event('MIGRATION_BACKUP_READ_FAILED', ['file' => $filenameLimpo]);
+                continue;
+            }
+
+            // Se for arquivo JSON, valida decodificação e integridade dos dados
+            if (substr($filenameLimpo, -5) === '.json') {
+                $decoded = json_decode($backupContent, true);
+                if (json_last_error() !== JSON_ERROR_NONE || (!is_array($decoded) && !is_object($decoded))) {
+                    log_security_event('MIGRATION_RESTORE_TEST_JSON_INVALID', [
+                        'file' => $filenameLimpo,
+                        'json_error' => json_last_error_msg()
+                    ]);
+                    continue; // Aborta migração: JSON corrompido, preserva arquivo original intacto
+                }
+            }
+
+            // Etapa 3: Cópia verificada para o destino seguro em private_data
+            $targetPronto = false;
+            if (!file_exists($targetFile)) {
+                if (@copy($backupFile, $targetFile)) {
+                    if (@filesize($targetFile) === $sourceSize && @hash_file('sha256', $targetFile) === $sourceSha) {
+                        $targetPronto = true;
+                    } else {
+                        @unlink($targetFile);
                     }
                 }
             } else {
-                // Se já existe no destino seguro com conteúdo idêntico, quarentena o arquivo legado
-                if (hash_file('sha256', $targetFile) === hash_file('sha256', $legacyFile)) {
-                    @rename($legacyFile, $legacyFile . '.migrated_' . date('Ymd_His') . '.bak');
+                // Se já existe no destino, confere se é idêntico
+                if (@hash_file('sha256', $targetFile) === $sourceSha) {
+                    $targetPronto = true;
                 }
+            }
+
+            // Etapa 4: Quarentena segura SOMENTE após confirmação de sucesso de todas as etapas anteriores
+            if ($targetPronto) {
+                @rename($legacyFile, $legacyFile . '.migrated_' . date('Ymd_His') . '.bak');
+                log_security_event('MIGRATION_SAFE_QUARANTINE_COMPLETED', [
+                    'file' => $filenameLimpo,
+                    'sha256' => $sourceSha
+                ]);
             }
         }
     }

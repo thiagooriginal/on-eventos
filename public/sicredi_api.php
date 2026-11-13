@@ -349,8 +349,22 @@ if ($action === 'emitir_todas_parcelas_venda') {
     $vendaId = $payload['vendaId'] ?? '';
     $vendaPayload = $payload['venda'] ?? null;
 
-    $vendas = file_exists($vendasFile) ? json_decode(file_get_contents($vendasFile), true) : [];
-    if (!is_array($vendas)) $vendas = [];
+    $vendas = [];
+    if (file_exists($vendasFile)) {
+        $conteudo = file_get_contents($vendasFile);
+        if (!empty($conteudo)) {
+            $parsed = json_decode($conteudo, true);
+            if (is_array($parsed)) {
+                $vendas = $parsed;
+            }
+        }
+    }
+
+    // Proteção contra leitura vazia por concorrência: se o arquivo existe e tem conteúdo, nunca zera
+    if (empty($vendas) && file_exists($vendasFile) && filesize($vendasFile) > 50) {
+        echo json_encode(['sucesso' => false, 'erro' => 'Concorrência temporária de leitura. Tente novamente em instantes.'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $vendaIndex = -1;
     $vendaAlvo = null;
@@ -362,7 +376,7 @@ if ($action === 'emitir_todas_parcelas_venda') {
         }
     }
 
-    // Se ainda não estava gravado em disco mas foi enviado na requisição, insere imediatamente
+    // Se ainda não estava gravado em disco mas foi enviado na requisição, insere apenas se a lista for válida
     if (!$vendaAlvo && $vendaPayload && is_array($vendaPayload)) {
         $vendaAlvo = $vendaPayload;
         array_unshift($vendas, $vendaAlvo);
@@ -401,7 +415,36 @@ if ($action === 'emitir_todas_parcelas_venda') {
                 $erros[] = "Parcela #{$parcela['numero']}: {$regRes['erro']}";
             }
         }
-        file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        // Gravação protegida com bloqueio exclusivo para nunca truncar ou sobrescrever contratos concorrentes
+        $fp = fopen($vendasFile, 'c+');
+        if ($fp && flock($fp, LOCK_EX)) {
+            $conteudoAtual = '';
+            while (!feof($fp)) {
+                $conteudoAtual .= fread($fp, 8192);
+            }
+            $vendasAtuais = json_decode($conteudoAtual, true);
+            if (is_array($vendasAtuais) && count($vendasAtuais) >= count($vendas)) {
+                $atualizou = false;
+                foreach ($vendasAtuais as $k => $vExistente) {
+                    if (($vExistente['id'] ?? '') === $vendaId) {
+                        $vendasAtuais[$k] = $vendas[$vendaIndex];
+                        $atualizou = true;
+                        break;
+                    }
+                }
+                if ($atualizou) {
+                    $vendas = $vendasAtuais;
+                }
+            }
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        } else {
+            file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        }
     }
 
     echo json_encode([
@@ -483,7 +526,36 @@ if ($action === 'sincronizar_baixas') {
     }
 
     if ($modificado) {
-        file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        // Gravação protegida com bloqueio exclusivo para nunca truncar ou sobrescrever contratos concorrentes
+        $fp = fopen($vendasFile, 'c+');
+        if ($fp && flock($fp, LOCK_EX)) {
+            $conteudoAtual = '';
+            while (!feof($fp)) {
+                $conteudoAtual .= fread($fp, 8192);
+            }
+            $vendasAtuais = json_decode($conteudoAtual, true);
+            if (is_array($vendasAtuais) && count($vendasAtuais) >= count($vendas)) {
+                $atualizou = false;
+                foreach ($vendasAtuais as $k => $vExistente) {
+                    if (($vExistente['id'] ?? '') === $vendaId) {
+                        $vendasAtuais[$k] = $vendas[$vendaIndex];
+                        $atualizou = true;
+                        break;
+                    }
+                }
+                if ($atualizou) {
+                    $vendas = $vendasAtuais;
+                }
+            }
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        } else {
+            file_put_contents($vendasFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+        }
     }
 
     echo json_encode([

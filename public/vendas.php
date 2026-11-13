@@ -82,7 +82,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'save' && isset($payload['vendas']) && is_array($payload['vendas'])) {
         require_auth(['ADMIN', 'EQUIPE_INTERNA']);
-        $vendas = filtrarApenasReais($payload['vendas']);
+        $novas = filtrarApenasReais($payload['vendas']);
+
+        // Fusão segura no servidor: preserva contratos existentes contra sobrescritas acidentais
+        $mapa = [];
+        foreach ($vendas as $v) {
+            $k = $v['id'] ?? ($v['codigoPedido'] ?? '');
+            if ($k) {
+                $mapa[$k] = $v;
+            }
+        }
+        foreach ($novas as $v) {
+            $k = $v['id'] ?? ($v['codigoPedido'] ?? '');
+            if ($k) {
+                if (isset($mapa[$k])) {
+                    $mapa[$k] = array_merge($mapa[$k], $v);
+                } else {
+                    $mapa[$k] = $v;
+                }
+            }
+        }
+
+        $vendas = array_values($mapa);
         file_put_contents($dataFile, json_encode($vendas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
         echo json_encode(['sucesso' => true, 'total' => count($vendas), 'vendas' => $vendas], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;

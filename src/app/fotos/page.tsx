@@ -851,26 +851,6 @@ export default function VendasAlbunsPage() {
                 } catch (e) {}
                 return unificadas;
               });
-
-              const limpas = mesclarColecaoVendas(vendas, d.vendas);
-
-              // Auto-registra silenciosamente qualquer parcela pendente que ainda não foi pro Sicredi
-              limpas.forEach((v: VendaAlbum) => {
-                if (v.formaPagamento === 'BOLETO' && v.parcelasBoletos?.some((p) => !p.registradoSicredi)) {
-                  fetch('/sicredi_api.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'emitir_todas_parcelas_venda', vendaId: v.id, venda: v }),
-                  })
-                    .then((r) => r.json())
-                    .then((resReg) => {
-                      if (resReg.sucesso && resReg.venda) {
-                        setVendas((prev) => prev.map((item) => (item.id === v.id ? resReg.venda : item)));
-                      }
-                    })
-                    .catch(() => {});
-                }
-              });
             }
           })
           .catch(() => {});

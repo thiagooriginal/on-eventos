@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -59,9 +59,12 @@ import {
   Undo2,
   Zap,
   Send,
+  Upload,
+  FileSpreadsheet,
 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import ReconhecimentoFacialModal from '@/components/ReconhecimentoFacialModal';
+import { processarArquivoVendasXlsx, VendaAlbumImportada } from '@/lib/vendas_importador';
 import {
   getInstituicoes,
   getCursos,
@@ -221,6 +224,44 @@ export function isClienteFicticio(v: any): boolean {
   if (nome.includes('gabriel santos') || nome.includes('amanda oliveira') || nome.includes('leonardo castro')) return true;
   if (cpf === '12345678900' || cpf === '98765432111' || cpf === '45678912322') return true;
   return false;
+}
+
+// Unificação inteligente e não-destrutiva de coleções de vendas (Server + LocalStorage + Planilhas)
+export function mesclarColecaoVendas(locais: VendaAlbum[], remotas: VendaAlbum[]): VendaAlbum[] {
+  const mapa = new Map<string, VendaAlbum>();
+
+  // 1. Carrega as vendas locais preservando todos os contratos legítimos
+  (locais || []).forEach((v) => {
+    if (v && (v.id || v.codigoPedido) && !isClienteFicticio(v)) {
+      const chave = v.id || v.codigoPedido;
+      mapa.set(chave, v);
+    }
+  });
+
+  // 2. Mescla vendas remotas/novas sem sobrescrever nem apagar vendas já existentes
+  (remotas || []).forEach((v) => {
+    if (v && (v.id || v.codigoPedido) && !isClienteFicticio(v)) {
+      const chave = v.id || v.codigoPedido;
+      const existente = mapa.get(chave);
+      if (existente) {
+        // Se a venda já existe, preserva parcelas emitidas/registradas no Sicredi caso a nova venha vazia
+        const parcelasPreservadas =
+          v.parcelasBoletos && v.parcelasBoletos.length > 0
+            ? v.parcelasBoletos
+            : existente.parcelasBoletos;
+
+        mapa.set(chave, {
+          ...existente,
+          ...v,
+          parcelasBoletos: parcelasPreservadas,
+        });
+      } else {
+        mapa.set(chave, v);
+      }
+    }
+  });
+
+  return Array.from(mapa.values());
 }
 
 export interface StatusPrazo {
@@ -474,7 +515,27 @@ export const formatarLabelPeriodo = (periodo: string): string => {
 };
 
 export default function VendasAlbunsPage() {
-  const [vendas, setVendas] = useState<VendaAlbum[]>(VENDAS_INICIAIS);
+  const [vendas, setVendas] = useState<VendaAlbum[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const salvo = localStorage.getItem('on_vendas_albuns_estado');
+        if (salvo) {
+          const parsed = JSON.parse(salvo);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.filter((v: any) => !isClienteFicticio(v));
+          }
+        }
+      } catch (e) {}
+    }
+    return VENDAS_INICIAIS;
+  });
+
+  // Estados para Modal de Importação de Planilha Excel/CSV (.xlsx, .xls, .csv)
+  const [modalImportarVendasAberto, setModalImportarVendasAberto] = useState(false);
+  const [vendasPreviaImportacao, setVendasPreviaImportacao] = useState<VendaAlbumImportada[]>([]);
+  const [processandoImportacao, setProcessandoImportacao] = useState(false);
+  const [erroImportacaoVendas, setErroImportacaoVendas] = useState<string | null>(null);
+  const fileInputVendasRef = useRef<HTMLInputElement>(null);
   const [busca, setBusca] = useState('');
   const [filtroModelo, setFiltroModelo] = useState<string>('TODOS');
   const [filtroPagamento, setFiltroPagamento] = useState<'TODOS' | 'CARTAO' | 'BOLETO' | 'A_VISTA' | 'PIX' | 'DINHEIRO' | 'COMBINADO'>('TODOS');
@@ -722,13 +783,12 @@ export default function VendasAlbunsPage() {
           const parsed = JSON.parse(salvo);
           if (Array.isArray(parsed)) {
             const limpas = parsed.filter((v: any) => !isClienteFicticio(v));
-            setVendas(limpas);
-            localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
+            setVendas((prev) => mesclarColecaoVendas(prev, limpas));
           }
         }
       } catch (e) {}
 
-      // 3. Sincroniza em tempo real com o banco de dados centralizado no servidor
+      // 3. Sincroniza em tempo real com o banco de dados centralizado no servidor sem perda de dados locais
       fetch('/vendas.php')
         .then((res) => {
           if (!res.ok) throw new Error('Falha ao obter vendas');
@@ -736,11 +796,23 @@ export default function VendasAlbunsPage() {
         })
         .then((dadosServidor) => {
           if (Array.isArray(dadosServidor)) {
-            const limpas = dadosServidor.filter((v: any) => !isClienteFicticio(v));
-            setVendas(limpas);
-            try {
-              localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
-            } catch (e) {}
+            setVendas((prevVendas) => {
+              const unificadas = mesclarColecaoVendas(prevVendas, dadosServidor);
+              try {
+                localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(unificadas));
+              } catch (e) {}
+
+              // Se houver contratos locais não presentes no servidor, sincroniza centralmente
+              if (unificadas.length > dadosServidor.length) {
+                fetch('/vendas.php', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'save', vendas: unificadas }),
+                }).catch(() => {});
+              }
+
+              return unificadas;
+            });
           }
         })
         .catch(() => {});
@@ -772,11 +844,15 @@ export default function VendasAlbunsPage() {
           .then((r) => r.json())
           .then((d) => {
             if (d.sucesso && Array.isArray(d.vendas)) {
-              const limpas = d.vendas.filter((v: any) => !isClienteFicticio(v));
-              setVendas(limpas);
-              try {
-                localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(limpas));
-              } catch (e) {}
+              setVendas((prevVendas) => {
+                const unificadas = mesclarColecaoVendas(prevVendas, d.vendas);
+                try {
+                  localStorage.setItem('on_vendas_albuns_estado', JSON.stringify(unificadas));
+                } catch (e) {}
+                return unificadas;
+              });
+
+              const limpas = mesclarColecaoVendas(vendas, d.vendas);
 
               // Auto-registra silenciosamente qualquer parcela pendente que ainda não foi pro Sicredi
               limpas.forEach((v: VendaAlbum) => {
@@ -832,12 +908,12 @@ export default function VendasAlbunsPage() {
                   .then((resData) => {
                     if (resData.sucesso && resData.totalDisparados > 0) {
                       showToast(`🔔 Envio Agendado: ${resData.totalDisparados} boleto(s) de amanhã disparados no WhatsApp!`);
-                      // Atualiza vendas localmente
+                      // Atualiza vendas localmente sem perda de dados
                       fetch('/vendas.php')
                         .then((r) => r.json())
                         .then((dadosVendas) => {
                           if (Array.isArray(dadosVendas)) {
-                            setVendas(dadosVendas.filter((v: any) => !isClienteFicticio(v)));
+                            setVendas((prev) => mesclarColecaoVendas(prev, dadosVendas));
                           }
                         })
                         .catch(() => {});
@@ -869,6 +945,43 @@ export default function VendasAlbunsPage() {
         }).catch(() => {});
       } catch (e) {}
     }
+  };
+
+  // Funções para Importação Inteligente de Planilhas Excel (.xlsx / .xls / .csv)
+  const handleSelecionarArquivoXlsx = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProcessandoImportacao(true);
+    setErroImportacaoVendas(null);
+    try {
+      const convertidos = await processarArquivoVendasXlsx(file);
+      if (!convertidos || convertidos.length === 0) {
+        setErroImportacaoVendas(
+          'Nenhum registro de formando ou venda foi identificado no arquivo. Verifique se o cabeçalho possui os dados do cliente.'
+        );
+        setVendasPreviaImportacao([]);
+      } else {
+        setVendasPreviaImportacao(convertidos);
+      }
+    } catch (err: any) {
+      setErroImportacaoVendas(err?.message || 'Falha ao processar arquivo.');
+      setVendasPreviaImportacao([]);
+    } finally {
+      setProcessandoImportacao(false);
+      if (fileInputVendasRef.current) {
+        fileInputVendasRef.current.value = '';
+      }
+    }
+  };
+
+  const handleConfirmarImportacao = () => {
+    if (vendasPreviaImportacao.length === 0) return;
+    const unificadas = mesclarColecaoVendas(vendas, vendasPreviaImportacao as VendaAlbum[]);
+    salvarVendasLocal(unificadas);
+    showToast(`✅ ${vendasPreviaImportacao.length} contratos importados e salvos com sucesso!`);
+    setModalImportarVendasAberto(false);
+    setVendasPreviaImportacao([]);
+    setErroImportacaoVendas(null);
   };
 
   // Se a página for aberta em nova aba com ?alunoId=..., abre automaticamente o prontuário/observações
@@ -2263,7 +2376,7 @@ export default function VendasAlbunsPage() {
           .then((r) => r.json())
           .then((limpas) => {
             if (Array.isArray(limpas)) {
-              setVendas(limpas.filter((v: any) => !isClienteFicticio(v)));
+              setVendas((prev) => mesclarColecaoVendas(prev, limpas));
             }
           })
           .catch(() => {});
@@ -2819,6 +2932,19 @@ export default function VendasAlbunsPage() {
               <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider ml-1">
                 Homologado
               </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setModalImportarVendasAberto(true);
+                setVendasPreviaImportacao([]);
+                setErroImportacaoVendas(null);
+              }}
+              className="inline-flex items-center space-x-2 px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 text-xs font-black shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-700 hover:translate-y-[-1px] active:translate-y-[1px] cursor-pointer"
+              title="Importar lista de contratos ou vendas via planilha (.xlsx, .xls, .csv)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Importar Planilha</span>
             </button>
 
             <button
@@ -8490,6 +8616,153 @@ ON AGENCIA DE EVENTOS LTDA`;
                 className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
               >
                 Fechar Prontuário
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Importação de Planilhas de Vendas (.xlsx, .xls, .csv) */}
+      {modalImportarVendasAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Cabeçalho */}
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/40">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-800 dark:text-slate-100">
+                    Importar Planilha de Contratos e Vendas
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Compatível com arquivos Excel (.xlsx, .xls) e CSV. Fusão inteligente que nunca apaga dados existentes.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalImportarVendasAberto(false)}
+                className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Corpo do Modal */}
+            <div className="p-6 overflow-y-auto space-y-5">
+              {/* Seletor de Arquivo */}
+              <input
+                type="file"
+                ref={fileInputVendasRef}
+                accept=".xlsx, .xls, .csv"
+                onChange={handleSelecionarArquivoXlsx}
+                className="hidden"
+              />
+
+              <div
+                onClick={() => fileInputVendasRef.current?.click()}
+                className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-2xl p-6 text-center cursor-pointer bg-slate-50 dark:bg-slate-800/30 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 transition group"
+              >
+                <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300 flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                  {processandoImportacao ? (
+                    <Clock className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <Upload className="w-6 h-6" />
+                  )}
+                </div>
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  {processandoImportacao
+                    ? 'Lendo dados da planilha...'
+                    : 'Clique para selecionar o arquivo Excel (.xlsx, .xls) ou CSV'}
+                </h4>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                  Reconhecimento automático: Círculo Militar, Planilha Clientes Evento e Cadastros Gerais
+                </p>
+              </div>
+
+              {/* Mensagem de Erro */}
+              {erroImportacaoVendas && (
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 flex items-start space-x-3 text-rose-700 dark:text-rose-300 text-xs">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-bold">Aviso na Importação:</strong> {erroImportacaoVendas}
+                  </div>
+                </div>
+              )}
+
+              {/* Prévia dos Dados Identificados */}
+              {vendasPreviaImportacao.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 mr-1.5" />
+                      {vendasPreviaImportacao.length} Contratos Identificados e Validados
+                    </span>
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
+                      Total: R$ {vendasPreviaImportacao.reduce((acc, v) => acc + (v.valorTotalKit || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden max-h-64 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 sticky top-0 font-bold border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="py-2.5 px-3">Pedido</th>
+                          <th className="py-2.5 px-3">Formando</th>
+                          <th className="py-2.5 px-3">Turma / Evento</th>
+                          <th className="py-2.5 px-3">Valor</th>
+                          <th className="py-2.5 px-3">Pagamento</th>
+                          <th className="py-2.5 px-3">Telefone</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {vendasPreviaImportacao.map((v, i) => (
+                          <tr key={i} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50">
+                            <td className="py-2 px-3 font-mono font-bold text-purple-600 dark:text-purple-400">{v.codigoPedido}</td>
+                            <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200">{v.alunoNome}</td>
+                            <td className="py-2 px-3 text-slate-500 dark:text-slate-400 max-w-[200px] truncate">{v.turmaNome}</td>
+                            <td className="py-2 px-3 font-bold text-slate-700 dark:text-slate-300">R$ {Number(v.valorTotalKit || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                            <td className="py-2 px-3">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                {v.formaPagamento}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-slate-500 font-mono text-[11px]">{v.alunoTelefone}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé de Ações */}
+            <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalImportarVendasAberto(false);
+                  setVendasPreviaImportacao([]);
+                  setErroImportacaoVendas(null);
+                }}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                disabled={vendasPreviaImportacao.length === 0 || processandoImportacao}
+                onClick={handleConfirmarImportacao}
+                className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 transition cursor-pointer"
+              >
+                <Upload className="w-4 h-4" />
+                <span>
+                  Confirmar Importação de {vendasPreviaImportacao.length > 0 ? `${vendasPreviaImportacao.length} Contratos` : 'Planilha'}
+                </span>
               </button>
             </div>
           </div>
